@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+_trash/
+src.v*/
+*.log
+*.mp4
+*.tar
+.DS_Store
+.env
+.env.*

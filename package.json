@@ -1,0 +1,16 @@
+{
+  "name": "flow-engine",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Real-time WebGL2 generative fabric/wall renderer with studio lighting, materials and tiled print-size export.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5190",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": { "typescript": "^7.0.2", "vite": "^8.3.5" },
+  "dependencies": { "lil-gui": "^0.21.0", "sharp": "^0.35.5" }
+}
