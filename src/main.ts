@@ -1,6 +1,9 @@
 import GUI from 'lil-gui';
 import * as S from './shaders';
 import * as GS from './grass_shaders';
+import * as FS from './fractal_shaders';
+import AudioAnalyzer from './audio';
+import ModulationSystem from './modulation';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!; if (!new URLSearchParams(location.search).get('debug')) hud.style.display = 'none';
@@ -38,6 +41,10 @@ function cmykSafe(c: number[]) {
   return o.map(v => Math.min(.93, Math.max(.035, v)));
 }
 
+// ---------- Audio and Modulation ----------
+const audioAnalyzer = new AudioAnalyzer();
+const modulationSystem = new ModulationSystem();
+
 // ---------- params ----------
 const P: any = {
   mode: 'Wall Studio', seed: 1977,
@@ -48,6 +55,10 @@ const P: any = {
   gWind: 0.6, gGustK: 0.45, gGustSpeed: 1.6, gFlutter: 0.03, gWindAz: 30,
   gColor: 'natural', gBase: '#2c4a12', gTip: '#8fb53a', gDryC: '#c9b46a', gDry: 0.5, gColRand: 0.35, gSoil: '#3b2f22',
   gLight: 'Golden hour', gSunAz: 235, gSunEl: 11, gSunI: 1, gSkyI: 1, gHaze: 1, gShSoft: 1.5, gTrans: 1, gSpec: 0.35, gAO: 0.25, gExposure: 1.1, gShRes: 2048,
+  // Fractal mode
+  frType: 0, frPower: 8, frIter: 12, frBailout: 4, frScale: -1.5, frFold: 1.0, frMinR: 0.5, frFixedR: 1.0, frCamDist: 3, frCamFov: 50,
+  frRotSpeed: 0.05, frMorph: 0, frColor1: '#ff0080', frColor2: '#00e5ff', frColorMix: 2, frAmbient: 0.15, frDiffuse: 0.7, frGlow: 0.3,
+  frShadow: 0.6, frMaxSteps: 128, frMaxDist: 20, frSurfDist: 0.6, frLightAz: 45, frLightEl: 35,
   gcView: 'Eye level', gcYaw: 0, gcPitch: 10, gcDist: 4.5, gcHeight: 0.9, gcFov: 45, gcPanX: 0, gcPanZ: 0, gcAuto: false, gcAutoSpd: 3,
   lsCam: 0.85, lsPrim: 'sphere', lsRotRand: 1, lsSizeRand: 0.15, lsFlow: false, lsDetach: false, lsFlowU: 0.03, lsFlowV: -0.04, lsSSS: 1, cL0Pal: '(main)', cL1Pal: '(main)', cOPal: 'Liquid Spectrum', cL0H: 0, cL0S: 1, cL0C: 1, cL1H: 0.08, cL1S: 1, cL1C: 1, cOH: 0, cOS: 1.3, cOC: 1.05, cMix1: 'normal', cMixA1: 1, cMixO: 'normal', cMixAO: 0, cHueCycle: 0, cGrad: 'folds', beadMode: 'patchwork', pShape: 'voronoi', pScale: 4, pSoft: 0.15, pSeed: 3, pJit: 0.35, pDrift: 0, pFab: 0, pOff: 0, beadSolid: '#ffd27a', lsDripLen: 0.35, lsDripAmt: 0.25, lsStyle: 'Beads', lsCount: 32768, lsRadius: 0.0375, lsRand: 0.1, lsVisc: 0.08, lsCoh: 0.25, lsCohR: 0.3, lsBounce: 0.25, lsFric: 0.7, lsDamp: 0.4, lsDrip: 300, lsTurn: 0, lsFloor: -1.25, lsBoxX: 4, lsBoxZ: 2.5, lsTank: false, lsSlide: 0.15, lsSub: 2,
   lsFabric: true, lsHem: -5, lsFloorOn: true, lsFloorCol: '#4a505c', lsFloorRough: 0.42, lsAbsorb: 3, lsInflate: 1.3, lsGain: 1.6,
@@ -65,7 +76,8 @@ const P: any = {
 };
 const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias','stretch','life','decay','pointSize','gain','colorBySpeed','paletteOffset','exposure','bloom','bloomThreshold','zoom','driftX','driftY',
   'fold','warp','layerSep','scale3d','gloss','spec','iridescence','rim','saturation','brightness','ao','evolution3d','orbitSpeed','camDist','fov','lightAngle','fog',
-  'gStrength','gAz','gEl','mass','stiffness','damping','wind','windAz','floor','cohesion','gBlend','stream','pLife','vmax','pTurb','wellG','pWidth','streak','pGain','dof','fabricUnder','pColorBySpeed'];
+  'gStrength','gAz','gEl','mass','stiffness','damping','wind','windAz','floor','cohesion','gBlend','stream','pLife','vmax','pTurb','wellG','pWidth','streak','pGain','dof','fabricUnder','pColorBySpeed',
+  'frPower','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frSurfDist'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
 function easeParams() { for (const k of SMOOTH) { const d = P[k] - L[k]; L[k] = Math.abs(d) < 1e-6 ? P[k] : L[k] + d * Math.min(1, P.smoothing <= 0 ? 1 : P.smoothing * 2); } }
@@ -117,6 +129,7 @@ const hdrFB = (w: number, h: number) => fbo(w, h, gl.RGBA16F, gl.RGBA, gl.HALF_F
 
 const sim = prog(S.QUAD_VS, S.SIM_FS), draw = prog(S.DRAW_VS, S.DRAW_FS), fade = prog(S.QUAD_VS, S.FADE_FS),
   bright = prog(S.QUAD_VS, S.BRIGHT_FS), blur = prog(S.QUAD_VS, S.BLUR_FS), comp = prog(S.QUAD_VS, S.COMP_FS);
+const fractal = prog(FS.FRACTAL_VS, FS.FRACTAL_FS);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -596,13 +609,75 @@ function popProbe() { if (!isLS() || !ss) return; const n = sW * sH; const pos =
   if (mj > 0.2) { let bi = -1, bd = 0; for (let i = 0; i < sN; i++) { const d = popPrev ? Math.hypot(pos[i*4]-popPrev[i*4], pos[i*4+1]-popPrev[i*4+1], pos[i*4+2]-popPrev[i*4+2]) : 0; if (d > bd) { bd = d; bi = i; } } log(`POPBIG f=${popStat.frames} #${bi} d=${bd.toFixed(3)} s=${vel[bi*4+2].toFixed(2)} hw=${(pos[bi*4+3]/0.45).toFixed(2)} prevhw=${popPrev ? (popPrev[bi*4+3]/0.45).toFixed(2) : ''} y=${pos[bi*4+1].toFixed(2)}`); }
   popPrev = pos; popStat.frames++; popStat.maxJump = Math.max(popStat.maxJump, mj); popStat.faded = Math.max(popStat.faded, faded); popStat.jumps += jumps; gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   if (popStat.frames === 300) log(`POPTEST frames=300 beads=${sN} maxFadedOrRamping=${popStat.faded} maxPerFrameMove=${popStat.maxJump.toFixed(4)} jumpEvents(>1.5r)=${popStat.jumps}`); }
+function renderFractal(T: Trails, vp: number[]) {
+  gl.disable(gl.BLEND); gl.useProgram(fractal.p); const u = fractal.u;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f); gl.viewport(0, 0, T.w, T.h);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  
+  const t = frame * DT;
+  const camDist = V.frCamDist;
+  const camAngle = t * V.frRotSpeed;
+  const camPos = [Math.cos(camAngle) * camDist, camDist * 0.3, Math.sin(camAngle) * camDist];
+  const camTarget = [0, 0, 0];
+  
+  gl.uniform2f(u.uResolution, T.w, T.h);
+  gl.uniform1f(u.uTime, t);
+  gl.uniform3fv(u.uCamPos, camPos);
+  gl.uniform3fv(u.uCamTarget, camTarget);
+  gl.uniform1f(u.uCamFov, V.frCamFov);
+  
+  gl.uniform1i(u.uFractalType, P.frType);
+  gl.uniform1f(u.uPower, V.frPower);
+  gl.uniform1i(u.uIterations, Math.max(1, Math.min(32, P.frIter)));
+  gl.uniform1f(u.uBailout, P.frBailout);
+  gl.uniform1f(u.uScale, V.frScale);
+  gl.uniform1f(u.uFoldLimit, V.frFold);
+  gl.uniform1f(u.uMinRadius, V.frMinR);
+  gl.uniform1f(u.uFixedRadius, V.frFixedR);
+  
+  const c1 = hex(P.frColor1), c2 = hex(P.frColor2);
+  gl.uniform3f(u.uColor1, c1[0], c1[1], c1[2]);
+  gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
+  gl.uniform1f(u.uColorMix, V.frColorMix);
+  gl.uniform1f(u.uAmbient, V.frAmbient);
+  gl.uniform1f(u.uDiffuse, V.frDiffuse);
+  
+  const lightAz = P.frLightAz * Math.PI / 180;
+  const lightEl = P.frLightEl * Math.PI / 180;
+  const lightDir = [
+    Math.cos(lightEl) * Math.cos(lightAz),
+    Math.sin(lightEl),
+    Math.cos(lightEl) * Math.sin(lightAz)
+  ];
+  gl.uniform3fv(u.uLightDir, lightDir);
+  gl.uniform1f(u.uGlow, V.frGlow);
+  gl.uniform1f(u.uShadowStr, V.frShadow);
+  gl.uniform1i(u.uMaxSteps, P.frMaxSteps);
+  gl.uniform1f(u.uMaxDist, P.frMaxDist);
+  gl.uniform1f(u.uSurfDist, V.frSurfDist);
+  gl.uniform1f(u.uRotSpeed, V.frRotSpeed);
+  gl.uniform1f(u.uMorphAmt, V.frMorph);
+  
+  quad();
+}
+
 function tick(now: number) {
   requestAnimationFrame(tick); if (busy || gl.isContextLost()) return;
   const dt = now - last; last = now; fpsAcc += dt; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
-  easeParams(); V = L; curAspect = previewAspect;
+  
+  // Update audio analysis
+  audioAnalyzer.update();
+  
+  // Apply modulation to eased parameters L before final copy to V
+  easeParams();
+  modulationSystem.update(audioAnalyzer.state, L);
+  V = L; curAspect = previewAspect;
   const half = worldHalf(previewAspect);
   const T = trails!; const px = Math.min(T.w, T.h) / 1080;
-  if (P.mode === 'Grass Field') {
+  if (P.mode === '3D Fractal') {
+    if (!P.paused) frame++;
+    renderFractal(T, [0, 1, 0, 1]);
+  } else if (P.mode === 'Grass Field') {
     if (!P.paused) frame++; renderGrass(T, previewAspect, frame * DT, [0, 1, 0, 1], px);
   } else if (P.mode === '3D fabric') {
     if (!P.paused) { t3 += DT * V.evolution3d; tOrbit += DT * V.orbitSpeed; frame++; }
@@ -617,10 +692,10 @@ function tick(now: number) {
     tSim += DT * V.evolution; off2d = [off2d[0] + V.driftX * DT, off2d[1] + V.driftY * DT];
     simStep(frame, half, false, tSim, off2d); trailStep(T, [0, 0], [half[0] / V.zoom, half[1] / V.zoom], px); frame++;
   }
-  bloomPass(T, px);
+  if (P.mode !== '3D Fractal') bloomPass(T, px);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
   composite(T, [-frameRect[0], -frameRect[1]], frameRect);
-  const what = isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
+  const what = P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
   hud.textContent = `${fps.toFixed(1)} fps  ·  ${what}  ·  frame ${frame}  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
 }
 function log(m: string) { fetch('/api/log', { method: 'POST', body: m }).catch(() => { }); }
@@ -838,7 +913,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
+gui.add(P, 'mode', ['Wall Studio', '3D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
 gui.add({ r() { recover('button'); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -944,6 +1019,88 @@ let savedCtl: any; function refreshSaved() { savedCtl?.destroy(); savedCtl = pre
 refreshSaved();
 pre.add({ exportJSON() { const b = new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = store.name + '.json'; a.click(); } }, 'exportJSON').name('⬇ Export JSON');
 pre.add({ importJSON() { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json'; i.onchange = async () => load(JSON.parse(await i.files![0].text())); i.click(); } }, 'importJSON').name('⬆ Import JSON');
+
+// Audio and Modulation
+const audioF = gui.addFolder('Audio / Beat Detection');
+audioF.close();
+const audioState: any = { status: 'No audio source' };
+const audioFileInput = document.createElement('input');
+audioFileInput.type = 'file';
+audioFileInput.accept = 'audio/*';
+audioFileInput.onchange = async () => {
+  if (audioFileInput.files && audioFileInput.files[0]) {
+    const success = await audioAnalyzer.loadFile(audioFileInput.files[0]);
+    audioState.status = success ? `File loaded: ${audioAnalyzer.state.fileName}` : 'Failed to load file';
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+  }
+};
+audioF.add({ loadFile() { audioFileInput.click(); } }, 'loadFile').name('📁 Load Audio File');
+audioF.add({ play() { audioAnalyzer.play(); audioState.status = 'Playing'; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'play').name('▶ Play');
+audioF.add({ pause() { audioAnalyzer.pause(); audioState.status = 'Paused'; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'pause').name('⏸ Pause');
+audioF.add({ stop() { audioAnalyzer.stop(); audioState.status = 'Stopped'; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'stop').name('⏹ Stop');
+audioF.add({ enableMic: async () => { const ok = await audioAnalyzer.enableMicrophone(); audioState.status = ok ? 'Microphone active' : 'Microphone denied'; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'enableMic').name('🎤 Enable Microphone');
+audioF.add({ enableSystem: async () => { const ok = await audioAnalyzer.enableSystemAudio(); audioState.status = ok ? 'System audio active' : audioAnalyzer.state.systemAudioError; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'enableSystem').name('🔊 Enable System Audio (Spotify)');
+audioF.add(audioState, 'status').name('Status').listen().disable();
+audioF.add(audioAnalyzer.state, 'bpm', 40, 240, 1).name('Detected BPM').listen().disable();
+audioF.add(audioAnalyzer.state, 'manualBpm', 40, 240, 1).name('Manual BPM').onChange((v: number) => audioAnalyzer.setManualBpm(v));
+audioF.add({ tap() { audioAnalyzer.tapTempo(); gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'tap').name('🥁 Tap Tempo');
+audioF.add(audioAnalyzer.state, 'level', 0, 1, 0.01).name('Level').listen().disable();
+audioF.add(audioAnalyzer.state, 'bass', 0, 1, 0.01).name('Bass').listen().disable();
+audioF.add(audioAnalyzer.state, 'mid', 0, 1, 0.01).name('Mid').listen().disable();
+audioF.add(audioAnalyzer.state, 'high', 0, 1, 0.01).name('High').listen().disable();
+
+const modF = gui.addFolder('Modulation Mapping');
+modF.close();
+const modState: any = { target: 'frPower', source: 'bass', mappingCount: 0 };
+const MOD_TARGETS = ['frPower', 'frIter', 'frRotSpeed', 'frCamDist', 'frColorMix', 'exposure', 'bloom', 'fold', 'warp', 'orbitSpeed', 'camDist', 'gWind', 'gGustSpeed', 'noiseScale', 'speed', 'curl'];
+const MOD_SOURCES = ['beat', 'bass', 'mid', 'high', 'level', 'envelope'];
+modF.add(modState, 'target', MOD_TARGETS).name('Target parameter');
+modF.add(modState, 'source', MOD_SOURCES).name('Source signal');
+modF.add({ 
+  add() { 
+    const baseValue = P[modState.target] !== undefined ? P[modState.target] : 1.0;
+    modulationSystem.addMapping(modState.target, modState.source, baseValue);
+    modState.mappingCount = modulationSystem.getAllMappings().length;
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+  }
+}, 'add').name('➕ Add Mapping');
+modF.add({ 
+  clearAll() { 
+    modulationSystem.clearAllMappings();
+    modState.mappingCount = 0;
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+  }
+}, 'clearAll').name('🗑 Clear All Mappings');
+modF.add(modState, 'mappingCount').name('Active mappings').listen().disable();
+
+// Fractal folder
+const frF = gui.addFolder('3D Fractal');
+frF.add(P, 'frType', { 'Mandelbulb': 0, 'Mandelbox': 1 }).name('Fractal type');
+frF.add(P, 'frPower', 2, 16, 0.1).name('Power (Mandelbulb)');
+frF.add(P, 'frIter', 4, 24, 1).name('Max iterations');
+frF.add(P, 'frBailout', 2, 10, 0.1).name('Bailout radius');
+frF.add(P, 'frScale', -3, -0.5, 0.01).name('Scale (Mandelbox)');
+frF.add(P, 'frFold', 0.1, 2, 0.01).name('Fold limit (Mandelbox)');
+frF.add(P, 'frMinR', 0.1, 1, 0.01).name('Min radius (Mandelbox)');
+frF.add(P, 'frFixedR', 0.5, 2, 0.01).name('Fixed radius (Mandelbox)');
+const frCam = frF.addFolder('Camera'); frCam.close();
+frCam.add(P, 'frCamDist', 1, 8, 0.1).name('Distance');
+frCam.add(P, 'frCamFov', 30, 90, 1).name('Field of view');
+frCam.add(P, 'frRotSpeed', -0.5, 0.5, 0.01).name('Auto-rotate speed');
+const frCol = frF.addFolder('Colors & Lighting'); frCol.close();
+frCol.addColor(P, 'frColor1').name('Color 1');
+frCol.addColor(P, 'frColor2').name('Color 2');
+frCol.add(P, 'frColorMix', 0, 10, 0.1).name('Color frequency');
+frCol.add(P, 'frAmbient', 0, 1, 0.01).name('Ambient');
+frCol.add(P, 'frDiffuse', 0, 2, 0.01).name('Diffuse');
+frCol.add(P, 'frGlow', 0, 2, 0.01).name('Glow');
+frCol.add(P, 'frShadow', 0, 1, 0.01).name('Shadow strength');
+frCol.add(P, 'frLightAz', -180, 180, 1).name('Light azimuth');
+frCol.add(P, 'frLightEl', -10, 90, 1).name('Light elevation');
+const frAdv = frF.addFolder('Advanced'); frAdv.close();
+frAdv.add(P, 'frMaxSteps', 64, 256, 1).name('Max ray steps');
+frAdv.add(P, 'frMaxDist', 10, 50, 1).name('Max ray distance');
+frAdv.add(P, 'frSurfDist', 0.1, 2, 0.01).name('Surface detail');
 const gF = gui.addFolder('Grass'); gF.add(P, 'gOn').name('grass on (off = colored plane)'); gF.add(P, 'gDensity', 128, 768, 16).name('density (blades per side)');
 gF.add(P, 'gH', 0.05, 1.2, 0.01).name('height (m)'); gF.add(P, 'gHR', 0, 1, 0.01).name('height randomness'); gF.add(P, 'gW', 0.003, 0.04, 0.001).name('blade width (m)');
 gF.add(P, 'gCurv', 0, 1.5, 0.01).name('curvature'); gF.add(P, 'gStiff', 0.2, 3, 0.01).name('stiffness'); gF.add(P, 'gLean', 0, 1, 0.01).name('lean randomness'); gF.add(P, 'gTwist', 0, 2, 0.01).name('twist');
@@ -974,7 +1131,19 @@ wCamF.add(P, 'wcYaw', -50, 50, 0.5).name('orbit (deg)'); wCamF.add(P, 'wcPitch',
 wCamF.add(P, 'wcPanX', -2, 2, 0.01).name('pan X'); wCamF.add(P, 'wcPanY', -2, 2, 0.01).name('pan Y'); wCamF.add(P, 'wcAuto').name('gentle auto orbit');
 wCamF.add({ r: () => { applyWView('Front'); wsU(); } }, 'r').name('reset camera');
 wCamF.add(P, 'cycOn').name('cyclorama'); wCamF.addColor(P, 'cycA').name('cyc top'); wCamF.addColor(P, 'cycB').name('cyc bottom'); wCamF.add(P, 'grain', 0, 0.1, 0.001).name('film grain');
-function updateFolders() { const g = P.mode === 'Grass Field', w = isW(); for (const f of [f3, gf, lsf, pf, lf, sim_, look, col, pre]) f.show(!g && !w); for (const f of [gF, wF, glF, camF]) f.show(g); for (const f of [wMatF, wObjF, wCamF]) f.show(w); if (w) { f3.show(true); lf.show(true); f3.title('Wall'); lf.title('Lighting'); } else { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); } cf.show(true); ex.show(true); if (g || w) cf.close(); }
+function updateFolders() { 
+  const g = P.mode === 'Grass Field', w = isW(), fr = P.mode === '3D Fractal';
+  // Fixed: pre (Presets) folder should always be visible like cf and ex
+  for (const f of [f3, gf, lsf, pf, lf, sim_, look, col]) f.show(!g && !w && !fr);
+  for (const f of [gF, wF, glF, camF]) f.show(g);
+  for (const f of [wMatF, wObjF, wCamF]) f.show(w);
+  frF.show(fr);
+  if (w) { f3.show(true); lf.show(true); f3.title('Wall'); lf.title('Lighting'); } 
+  else if (!fr) { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); }
+  cf.show(true); pre.show(true); ex.show(true); // Always show Color, Presets, Export
+  audioF.show(true); modF.show(true); // Always show Audio and Modulation
+  if (g || w) cf.close();
+}
 P.stillMeshMul = 2;
 ex.add(P, 'exportPreset', PRESETS.map(p => p.name)).name('preset').onChange((v: string) => { if (DEFAULT_ORIENT[v]) P.orientation = DEFAULT_ORIENT[v]; applyPreset(); ex.controllersRecursive().forEach(c => c.updateDisplay()); layout(); });
 ex.add(P, 'orientation', ['landscape', 'portrait']).name('orientation (boards)').onChange(() => { applyPreset(); ex.controllersRecursive().forEach(c => c.updateDisplay()); layout(); });
@@ -988,10 +1157,27 @@ ex.add({ v() { renderVideo(6); } }, 'v').name('🎞 Render MP4 1080p60 6s (3D mo
 const listEl = document.createElement('pre'); listEl.textContent = 'Export presets:\n' + PRESETS.map(p => `• ${p.name}${p.board ? ' [board, orientable]' : ''}${p.pdf ? ' +PDF' : ''}`).join('\n'); listEl.style.cssText = 'margin:4px 8px;font-size:10px;color:#aaa;white-space:pre-wrap';
 (ex as any).$children.appendChild(listEl);
 
-function snapshot() { const { paused, ...rest } = P; return JSON.parse(JSON.stringify({ ...rest, stops })); }
+function snapshot() { 
+  const { paused, ...rest } = P; 
+  return JSON.parse(JSON.stringify({ 
+    ...rest, 
+    stops, 
+    modulationMappings: modulationSystem.toJSON()
+  })); 
+}
 function load(o: any, quiet = false) {
-  const pc = o.particles !== P.particles || (o.pCount && o.pCount !== P.pCount); const lights = o.lights, wells = o.wells; o = { ...o }; delete o.lights; delete o.wells; if (Array.isArray(wells)) wells.forEach((w: any, i: number) => P.wells[i] && Object.assign(P.wells[i], w)); Object.assign(P, o); if (Array.isArray(lights)) lights.forEach((l: any, i: number) => P.lights[i] && Object.assign(P.lights[i], l)); if (o.stops) stops = o.stops; rebuildStops(); buildPalette();
-  gui.controllersRecursive().forEach(c => c.updateDisplay()); if (!quiet) pc ? reset() : layout();
+  const pc = o.particles !== P.particles || (o.pCount && o.pCount !== P.pCount); 
+  const lights = o.lights, wells = o.wells, modMappings = o.modulationMappings;
+  o = { ...o }; 
+  delete o.lights; delete o.wells; delete o.modulationMappings;
+  if (Array.isArray(wells)) wells.forEach((w: any, i: number) => P.wells[i] && Object.assign(P.wells[i], w)); 
+  Object.assign(P, o); 
+  if (Array.isArray(lights)) lights.forEach((l: any, i: number) => P.lights[i] && Object.assign(P.lights[i], l)); 
+  if (o.stops) stops = o.stops;
+  if (modMappings) modulationSystem.fromJSON(modMappings);
+  rebuildStops(); buildPalette();
+  gui.controllersRecursive().forEach(c => c.updateDisplay()); 
+  if (!quiet) pc ? reset() : layout();
 }
 function randomize() {
   const r = (a: number, b: number) => a + Math.random() * (b - a); P.seed = Math.floor(Math.random() * 999999);
