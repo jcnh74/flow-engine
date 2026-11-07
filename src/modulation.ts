@@ -23,6 +23,36 @@ export class ModulationSystem {
   private smoothedValues: Map<string, number> = new Map();
   private releaseValues: Map<string, number> = new Map();
   
+  // Get value from nested path like "light0.az" -> params.lights[0].az
+  private getValue(params: any, path: string): number | undefined {
+    const match = path.match(/^(light|well)(\d+)\.(\w+)$/);
+    if (match) {
+      const [, type, index, prop] = match;
+      const arrayName = type === 'light' ? 'lights' : 'wells';
+      const arr = params[arrayName];
+      if (arr && arr[parseInt(index)]) {
+        return arr[parseInt(index)][prop];
+      }
+      return undefined;
+    }
+    return params[path];
+  }
+  
+  // Set value to nested path
+  private setValue(params: any, path: string, value: number): void {
+    const match = path.match(/^(light|well)(\d+)\.(\w+)$/);
+    if (match) {
+      const [, type, index, prop] = match;
+      const arrayName = type === 'light' ? 'lights' : 'wells';
+      const arr = params[arrayName];
+      if (arr && arr[parseInt(index)]) {
+        arr[parseInt(index)][prop] = value;
+      }
+    } else {
+      params[path] = value;
+    }
+  }
+  
   addMapping(target: string, source: ModulationSource, baseValue: number): ModulationMapping {
     const id = `${target}_${Date.now()}`;
     const mapping: ModulationMapping = {
@@ -78,10 +108,10 @@ export class ModulationSystem {
     for (const [id, mapping] of this.mappings.entries()) {
       if (!mapping.enabled) {
         // Restore base value when disabled
-        if (params[mapping.target] !== undefined) {
-          const current = params[mapping.target];
+        const current = this.getValue(params, mapping.target);
+        if (current !== undefined) {
           const release = Math.max(0.7, mapping.release);
-          params[mapping.target] = current * release + mapping.baseValue * (1 - release);
+          this.setValue(params, mapping.target, current * release + mapping.baseValue * (1 - release));
         }
         continue;
       }
@@ -115,8 +145,9 @@ export class ModulationSystem {
       const clamped = Math.max(mapping.min, Math.min(mapping.max, modulated));
       
       // Apply to parameter (preserve base value, only modulate displayed value)
-      if (params[mapping.target] !== undefined) {
-        params[mapping.target] = clamped;
+      const currentValue = this.getValue(params, mapping.target);
+      if (currentValue !== undefined) {
+        this.setValue(params, mapping.target, clamped);
       }
     }
   }
@@ -126,8 +157,9 @@ export class ModulationSystem {
     const restored = new Set<string>();
     for (const mapping of this.mappings.values()) {
       if (!restored.has(mapping.target)) {
-        if (params[mapping.target] !== undefined) {
-          params[mapping.target] = mapping.baseValue;
+        const currentValue = this.getValue(params, mapping.target);
+        if (currentValue !== undefined) {
+          this.setValue(params, mapping.target, mapping.baseValue);
         }
         restored.add(mapping.target);
       }
@@ -137,8 +169,9 @@ export class ModulationSystem {
   // Update base values when user manually changes parameters
   updateBaseValues(params: any): void {
     for (const mapping of this.mappings.values()) {
-      if (params[mapping.target] !== undefined && !mapping.enabled) {
-        mapping.baseValue = params[mapping.target];
+      const currentValue = this.getValue(params, mapping.target);
+      if (currentValue !== undefined && !mapping.enabled) {
+        mapping.baseValue = currentValue;
       }
     }
   }

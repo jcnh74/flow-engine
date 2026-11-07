@@ -1052,15 +1052,48 @@ audioF.add(audioAnalyzer.state, 'high', 0, 1, 0.01).name('High').listen().disabl
 const modF = gui.addFolder('Modulation Mapping');
 modF.close();
 const modState: any = { target: 'frPower', source: 'bass', mappingCount: 0 };
-// All 73 modulatable parameters from SMOOTH array
-const MOD_TARGETS = [...SMOOTH].sort();
+
+// Build complete target list: 73 top-level + 44 lights/wells = 117 total
+const MOD_TARGETS: string[] = [...SMOOTH];
+
+// Add all light parameters (4 lights × 5 params = 20)
+const LIGHT_PARAMS = ['az', 'el', 'dist', 'intensity', 'cone'];
+for (let i = 0; i < 4; i++) {
+  for (const param of LIGHT_PARAMS) {
+    MOD_TARGETS.push(`light${i}.${param}`);
+  }
+}
+
+// Add all well parameters (4 wells × 6 params = 24)
+const WELL_PARAMS = ['x', 'y', 'z', 'mass', 'falloff', 'swirl'];
+for (let i = 0; i < 4; i++) {
+  for (const param of WELL_PARAMS) {
+    MOD_TARGETS.push(`well${i}.${param}`);
+  }
+}
+
+MOD_TARGETS.sort();
 const MOD_SOURCES = ['beat', 'bass', 'mid', 'high', 'level', 'envelope'];
 modF.add(modState, 'target', MOD_TARGETS).name('Target parameter');
 modF.add(modState, 'source', MOD_SOURCES).name('Source signal');
 modF.add({ 
-  add() { 
-    const baseValue = P[modState.target] !== undefined ? P[modState.target] : 1.0;
-    modulationSystem.addMapping(modState.target, modState.source, baseValue);
+  add() {
+    // Get base value, handling nested paths for lights/wells
+    let baseValue = 1.0;
+    const target = modState.target;
+    const match = target.match(/^(light|well)(\d+)\.(\w+)$/);
+    if (match) {
+      const [, type, index, prop] = match;
+      const arrayName = type === 'light' ? 'lights' : 'wells';
+      const arr = P[arrayName];
+      if (arr && arr[parseInt(index)]) {
+        baseValue = arr[parseInt(index)][prop] !== undefined ? arr[parseInt(index)][prop] : 1.0;
+      }
+    } else {
+      baseValue = P[target] !== undefined ? P[target] : 1.0;
+    }
+    
+    modulationSystem.addMapping(target, modState.source, baseValue);
     modState.mappingCount = modulationSystem.getAllMappings().length;
     gui.controllersRecursive().forEach(c => c.updateDisplay());
   }
