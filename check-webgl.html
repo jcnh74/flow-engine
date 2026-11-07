@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head><title>WebGL Check</title></head>
+<body>
+<h1>WebGL Context Check</h1>
+<canvas id="c" width="800" height="600"></canvas>
+<pre id="log"></pre>
+<script>
+const log = document.getElementById('log');
+const canvas = document.getElementById('c');
+
+log.textContent = 'Checking WebGL2...\n';
+
+const gl = canvas.getContext('webgl2');
+if (!gl) {
+  log.textContent += 'ERROR: WebGL2 not available\n';
+} else {
+  log.textContent += 'WebGL2: OK\n';
+  log.textContent += 'Renderer: ' + gl.getParameter(gl.RENDERER) + '\n';
+  log.textContent += 'Vendor: ' + gl.getParameter(gl.VENDOR) + '\n';
+  log.textContent += 'Version: ' + gl.getParameter(gl.VERSION) + '\n';
+  
+  // Check for EXT_color_buffer_float
+  const ext = gl.getExtension('EXT_color_buffer_float');
+  if (ext) {
+    log.textContent += 'EXT_color_buffer_float: SUPPORTED\n';
+  } else {
+    log.textContent += 'EXT_color_buffer_float: NOT SUPPORTED\n';
+  }
+  
+  // List all extensions
+  const extensions = gl.getSupportedExtensions();
+  log.textContent += '\nSupported extensions (' + extensions.length + '):\n';
+  extensions.forEach(e => log.textContent += '  ' + e + '\n');
+}
+</script>
+</body>
+</html>
