@@ -1,4 +1,5 @@
 // Basic tests for modulation system
+import { describe, test, expect, beforeEach } from 'bun:test';
 import { ModulationSystem } from '../src/modulation';
 import type { AudioState } from '../src/audio';
 

@@ -1,4 +1,6 @@
 // Test preset save/load roundtrip with new features
+import { describe, test, expect } from 'bun:test';
+
 describe('Preset System', () => {
   test('should serialize fractal parameters', () => {
     const params = {

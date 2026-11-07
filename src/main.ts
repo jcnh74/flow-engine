@@ -1052,7 +1052,8 @@ audioF.add(audioAnalyzer.state, 'high', 0, 1, 0.01).name('High').listen().disabl
 const modF = gui.addFolder('Modulation Mapping');
 modF.close();
 const modState: any = { target: 'frPower', source: 'bass', mappingCount: 0 };
-const MOD_TARGETS = ['frPower', 'frIter', 'frRotSpeed', 'frCamDist', 'frColorMix', 'exposure', 'bloom', 'fold', 'warp', 'orbitSpeed', 'camDist', 'gWind', 'gGustSpeed', 'noiseScale', 'speed', 'curl'];
+// All 73 modulatable parameters from SMOOTH array
+const MOD_TARGETS = [...SMOOTH].sort();
 const MOD_SOURCES = ['beat', 'bass', 'mid', 'high', 'level', 'envelope'];
 modF.add(modState, 'target', MOD_TARGETS).name('Target parameter');
 modF.add(modState, 'source', MOD_SOURCES).name('Source signal');

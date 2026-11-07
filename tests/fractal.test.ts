@@ -1,4 +1,5 @@
 // Basic tests for fractal shader parameters
+import { describe, test, expect } from 'bun:test';
 import { FRACTAL_VS, FRACTAL_FS } from '../src/fractal_shaders';
 
 describe('Fractal Shaders', () => {

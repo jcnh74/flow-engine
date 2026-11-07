@@ -1,4 +1,5 @@
 // Basic tests for audio analyzer
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import AudioAnalyzer from '../src/audio';
 
 describe('AudioAnalyzer', () => {
