@@ -698,8 +698,11 @@ function renderFractal(T: Trails, vp: number[]) {
 
 // ---------- 2D Fractal rendering ----------
 function render2DFractal(T: Trails) {
+  gl.disable(gl.BLEND);
   gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f);
   gl.viewport(0, 0, T.w, T.h);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
   gl.useProgram(fractal2d.p);
   
   // Update Julia orbit
@@ -739,7 +742,7 @@ function render2DFractal(T: Trails) {
   gl.uniform1f(fractal2d.u.paletteOffset, paletteOffset);
   gl.uniform1f(fractal2d.u.rotation, P.fr2Rotation);
   
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
 function tick(now: number) {

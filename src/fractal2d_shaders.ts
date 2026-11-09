@@ -1,11 +1,13 @@
 // 2D Fractal shaders: Mandelbrot, Julia, Burning Ship, Newton, Phoenix
 
 export const vert = `#version 300 es
-in vec2 pos;
+precision highp float;
+const vec2 P[3] = vec2[3](vec2(-1,-1), vec2(3,-1), vec2(-1,3));
 out vec2 uv;
 void main() {
-  uv = pos;
-  gl_Position = vec4(pos, 0, 1);
+  vec2 p = P[gl_VertexID];
+  uv = p;
+  gl_Position = vec4(p, 0, 1);
 }`;
 
 export const frag = `#version 300 es
