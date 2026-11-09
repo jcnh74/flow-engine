@@ -53,11 +53,30 @@ export class AudioAnalyzer {
   private systemStream: MediaStream | null = null;
   
   private freqData: Uint8Array = new Uint8Array(1024);
+  private freqDataFloat: Float32Array = new Float32Array(1024);
   private timeData: Uint8Array = new Uint8Array(1024);
+  
+  // Phase 2: Log frequency bands (24 bands, 30Hz - 16kHz)
+  private readonly NUM_BANDS = 24;
+  private readonly MIN_FREQ = 30;
+  private readonly MAX_FREQ = 16000;
+  private logBands: Float32Array = new Float32Array(24);
+  private prevLogBands: Float32Array = new Float32Array(24);
+  
+  // Spectral flux for onset detection
+  private spectralFlux: number = 0;
+  private fluxHistory: number[] = [];
+  private onsetHistory: number[] = [];
+  private readonly FLUX_HISTORY_SIZE = 10; // ~100ms at 10fps update
   
   private beatHistory: number[] = [];
   private lastBeatTime = 0;
   private beatThreshold = 0.6;
+  
+  // Beat PLL state
+  private ioi: number = 0.5; // inter-onset interval (seconds)
+  private ioiHistory: number[] = []; // histogram for BPM estimation
+  private phaseOffset: number = 0;
   
   // Drum detection tracking
   private lastKickTime = 0;
@@ -360,7 +379,14 @@ export class AudioAnalyzer {
     }
     
     this.analyser.getByteFrequencyData(this.freqData as any);
+    this.analyser.getFloatFrequencyData(this.freqDataFloat as any); // dB scale for better precision
     this.analyser.getByteTimeDomainData(this.timeData as any);
+    
+    // Phase 2: Log frequency bands (24 bands, 30Hz - 16kHz)
+    this.computeLogBands();
+    
+    // Spectral flux onset detection
+    this.computeSpectralFlux();
     
     // Calculate frequency bands
     const bins = this.freqData.length;
@@ -531,6 +557,96 @@ export class AudioAnalyzer {
     // Returns 0-1 based on manual BPM timing
     const beatInterval = 60000 / this.state.manualBpm;
     return (performance.now() % beatInterval) / beatInterval;
+  }
+  
+  // Phase 2: Compute log-spaced frequency bands (24 bands, 30Hz - 16kHz)
+  private computeLogBands() {
+    if (!this.analyser) return;
+    
+    const sampleRate = this.analyser.context.sampleRate;
+    const fftSize = this.analyser.fftSize;
+    const binWidth = sampleRate / fftSize;
+    
+    // Store previous for flux calculation
+    this.prevLogBands.set(this.logBands);
+    
+    // Compute log-spaced band centers
+    const minLog = Math.log(this.MIN_FREQ);
+    const maxLog = Math.log(this.MAX_FREQ);
+    const logStep = (maxLog - minLog) / (this.NUM_BANDS - 1);
+    
+    for (let i = 0; i < this.NUM_BANDS; i++) {
+      const centerFreq = Math.exp(minLog + i * logStep);
+      const freqLo = i === 0 ? this.MIN_FREQ : Math.exp(minLog + (i - 0.5) * logStep);
+      const freqHi = i === this.NUM_BANDS - 1 ? this.MAX_FREQ : Math.exp(minLog + (i + 0.5) * logStep);
+      
+      const binLo = Math.max(0, Math.floor(freqLo / binWidth));
+      const binHi = Math.min(this.freqDataFloat.length - 1, Math.ceil(freqHi / binWidth));
+      
+      // Average dB values in range, convert to linear
+      let dbSum = 0;
+      let count = 0;
+      for (let bin = binLo; bin <= binHi; bin++) {
+        const db = this.freqDataFloat[bin];
+        if (isFinite(db)) {
+          dbSum += db;
+          count++;
+        }
+      }
+      
+      const avgDb = count > 0 ? dbSum / count : -100;
+      // Convert dB to linear amplitude (0 dB = 1.0, -100 dB ~= 0)
+      this.logBands[i] = Math.max(0, Math.pow(10, (avgDb + 100) / 40)); // Normalize to roughly 0-1
+    }
+  }
+  
+  // Phase 2: Spectral flux onset detection (half-wave rectified difference)
+  private computeSpectralFlux() {
+    // Compute sum of positive differences across bands
+    let flux = 0;
+    for (let i = 0; i < this.NUM_BANDS; i++) {
+      const diff = this.logBands[i] - this.prevLogBands[i];
+      if (diff > 0) flux += diff;
+    }
+    
+    this.spectralFlux = flux;
+    
+    // Maintain flux history for moving median
+    this.fluxHistory.push(flux);
+    if (this.fluxHistory.length > this.FLUX_HISTORY_SIZE) {
+      this.fluxHistory.shift();
+    }
+    
+    // Compute moving median threshold (Dixon peak picking)
+    if (this.fluxHistory.length >= this.FLUX_HISTORY_SIZE) {
+      const sorted = [...this.fluxHistory].sort((a, b) => a - b);
+      const medianFlux = sorted[Math.floor(sorted.length / 2)];
+      const threshold = medianFlux * 1.5; // Sensitivity multiplier
+      
+      // Detect onset if current flux exceeds threshold
+      const now = performance.now();
+      if (flux > threshold && now - this.lastBeatTime > 150) { // Refractory period
+        this.onsetHistory.push(now);
+        this.state.onset = 1.0;
+        this.lastBeatTime = now;
+        
+        // Update IOI (inter-onset interval) for BPM estimation
+        if (this.onsetHistory.length >= 2) {
+          const ioi = (now - this.onsetHistory[this.onsetHistory.length - 2]) / 1000;
+          if (ioi > 0.3 && ioi < 2.0) { // Reasonable range (30-200 BPM)
+            this.ioiHistory.push(ioi);
+            if (this.ioiHistory.length > 20) this.ioiHistory.shift();
+            
+            // Update estimated BPM from IOI histogram mode
+            const avgIoi = this.ioiHistory.reduce((a, b) => a + b, 0) / this.ioiHistory.length;
+            this.state.bpm = 60 / avgIoi;
+          }
+        }
+        
+        // Trim onset history
+        if (this.onsetHistory.length > 10) this.onsetHistory.shift();
+      }
+    }
   }
   
   cleanup() {
