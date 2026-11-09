@@ -3,6 +3,7 @@ import * as S from './shaders';
 import * as GS from './grass_shaders';
 import * as FS from './fractal_shaders';
 // 2D Fractal shaders removed
+import * as TRIPPY from './trippy_shaders';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
 import { MainControlPanel } from './ui/MainControlPanel';
@@ -52,6 +53,9 @@ const modulationSystem = new ModulationSystem();
 // ---------- params ----------
 const P: any = {
   mode: 'Wall Studio', seed: 1977,
+  // Trippy mode params
+  trippyMode: 0, trippySpeed: 1.0,
+  
   // 2D Fractal params removed
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
   wObj: false, wObjMat: 'glossy', cycA: '#d8d8d8', cycB: '#8e8e8e', cycOn: true, grain: 0.025,
@@ -141,6 +145,7 @@ const sim = prog(S.QUAD_VS, S.SIM_FS), draw = prog(S.DRAW_VS, S.DRAW_FS), fade =
   bright = prog(S.QUAD_VS, S.BRIGHT_FS), blur = prog(S.QUAD_VS, S.BLUR_FS), comp = prog(S.QUAD_VS, S.COMP_FS);
 const fractal = prog(FS.FRACTAL_VS, FS.FRACTAL_FS);
 // fractal2d shader removed
+const trippy = prog(TRIPPY.trippyVert, TRIPPY.trippyFrag);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -694,6 +699,43 @@ function renderFractal(T: Trails, vp: number[]) {
 
 // 2D Fractal rendering removed
 
+// ---------- Trippy Mode rendering ----------
+function renderTrippy(T: Trails, modeIndex: number) {
+  gl.disable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f);
+  gl.viewport(0, 0, T.w, T.h);
+  gl.useProgram(trippy.p);
+  
+  const u = trippy.u;
+  gl.uniform1f(u.uTime, frame * 0.016);
+  gl.uniform1i(u.uMode, modeIndex);
+  gl.uniform2f(u.uResolution, T.w, T.h);
+  gl.uniform1f(u.uKickStrength, audioAnalyzer.state.beatDetected ? 1.0 : 0.0);
+  gl.uniform1f(u.uBassLevel, audioAnalyzer.state.bass);
+  gl.uniform1f(u.uSpeed, P.trippySpeed);
+  const c1 = hex(stops[0][1]);
+  const c2 = hex(stops[Math.min(1, stops.length-1)][1]);
+  const c3 = hex(stops[Math.min(2, stops.length-1)][1]);
+  gl.uniform3f(u.uColor1, c1[0], c1[1], c1[2]);
+  gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
+  gl.uniform3f(u.uColor3, c3[0], c3[1], c3[2]);
+  gl.uniform1f(u.uHueShift, (frame * 0.001) % 1.0);
+  
+  // Pass palette
+  const pal = new Float32Array(8 * 3);
+  for (let i = 0; i < Math.min(8, stops.length); i++) {
+    const c = hex(stops[i][1]);
+    pal[i * 3] = c[0];
+    pal[i * 3 + 1] = c[1];
+    pal[i * 3 + 2] = c[2];
+  }
+  gl.uniform1i(u.uPaletteSize, Math.min(8, stops.length));
+  const palLoc = u['uPalette[0]'] || u.uPalette;
+  if (palLoc) gl.uniform3fv(palLoc, pal);
+  
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
 function tick(now: number) {
   requestAnimationFrame(tick); if (busy || gl.isContextLost()) return;
   const dt = now - last; last = now; fpsAcc += dt; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
@@ -710,7 +752,19 @@ function tick(now: number) {
   V = L; curAspect = previewAspect;
   const half = worldHalf(previewAspect);
   const T = trails!; const px = Math.min(T.w, T.h) / 1080;
-  if (P.mode === '3D Fractal') {
+  if (P.mode === 'Tunnel') {
+    if (!P.paused) frame++;
+    renderTrippy(T, 0);
+  } else if (P.mode === 'Kaleido') {
+    if (!P.paused) frame++;
+    renderTrippy(T, 1);
+  } else if (P.mode === 'Plasma') {
+    if (!P.paused) frame++;
+    renderTrippy(T, 2);
+  } else if (P.mode === 'Morph') {
+    if (!P.paused) frame++;
+    renderTrippy(T, 3);
+  } else if (P.mode === '3D Fractal') {
     if (!P.paused) frame++;
     renderFractal(T, [0, 1, 0, 1]);
   } else if (P.mode === 'Grass Field') {
@@ -954,7 +1008,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
+gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
 gui.add({ r() { recover('button'); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');

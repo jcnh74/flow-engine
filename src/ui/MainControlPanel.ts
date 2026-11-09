@@ -59,7 +59,7 @@ export class MainControlPanel {
 
     // Scene section (always visible)
     html += this.buildSection('Scene', [
-      this.buildSelect('mode', 'Mode', ['Wall Studio', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
+      this.buildSelect('mode', 'Mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
       this.buildSlider('seed', 'Seed', 0, 999999, 1),
       this.buildButton('randomize', '🎲 Randomize', 'randomize'),
       this.buildButton('reset', '⛑ Reset', 'reset'),
