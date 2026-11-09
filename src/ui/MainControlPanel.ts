@@ -175,7 +175,14 @@ export class MainControlPanel {
       ]);
     } else if (mode === '3D Fractal') {
       html += this.buildSection('Fractal', [
-        this.buildSelect('frType', 'Type', { 'Mandelbulb': 0, 'Mandelbox': 1 }),
+        this.buildSelect('frType', 'Type', { 
+          'Mandelbulb': 0, 
+          'Mandelbox': 1, 
+          'Menger Sponge': 2, 
+          'Sierpinski': 3, 
+          'Kaleidoscopic': 4, 
+          'Quaternion Julia': 5 
+        }),
         this.buildSlider('frPower', 'Power', 2, 16, 0.1, true),
         this.buildSlider('frIter', 'Iterations', 4, 24, 1, true),
         this.buildSlider('frBailout', 'Bailout', 1, 10, 0.1, true),

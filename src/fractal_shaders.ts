@@ -132,6 +132,107 @@ float deMandelbox(vec3 pos) {
   return length(pos) / abs(dr);
 }
 
+// Menger Sponge distance estimator
+float deMenger(vec3 p) {
+  vec3 z = p;
+  float scale = -uScale;
+  
+  for (int i = 0; i < 16; i++) {
+    if (i >= uIterations) break;
+    
+    z = abs(z);
+    if (z.x < z.y) z.xy = z.yx;
+    if (z.x < z.z) z.xz = z.zx;
+    if (z.y < z.z) z.yz = z.zy;
+    
+    z = z * scale - vec3(1.0) * (scale - 1.0);
+    if (z.z < -0.5 * (scale - 1.0)) z.z += (scale - 1.0);
+  }
+  
+  return (length(z) - 2.0) * pow(scale, -float(uIterations));
+}
+
+// Sierpinski Tetrahedron distance estimator
+float deSierpinski(vec3 p) {
+  vec3 z = p;
+  float scale = 2.0;
+  
+  for (int i = 0; i < 16; i++) {
+    if (i >= uIterations) break;
+    
+    if (z.x + z.y < 0.0) z.xy = -z.yx;
+    if (z.x + z.z < 0.0) z.xz = -z.zx;
+    if (z.y + z.z < 0.0) z.yz = -z.zy;
+    
+    z = z * scale - vec3(1.0) * (scale - 1.0);
+  }
+  
+  return length(z) * pow(scale, -float(uIterations));
+}
+
+// Kaleidoscopic IFS distance estimator
+float deKaleidoscopic(vec3 p) {
+  vec3 z = p;
+  float scale = abs(uScale);
+  float mr2 = uMinRadius * uMinRadius;
+  float fr2 = uFixedRadius * uFixedRadius;
+  
+  for (int i = 0; i < 16; i++) {
+    if (i >= uIterations) break;
+    
+    z = abs(z);
+    float t;
+    if (z.x - z.y < 0.0) { t = z.x; z.x = z.y; z.y = t; }
+    if (z.x - z.z < 0.0) { t = z.x; z.x = z.z; z.z = t; }
+    if (z.y - z.z < 0.0) { t = z.y; z.y = z.z; z.z = t; }
+    
+    float r2 = dot(z, z);
+    if (r2 < mr2) {
+      z *= fr2 / mr2;
+    } else if (r2 < fr2) {
+      z *= fr2 / r2;
+    }
+    
+    z = z * scale + p;
+  }
+  
+  return length(z) / scale;
+}
+
+// Quaternion multiplication
+vec4 qMul(vec4 q1, vec4 q2) {
+  return vec4(
+    q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
+    q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,
+    q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
+    q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z
+  );
+}
+
+// Quaternion Julia distance estimator
+float deQuaternionJulia(vec3 p) {
+  vec4 z = vec4(p, 0.0);
+  vec4 c = vec4(0.18, 0.88, 0.24, 0.16);
+  vec4 dz = vec4(1.0, 0.0, 0.0, 0.0);
+  
+  for (int i = 0; i < 16; i++) {
+    if (i >= uIterations) break;
+    
+    float r = length(z);
+    if (r > uBailout) break;
+    
+    dz = vec4(2.0 * (z.x * dz.x - z.y * dz.y - z.z * dz.z - z.w * dz.w),
+              2.0 * (z.x * dz.y + z.y * dz.x + z.z * dz.w - z.w * dz.z),
+              2.0 * (z.x * dz.z - z.y * dz.w + z.z * dz.x + z.w * dz.y),
+              2.0 * (z.x * dz.w + z.y * dz.z - z.z * dz.y + z.w * dz.x));
+    
+    z = qMul(z, z) + c;
+  }
+  
+  float r = length(z);
+  return 0.5 * r * log(r) / length(dz);
+}
+
 // Main distance function
 float map(vec3 p) {
   // Apply rotation animation
@@ -140,11 +241,22 @@ float map(vec3 p) {
   mat2 rot = mat2(c, -s, s, c);
   p.xz *= rot;
   
+  float d;
   if (uFractalType == 0) {
-    return deMandelbulb(p) * uSurfDist;
+    d = deMandelbulb(p);
+  } else if (uFractalType == 1) {
+    d = deMandelbox(p);
+  } else if (uFractalType == 2) {
+    d = deMenger(p);
+  } else if (uFractalType == 3) {
+    d = deSierpinski(p);
+  } else if (uFractalType == 4) {
+    d = deKaleidoscopic(p);
   } else {
-    return deMandelbox(p) * uSurfDist;
+    d = deQuaternionJulia(p);
   }
+  
+  return d * uSurfDist;
 }
 
 // Estimate normal using tetrahedron method
