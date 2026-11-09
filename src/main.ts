@@ -1383,6 +1383,42 @@ log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mod
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
 (window as any).engine = { P, renderStill, reset, recover, renderVideo };
 
+// ---------- 2D Fractal mouse controls ----------
+let fr2Dragging = false;
+let fr2LastX = 0, fr2LastY = 0;
+
+canvas.addEventListener('mousedown', e => {
+  if (P.mode === '2D Fractal') {
+    fr2Dragging = true;
+    fr2LastX = e.clientX;
+    fr2LastY = e.clientY;
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (P.mode === '2D Fractal' && fr2Dragging) {
+    const dx = (e.clientX - fr2LastX) / canvas.width;
+    const dy = (e.clientY - fr2LastY) / canvas.height;
+    const aspect = canvas.width / canvas.height;
+    P.fr2CenterX -= dx * 4 / P.fr2Zoom * aspect;
+    P.fr2CenterY += dy * 4 / P.fr2Zoom;
+    fr2LastX = e.clientX;
+    fr2LastY = e.clientY;
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  fr2Dragging = false;
+});
+
+canvas.addEventListener('wheel', e => {
+  if (P.mode === '2D Fractal') {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+    P.fr2Zoom = Math.max(1, Math.min(1e6, P.fr2Zoom * zoomFactor));
+  }
+}, { passive: false });
+
 // ---------- scripted slider sweep test (?test=sweep) ----------
 const waitFrames = (n: number) => new Promise<void>(res => { const f0 = frame; const t0 = performance.now(); const iv = setInterval(() => { if (frame - f0 >= n || performance.now() - t0 > 8000) { clearInterval(iv); res(); } }, 16); });
 const waitMs = (ms: number) => new Promise(r => setTimeout(r, ms));
