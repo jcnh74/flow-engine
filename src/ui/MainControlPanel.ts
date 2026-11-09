@@ -22,12 +22,14 @@ export class MainControlPanel {
   private sections: Map<string, HTMLElement> = new Map();
   private beatPulse: HTMLElement | null = null;
   private audioMeters: Map<string, { bar: HTMLElement; value: HTMLElement }> = new Map();
+  private globalListenersAttached = false;
 
   constructor(config: ControlConfig) {
     this.config = config;
     this.container = this.build();
     document.body.appendChild(this.container);
     this.setupEventListeners();
+    this.setupGlobalListeners();
   }
 
   private build(): HTMLElement {
@@ -336,28 +338,6 @@ export class MainControlPanel {
   }
 
   private setupEventListeners(): void {
-    // Panel controls
-    this.container.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      const action = target.dataset.action;
-      
-      if (action === 'collapse') {
-        this.container.classList.toggle('collapsed');
-      } else if (action === 'hide') {
-        this.container.classList.add('hidden');
-      } else if (action === 'randomize' && this.config.onRandomize) {
-        this.config.onRandomize();
-      } else if (action === 'reset' && this.config.onReset) {
-        this.config.onReset();
-      } else if (action === 'save-preset' && this.config.onSavePreset) {
-        this.config.onSavePreset();
-      } else if (action === 'export-json' && this.config.onExportJSON) {
-        this.config.onExportJSON();
-      } else if (action === 'import-json' && this.config.onImportJSON) {
-        this.config.onImportJSON();
-      }
-    });
-
     // Section collapse
     this.container.querySelectorAll('.section-header').forEach(header => {
       header.addEventListener('click', () => {
@@ -365,9 +345,9 @@ export class MainControlPanel {
       });
     });
 
-    // Parameter controls
-    this.container.querySelectorAll('[data-param]').forEach(el => {
-      const input = el as HTMLInputElement;
+    // Parameter controls - only actual inputs/selects, not wrapper divs
+    this.container.querySelectorAll('input[data-param], select[data-param]').forEach(el => {
+      const input = el as HTMLInputElement | HTMLSelectElement;
       const param = input.dataset.param!;
       
       input.addEventListener('input', () => {
@@ -380,9 +360,11 @@ export class MainControlPanel {
             value = Math.round(value);
           }
         } else if (input.type === 'checkbox') {
-          value = input.checked;
+          value = (input as HTMLInputElement).checked;
         } else if (input.tagName === 'SELECT') {
-          value = isNaN(parseFloat(value)) ? value : parseFloat(value);
+          // Only coerce fully numeric strings
+          const num = Number(value);
+          value = (value !== '' && !isNaN(num)) ? num : value;
         }
         
         this.config.params[param] = value;
@@ -404,7 +386,42 @@ export class MainControlPanel {
       });
     });
 
-    // Keyboard shortcuts
+    // Store refs
+    this.beatPulse = this.container.querySelector('#beat-pulse');
+    this.container.querySelectorAll('[data-meter]').forEach(el => {
+      const type = (el as HTMLElement).dataset.meter!;
+      const valueEl = this.container.querySelector(`[data-meter-value="${type}"]`) as HTMLElement;
+      this.audioMeters.set(type, { bar: el as HTMLElement, value: valueEl });
+    });
+  }
+
+  private setupGlobalListeners(): void {
+    if (this.globalListenersAttached) return;
+    this.globalListenersAttached = true;
+
+    // Panel controls (delegated to container, bound once)
+    this.container.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const action = target.dataset.action;
+      
+      if (action === 'collapse') {
+        this.container.classList.toggle('collapsed');
+      } else if (action === 'hide') {
+        this.container.classList.add('hidden');
+      } else if (action === 'randomize' && this.config.onRandomize) {
+        this.config.onRandomize();
+      } else if (action === 'reset' && this.config.onReset) {
+        this.config.onReset();
+      } else if (action === 'save-preset' && this.config.onSavePreset) {
+        this.config.onSavePreset();
+      } else if (action === 'export-json' && this.config.onExportJSON) {
+        this.config.onExportJSON();
+      } else if (action === 'import-json' && this.config.onImportJSON) {
+        this.config.onImportJSON();
+      }
+    });
+
+    // Keyboard shortcuts (bound once)
     window.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
@@ -415,14 +432,6 @@ export class MainControlPanel {
         this.container.classList.toggle('collapsed');
         e.preventDefault();
       }
-    });
-
-    // Store refs
-    this.beatPulse = this.container.querySelector('#beat-pulse');
-    this.container.querySelectorAll('[data-meter]').forEach(el => {
-      const type = (el as HTMLElement).dataset.meter!;
-      const valueEl = this.container.querySelector(`[data-meter-value="${type}"]`) as HTMLElement;
-      this.audioMeters.set(type, { bar: el as HTMLElement, value: valueEl });
     });
   }
 
@@ -504,6 +513,29 @@ export class MainControlPanel {
       };
       sourceEl.textContent = labels[audio.source] || audio.source;
     }
+
+    // Sync displayed values with external P changes (randomize, wheel zoom, etc.)
+    this.syncDisplayedValues();
+  }
+
+  private syncDisplayedValues(): void {
+    // Update all visible input/select values to match params
+    this.container.querySelectorAll('input[data-param], select[data-param]').forEach(el => {
+      const input = el as HTMLInputElement | HTMLSelectElement;
+      const param = input.dataset.param!;
+      const value = this.config.params[param];
+      
+      if (value === undefined) return;
+      
+      if (input.type === 'checkbox') {
+        (input as HTMLInputElement).checked = !!value;
+      } else if (input.type === 'range' || input.tagName === 'SELECT') {
+        input.value = String(value);
+      }
+      
+      // Update display value
+      this.updateValueDisplay(param, value);
+    });
   }
 
   private updateMeter(type: string, value: number): void {
@@ -519,7 +551,16 @@ export class MainControlPanel {
     const body = this.container.querySelector('.panel-body');
     if (body) {
       body.innerHTML = this.buildSections() + this.buildKeyboardHints();
+      // Re-setup event listeners for new DOM elements
       this.setupEventListeners();
+      // Re-store refs after rebuild
+      this.beatPulse = this.container.querySelector('#beat-pulse');
+      this.audioMeters.clear();
+      this.container.querySelectorAll('[data-meter]').forEach(el => {
+        const type = (el as HTMLElement).dataset.meter!;
+        const valueEl = this.container.querySelector(`[data-meter-value="${type}"]`) as HTMLElement;
+        this.audioMeters.set(type, { bar: el as HTMLElement, value: valueEl });
+      });
     }
   }
 
