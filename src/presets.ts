@@ -36,20 +36,26 @@ export const PRESET_GALLERY: Preset[] = [
     }
   },
   {
-    name: 'Deep House Wall',
+    name: 'Neon Chrome Wall',
     mode: 'Wall Studio',
-    description: 'Elegant spheres for deep house',
+    description: 'Metallic chrome spheres with neon glow',
     params: {
-      lsCount: 65536,
-      fold: 0.55,
-      warp: 0.7,
-      iridescence: 0.4,
-      stops: [[0, '#1a0033'], [0.5, '#6600cc'], [1, '#cc00ff']]
+      wMat: 'glossy',
+      wColor: '#d0d0d8',
+      gloss: 1.0,
+      spec: 1.5,
+      iridescence: 0.9,
+      envIntensity: 2.0,
+      bloom: 0.8,
+      exposure: 1.4,
+      wcDist: 4.0,
+      wcAuto: true,
+      stops: [[0, '#00ffff'], [0.5, '#ff00ff'], [1, '#ffff00']]
     },
     beatLinks: [
-      { source: 'bass', target: 'warp', depth: 0.3 },
-      { source: 'beat', target: 'bloom', depth: 0.8 },
-      { source: 'kick', target: 'lsFlowU', depth: 0.2 }
+      { source: 'kick', target: 'spec', depth: 0.5 },
+      { source: 'beat', target: 'bloom', depth: 1.0 },
+      { source: 'bass', target: 'iridescence', depth: 0.3 }
     ]
   },
   {
@@ -71,16 +77,29 @@ export const PRESET_GALLERY: Preset[] = [
     }
   },
   {
-    name: 'Cyberpunk Wall',
+    name: 'Deep Ocean Wall',
     mode: 'Wall Studio',
-    description: 'High-tech urban vibes',
+    description: 'Underwater depths with flowing fabric',
     params: {
-      lsCount: 65536,
-      fold: 0.45,
-      warp: 0.6,
-      iridescence: 0.5,
-      stops: [[0, '#ff0080'], [0.5, '#00ffff'], [1, '#8000ff']]
-    }
+      wMat: 'silk',
+      wColor: '#0a2040',
+      wFurLen: 0.12,
+      wWind: 0.4,
+      wComb: 0.3,
+      gloss: 0.6,
+      spec: 0.4,
+      iridescence: 0.2,
+      envIntensity: 0.6,
+      bloom: 0.2,
+      exposure: 0.7,
+      wcDist: 6.0,
+      wcPitch: -15,
+      stops: [[0, '#001122'], [0.4, '#003366'], [0.7, '#0066aa'], [1, '#0099cc']]
+    },
+    beatLinks: [
+      { source: 'bass', target: 'wWind', depth: 0.3 },
+      { source: 'beat', target: 'exposure', depth: 0.2 }
+    ]
   },
   {
     name: 'Fractal Dreams',
@@ -131,16 +150,28 @@ export const PRESET_GALLERY: Preset[] = [
     }
   },
   {
-    name: 'Minimal Wall',
+    name: 'Monochrome Strobe',
     mode: 'Wall Studio',
-    description: 'Clean minimal aesthetic',
+    description: 'High-contrast black and white strobe',
     params: {
-      lsCount: 32768,
-      fold: 0.3,
-      warp: 0.4,
-      iridescence: 0.2,
-      stops: [[0, '#ffffff'], [1, '#cccccc']]
-    }
+      wMat: 'plastic',
+      wColor: '#ffffff',
+      gloss: 0.9,
+      spec: 1.2,
+      iridescence: 0.0,
+      saturation: 0.0,
+      brightness: 1.2,
+      envIntensity: 1.5,
+      bloom: 0.1,
+      exposure: 1.8,
+      wcDist: 3.5,
+      wcAuto: true,
+      stops: [[0, '#000000'], [0.5, '#ffffff'], [1, '#000000']]
+    },
+    beatLinks: [
+      { source: 'kick', target: 'exposure', depth: 1.5 },
+      { source: 'beat', target: 'brightness', depth: 0.8 }
+    ]
   },
   {
     name: 'Hyperdrive',
@@ -214,16 +245,57 @@ export const PRESET_GALLERY: Preset[] = [
     }
   },
   {
-    name: 'Crystal Wall',
+    name: 'Sunset Gold Wall',
     mode: 'Wall Studio',
-    description: 'Crystalline structures',
+    description: 'Warm golden sunset glow',
     params: {
-      lsCount: 65536,
-      fold: 0.6,
-      warp: 0.5,
-      iridescence: 0.6,
-      stops: [[0, '#00ccff'], [0.5, '#ffffff'], [1, '#ff00cc']]
-    }
+      wMat: 'velvet',
+      wColor: '#d4a574',
+      wFurLen: 0.08,
+      wFurDens: 800,
+      gloss: 0.3,
+      spec: 0.2,
+      iridescence: 0.1,
+      rim: 1.2,
+      envIntensity: 1.2,
+      bloom: 0.5,
+      exposure: 1.1,
+      wcDist: 5.0,
+      wcPitch: 10,
+      stops: [[0, '#ff6600'], [0.3, '#ff9933'], [0.6, '#ffcc66'], [1, '#ffffaa']]
+    },
+    beatLinks: [
+      { source: 'bass', target: 'rim', depth: 0.4 },
+      { source: 'beat', target: 'bloom', depth: 0.6 }
+    ]
+  },
+  {
+    name: 'Acid Rainbow Wall',
+    mode: 'Wall Studio',
+    description: 'Wild psychedelic rainbow colors',
+    params: {
+      wMat: 'glossy',
+      wColor: '#ff00ff',
+      wPatch: true,
+      gloss: 1.2,
+      spec: 0.9,
+      iridescence: 1.5,
+      saturation: 2.0,
+      brightness: 1.3,
+      envIntensity: 1.0,
+      bloom: 0.7,
+      exposure: 1.2,
+      wcDist: 4.5,
+      wcAuto: true,
+      hueShift: 0.5,
+      cHueCycle: 0.3,
+      stops: [[0, '#ff0000'], [0.2, '#ff7700'], [0.4, '#ffff00'], [0.6, '#00ff00'], [0.8, '#0077ff'], [1, '#ff00ff']]
+    },
+    beatLinks: [
+      { source: 'bass', target: 'hueShift', depth: 0.5 },
+      { source: 'beat', target: 'saturation', depth: 0.8 },
+      { source: 'kick', target: 'iridescence', depth: 0.4 }
+    ]
   },
   {
     name: 'Void Tunnel',

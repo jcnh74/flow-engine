@@ -32,6 +32,22 @@ const helper = () => ({
       if (!req.url.startsWith('/api/')) return next();
       const u = new URL(req.url, 'http://x'); const q = Object.fromEntries(u.searchParams);
       try {
+        if (u.pathname === '/api/lan-ip') {
+          const os = await import('node:os');
+          const nets = os.networkInterfaces();
+          let ip = '127.0.0.1';
+          for (const name of Object.keys(nets)) {
+            for (const net of nets[name]) {
+              if (net.family === 'IPv4' && !net.internal && net.address.match(/^192\.168\.|^10\.|^172\.(1[6-9]|2[0-9]|3[01])\./)) {
+                ip = net.address;
+                break;
+              }
+            }
+            if (ip !== '127.0.0.1') break;
+          }
+          res.setHeader('content-type', 'application/json');
+          return res.end(JSON.stringify({ ip, port: server.config.server.port }));
+        }
         if (u.pathname === '/api/log') { const b = await body(req); fs.appendFileSync(path.join(OUT, 'app.log'), new Date().toISOString() + ' ' + b.toString() + '\n'); return res.end('ok'); }
         if (u.pathname === '/api/vstart') {
           const name = q.name.replace(/[^\w.-]/g, '_'); const file = path.join(OUT, name + '.mp4');
@@ -66,4 +82,4 @@ const helper = () => ({
     });
   }
 });
-export default defineConfig({ plugins: [helper()], server: { host: '127.0.0.1', port: 5190 } });
+export default defineConfig({ plugins: [helper()], server: { host: true, port: 5190 } });

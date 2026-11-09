@@ -357,12 +357,20 @@ async function run() {
       console.log(`  Skipping slider sweep`);
     } else {
       console.log(`  Testing sliders...`);
-      const sliders = await page.$$('input[type="range"][data-param]');
+      const sliderSelectors = await page.$$eval('input[type="range"][data-param]', 
+        els => els.map(el => ({ 
+          param: el.getAttribute('data-param'),
+          min: el.getAttribute('min'),
+          max: el.getAttribute('max')
+        }))
+      );
     
-    for (const slider of sliders) {
-      const param = await slider.getAttribute('data-param');
-      const min = await slider.getAttribute('min');
-      const max = await slider.getAttribute('max');
+    for (const sliderInfo of sliderSelectors) {
+      const { param, min, max } = sliderInfo;
+      
+      // Re-query slider element (robust to panel rebuilds)
+      const slider = await page.$(`input[type="range"][data-param="${param}"]`);
+      if (!slider) continue;
       
       // Check if slider is visible
       const isVisible = await slider.isVisible();
@@ -376,22 +384,34 @@ async function run() {
       const canvas = await page.$('#c');
       const minShot = await canvas.screenshot();
       
+      // Re-query slider after potential panel rebuild
+      const sliderMax = await page.$(`input[type="range"][data-param="${param}"]`);
+      if (!sliderMax) {
+        console.warn(`    WARN: slider ${param} disappeared after change`);
+        continue;
+      }
+      
       // Set to max
-      await slider.fill(max);
+      await sliderMax.fill(max);
       await page.waitForTimeout(300);
       const maxShot = await canvas.screenshot();
       
       const diff = await imageDiff(minShot, maxShot);
       
+      // Per-slider thresholds: hue/color sliders have subtle effects
+      const hueParams = ['hueShift', 'cHueCycle', 'paletteOffset', 'frColorMix'];
+      const threshold = hueParams.includes(param) ? 0.2 : 0.5;
+      
       const sliderResult = {
         param,
         min: parseFloat(min),
         max: parseFloat(max),
-        diff
+        diff,
+        threshold
       };
       
-      if (diff < 0.5) {
-        const failure = `${mode} slider ${param}: no visible effect (diff=${diff.toFixed(2)})`;
+      if (diff < threshold) {
+        const failure = `${mode} slider ${param}: no visible effect (diff=${diff.toFixed(2)}, threshold=${threshold})`;
         results.failures.push(failure);
         console.error(`    FAIL: ${failure}`);
       }

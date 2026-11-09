@@ -26,45 +26,32 @@ export class RemoteSync {
     this.onAction = onAction;
     this.onPreset = onPreset;
     
-    // Generate remote URL (use actual hostname, not localhost)
-    const host = location.hostname === 'localhost' || location.hostname === '127.0.0.1' 
-      ? this.getLocalNetworkIP() 
-      : location.hostname;
-    const port = location.port ? `:${location.port}` : '';
-    this.state.remoteUrl = `http://${host}${port}/remote.html`;
-    
-    // Generate QR code locally (no external API call)
-    this.generateQRCode();
+    // Fetch LAN IP from server endpoint
+    this.fetchLANIP();
   }
 
-  private getLocalNetworkIP(): string {
-    // Try to get local network IP via RTCPeerConnection
+  private async fetchLANIP() {
     try {
-      const pc = new RTCPeerConnection({ iceServers: [] });
-      pc.createDataChannel('');
-      pc.createOffer().then(offer => pc.setLocalDescription(offer));
+      const response = await fetch('/api/lan-ip');
+      const { ip, port } = await response.json();
+      this.state.remoteUrl = `http://${ip}:${port}/remote.html`;
+      await this.generateQRCode();
       
-      pc.onicecandidate = (ice) => {
-        if (!ice || !ice.candidate || !ice.candidate.candidate) return;
-        const candidate = ice.candidate.candidate;
-        const ipRegex = /([0-9]{1,3}\.){3}[0-9]{1,3}/;
-        const match = ipRegex.exec(candidate);
-        if (match) {
-          const ip = match[0];
-          if (!ip.startsWith('127.') && !ip.startsWith('0.')) {
-            // Update URL and regenerate QR code with actual IP
-            const port = location.port ? `:${location.port}` : '';
-            this.state.remoteUrl = `http://${ip}${port}/remote.html`;
-            this.generateQRCode();
-          }
-        }
-        pc.onicecandidate = null;
-        pc.close();
-      };
-    } catch (e) {
-      console.warn('Could not determine local IP:', e);
+      // Notify UI to re-render (panel will check this state)
+      if ((window as any).panel) {
+        (window as any).panel.update();
+      }
+    } catch (err) {
+      console.error('Failed to fetch LAN IP:', err);
+      // Fallback to location.hostname
+      const host = location.hostname;
+      const port = location.port ? `:${location.port}` : '';
+      this.state.remoteUrl = `http://${host}${port}/remote.html`;
+      await this.generateQRCode();
+      if ((window as any).panel) {
+        (window as any).panel.update();
+      }
     }
-    return location.hostname;
   }
 
   private async generateQRCode() {
