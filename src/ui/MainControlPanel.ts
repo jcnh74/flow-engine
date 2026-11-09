@@ -192,25 +192,6 @@ export class MainControlPanel {
         this.buildSlider('pWidth', 'Width', 0.5, 4, 0.01, true),
         this.buildSlider('pGain', 'Glow', 0.005, 0.3, 0.001, true),
       ]);
-    } else if (mode === 'Grass Field') {
-      html += this.buildSection('Grass', [
-        this.buildCheckbox('gOn', 'Grass On'),
-        this.buildSlider('gH', 'Height', 0.05, 1.2, 0.01, true),
-        this.buildSlider('gW', 'Width', 0.003, 0.04, 0.001, true),
-        this.buildSlider('gCurv', 'Curvature', 0, 1.5, 0.01, true),
-        this.buildSlider('gDensity', 'Density', 128, 768, 16, true),
-      ]);
-      html += this.buildSection('Wind', [
-        this.buildSlider('gWind', 'Strength', 0, 2, 0.01, true),
-        this.buildSlider('gWindAz', 'Direction', -180, 180, 1, true),
-        this.buildSlider('gGustK', 'Gust Size', 0.05, 2, 0.01, true),
-        this.buildSlider('gGustSpeed', 'Gust Speed', 0, 6, 0.01, true),
-      ]);
-      html += this.buildSection('Camera', [
-        this.buildSlider('gcDist', 'Distance', 0.3, 7, 0.01, true),
-        this.buildSlider('gcHeight', 'Height', 0, 3, 0.01, true),
-        this.buildSlider('gcFov', 'FOV', 15, 90, 0.5, true),
-      ]);
     } else if (mode === 'Liquid Spheres' || mode === 'Wall Studio') {
       html += this.buildSection('Fabric', [
         this.buildSlider('fold', 'Fold', 0, 1.5, 0.01, true),
@@ -314,8 +295,12 @@ export class MainControlPanel {
       this.buildSelect('tonemapMode', 'Tonemap', ['AgX', 'ACES', 'Khronos Neutral']),
       this.buildSlider('bloomStrength', 'Bloom Strength', 0, 0.5, 0.01, true),
       this.buildSlider('bloomThreshold2', 'Bloom Threshold', 0.2, 2, 0.01, true),
+      this.buildSlider('kickBloomAmount', 'Kick→Bloom', 0, 1, 0.05, true),
       this.buildSlider('caStrength', 'Chromatic Aberr.', 0, 0.02, 0.001, true),
       this.buildSlider('distortion', 'Barrel Distortion', -0.3, 0.3, 0.01, true),
+      this.buildColorPicker('lift', 'Lift (Shadows)'),
+      this.buildColorPicker('gamma', 'Gamma (Midtones)'),
+      this.buildColorPicker('gainPost', 'Gain (Highlights)'),
       this.buildSlider('saturationPost', 'Saturation', 0, 2, 0.01, true),
       this.buildSlider('vibrance', 'Vibrance', -0.5, 0.5, 0.01, true),
       this.buildSlider('vignetteStrength', 'Vignette', 0, 1, 0.01, true),
@@ -573,11 +558,6 @@ export class MainControlPanel {
       controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
       controls.push(this.buildSlider('colorBySpeed', 'Color by Speed', 0, 1, 0.01, true));
       controls.push(this.buildColorPicker('background', 'Background'));
-    } else if (mode === 'Grass Field') {
-      controls.push(this.buildColorPicker('gBase', 'Base Color'));
-      controls.push(this.buildColorPicker('gTip', 'Tip Color'));
-      controls.push(this.buildColorPicker('gDryC', 'Dry Color'));
-      controls.push(this.buildSlider('gDry', 'Dry Amount', 0, 1, 0.01, true));
     } else if (mode === 'Tunnel' || mode === 'Kaleido' || mode === 'Plasma' || mode === 'Morph') {
       // Trippy modes: just hue shift (palettes are baked into modes)
       controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
@@ -616,7 +596,6 @@ export class MainControlPanel {
     
     // Atmosphere
     controls.push(this.buildSlider('fog', 'Fog', 0, 1, 0.01, true));
-    controls.push(this.buildSelect('toneMap', 'Tone Map', ['ACES', 'Filmic (AgX-style)', 'Exponential']));
     
     return this.buildSection('Lighting & Studio', controls);
   }

@@ -107,24 +107,20 @@ describe('Preset Backward Compatibility', () => {
     expect(fractalPreset.P.frLightEl).toBe(30);
   });
 
-  it('should handle Grass Field preset', () => {
-    const grassPreset = {
+  it('should handle Wall Studio preset', () => {
+    const wallPreset = {
       P: {
-        mode: 'Grass Field',
-        gH: 1.0,
-        gW: 0.05,
-        gDensity: 1.0,
-        gWind: 0.5,
-        gSunAz: 120,
-        gSunEl: 45,
+        mode: 'Wall Studio',
+        fold: 0.5,
+        warp: 0.6,
+        scale3d: 0.8,
         exposure: 1.0
       },
       stops: [[0, [50, 150, 50]], [1, [200, 255, 100]]]
     };
 
-    expect(grassPreset.P.mode).toBe('Grass Field');
-    expect(grassPreset.P.gH).toBeDefined();
-    expect(grassPreset.P.gWind).toBeDefined();
-    expect(grassPreset.P.gSunAz).toBeDefined();
+    expect(wallPreset.P.mode).toBe('Wall Studio');
+    expect(wallPreset.P.fold).toBeDefined();
+    expect(wallPreset.P.warp).toBeDefined();
   });
 });

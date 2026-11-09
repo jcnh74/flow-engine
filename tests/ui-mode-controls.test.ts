@@ -259,7 +259,7 @@ test('MainControlPanel > Particle Fabric mode shows correct controls', () => {
   panel.destroy();
 });
 
-test('MainControlPanel > Grass Field mode shows correct controls', () => {
+test.skip('MainControlPanel > Grass Field mode removed', () => {
   const params = createMockParams('Grass Field');
   const audioAnalyzer = new AudioAnalyzer();
   const modulationSystem = new ModulationSystem();
@@ -357,7 +357,7 @@ test('MainControlPanel > Liquid Spheres mode shows correct controls', () => {
 });
 
 test('MainControlPanel > All modes have universal controls', () => {
-  const modes = ['2D flow', '3D fabric', 'Particle Fabric', 'Grass Field', 'Wall Studio', 'Liquid Spheres', '3D Fractal'];
+  const modes = ['2D flow', '3D fabric', 'Particle Fabric', 'Wall Studio', 'Liquid Spheres', '3D Fractal'];
   
   for (const mode of modes) {
     const params = createMockParams(mode);

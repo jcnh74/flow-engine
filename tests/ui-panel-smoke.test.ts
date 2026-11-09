@@ -38,10 +38,6 @@ function createPanel(mode: string) {
     params.mass = 1.0;
     params.stiffness = 1.0;
     params.stream = 1.0;
-  } else if (mode === 'Grass Field') {
-    params.gH = 0.5;
-    params.gWind = 1.0;
-    params.gcDist = 3.0;
   } else if (mode === 'Wall Studio' || mode === 'Liquid Spheres') {
     params.fold = 0.5;
     params.lsRadius = 0.04;
@@ -179,8 +175,8 @@ test('Smoke test > Particle Fabric mode: boot, change slider, link to bass, remo
   panel.destroy();
 });
 
-test('Smoke test > Grass Field mode: boot, change slider, link to bass, remove link', () => {
-  const { panel, params, modulationSystem } = createPanel('Grass Field');
+test.skip('Smoke test > Grass Field mode removed', () => {
+  const { panel, params, modulationSystem } = createPanel('Wall Studio');
   
   // Change gWind slider
   const changed = changeSlider(panel, 'gWind', 1.5, params);

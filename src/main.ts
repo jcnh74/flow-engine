@@ -63,6 +63,11 @@ function cmykSafe(c: number[]) {
 const audioAnalyzer = new AudioAnalyzer();
 const modulationSystem = new ModulationSystem();
 
+// Expose audio analyzer for testing in dev builds
+if (import.meta.env.DEV) {
+  (window as any).__audioAnalyzer = audioAnalyzer;
+}
+
 // ---------- params ----------
 const P: any = {
   mode: 'Wall Studio', seed: 1977, // Start on Wall Studio
@@ -107,7 +112,7 @@ const P: any = {
   orbitSpeed: 0.05, camDist: 4.2, fov: 40, lightAngle: 35, fog: 0.5,
   lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, tonemapMode: 'AgX', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
   // Post FX (Phase 1)
-  bloomStrength: 0.15, bloomThreshold2: 0.8, caStrength: 0.0, distortion: 0.0,
+  bloomStrength: 0.15, bloomThreshold2: 0.8, kickBloomAmount: 0.3, caStrength: 0.0, distortion: 0.0,
   lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.0, vibrance: 0.0,
   vignetteStrength: 0.0, vignetteRadius: 1.2, grainStrength: 0.0,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
@@ -121,7 +126,7 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos',
   'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
-  'bloomStrength','bloomThreshold2','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength'];
+  'bloomStrength','bloomThreshold2','kickBloomAmount','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
 function easeParams() { for (const k of SMOOTH) { const d = P[k] - L[k]; L[k] = Math.abs(d) < 1e-6 ? P[k] : L[k] + d * Math.min(1, P.smoothing <= 0 ? 1 : P.smoothing * 2); } }
@@ -349,9 +354,8 @@ let hdrComp: FB | null = null;
 
 function composite(T: Trails, off: number[], vp: number[]) {
   // Composite to HDR buffer (no tonemap yet)
-  if (!hdrComp || hdrComp.w !== canvas.width || hdrComp.h !== canvas.height) {
-    hdrComp = hdrFB(canvas.width, canvas.height);
-  }
+  // hdrComp is now allocated in the render loop before this is called
+  if (!hdrComp) throw new Error('HDR composite buffer not allocated');
   gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
   gl.viewport(0, 0, hdrComp.w, hdrComp.h);
   
@@ -366,12 +370,13 @@ function composite(T: Trails, off: number[], vp: number[]) {
 
 function tonemapPass(vp: number[]) {
   // Final tonemap pass: exposure -> AgX/ACES/Neutral -> sRGB -> dither
+  if (!hdrComp) throw new Error('HDR composite buffer not allocated');
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(vp[0], vp[1], vp[2], vp[3]);
   gl.useProgram(tonemap.p);
   
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, hdrComp!.t);
+  gl.bindTexture(gl.TEXTURE_2D, hdrComp.t);
   gl.uniform1i(tonemap.u.uSrc, 0);
   gl.uniform1f(tonemap.u.uExposure, V.exposure);
   
@@ -949,8 +954,6 @@ function tick(now: number) {
   } else if (P.mode === '3D Fractal') {
     if (!P.paused) frame++;
     renderFractal(T, [0, 1, 0, 1]);
-  } else if (P.mode === 'Grass Field') {
-    if (!P.paused) frame++; renderGrass(T, previewAspect, frame * DT, [0, 1, 0, 1], px);
   } else if (P.mode === '3D fabric') {
     if (!P.paused) { t3 += DT * V.evolution3d; tOrbit += DT * V.orbitSpeed; frame++; }
     settleFrame = frame; render3D(T, previewAspect, t3, tOrbit, [0, 1, 0, 1], px);
@@ -968,9 +971,16 @@ function tick(now: number) {
   // Phase 1 Post Stack: bloom → composite → CA/distort → color grade → tonemap
   bloomPass(T); // Now works for all modes including 3D Fractal
   
+  // Allocate HDR composite buffer (or resize if needed)
+  if (!hdrComp || hdrComp.w !== canvas.width || hdrComp.h !== canvas.height) {
+    if (hdrComp) del(hdrComp);
+    hdrComp = hdrFB(canvas.width, canvas.height);
+  }
+  if (!hdrComp) throw new Error('Failed to allocate HDR composite buffer');
+  
   // Composite bloom into scene
-  gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp!.f);
-  gl.viewport(0, 0, hdrComp!.w, hdrComp!.h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+  gl.viewport(0, 0, hdrComp.w, hdrComp.h);
   gl.useProgram(bloomComposite.p);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(bloomComposite.u.uSrc, 0);
   for (let i = 0; i < 6; i++) {
@@ -978,7 +988,9 @@ function tick(now: number) {
     gl.bindTexture(gl.TEXTURE_2D, bloomPyramid!.up[i].t);
     gl.uniform1i(bloomComposite.u['uBloom' + i], 1 + i);
   }
-  gl.uniform1f(bloomComposite.u.uBloomStrength, P.bloomStrength);
+  // Kick-driven bloom strength
+  const bloomStr = P.bloomStrength * (1.0 + audioAnalyzer.state.kickEnv * P.kickBloomAmount);
+  gl.uniform1f(bloomComposite.u.uBloomStrength, bloomStr);
   quad();
   
   // Chromatic aberration + barrel distortion (kick-driven CA)
@@ -988,7 +1000,7 @@ function tick(now: number) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, tempCA.f);
     gl.viewport(0, 0, tempCA.w, tempCA.h);
     gl.useProgram(caDistort.p);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp!.t); gl.uniform1i(caDistort.u.uSrc, 0);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp.t); gl.uniform1i(caDistort.u.uSrc, 0);
     gl.uniform1f(caDistort.u.uCAStrength, caStrength);
     gl.uniform1f(caDistort.u.uDistortion, P.distortion);
     quad();
@@ -1003,7 +1015,7 @@ function tick(now: number) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, tempGrade.f);
   gl.viewport(0, 0, tempGrade.w, tempGrade.h);
   gl.useProgram(colorGrade.p);
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp!.t); gl.uniform1i(colorGrade.u.uSrc, 0);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp.t); gl.uniform1i(colorGrade.u.uSrc, 0);
   const lift = hex(P.lift).map(v => (v - 0.5) * 0.2);
   const gamma = hex(P.gamma).map(v => 0.5 + v * 1.5);
   const gain = hex(P.gainPost);
@@ -1074,40 +1086,6 @@ function gMSFB(w: number, h: number) { if (gMS && gMS.w === w && gMS.h === h) re
   gl.bindRenderbuffer(gl.RENDERBUFFER, d); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, s, gl.DEPTH_COMPONENT24, w, h);
   const f = gl.createFramebuffer()!; gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, c); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, d);
   gMS = { w, h, c, d, f }; return gMS; }
-function renderGrass(T: Trails, aspect: number, tt: number, subr: number[], pxScale: number, shRes = P.gShRes) {
-  const C = gCam(aspect, tt, subr); const L0 = gLightState; const az = P.gSunAz * Math.PI / 180, el = P.gSunEl * Math.PI / 180;
-  const sd = [Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)];
-  const R = P.gR, ext = R + 1.5; const LV = lookAt([sd[0] * 30, sd[1] * 30, sd[2] * 30], [0, 0, 0], Math.abs(sd[1]) > 0.98 ? [0, 0, 1] : [0, 1, 0]); const LP = ortho(-ext, ext, -ext, ext, 1, 70); const LVP = mul(LP, LV);
-  const GN = Math.max(64, Math.min(768, Math.round(P.gDensity))), seg = Math.max(2, Math.min(8, Math.round(P.gSeg)));
-  const wa = P.gWindAz * Math.PI / 180;
-  const common = (u: any) => { gl.uniform1f(u.uT, tt); gl.uniform1f(u.uTerrA, P.gTerrA); gl.uniform1f(u.uWind, P.gWind); gl.uniform1f(u.uGustK, P.gGustK); gl.uniform1f(u.uGustSpeed, P.gGustSpeed); gl.uniform1f(u.uFlutter, P.gFlutter); gl.uniform2f(u.uWindDir, Math.sin(wa), Math.cos(wa)); };
-  const blade = (pr: any, VP: number[]) => { const u = pr.u; gl.useProgram(pr.p); common(u); gl.uniformMatrix4fv(u.uVP, false, VP); gl.uniform1i(u.uGN, GN); gl.uniform1i(u.uSeg, seg); gl.uniform1f(u.uGR, R);
-    gl.uniform1f(u.uH, P.gH); gl.uniform1f(u.uHR, P.gHR); gl.uniform1f(u.uBW, P.gW); gl.uniform1f(u.uCurv, P.gCurv); gl.uniform1f(u.uStiff, P.gStiff); gl.uniform1f(u.uLean, P.gLean); gl.uniform1f(u.uTwist, P.gTwist); gl.uniform1f(u.uClump, P.gClump); };
-  const GRES = 160, GEXT = 45;
-  const ground = (pr: any, VP: number[]) => { const u = pr.u; gl.useProgram(pr.p); common(u); gl.uniformMatrix4fv(u.uVP, false, VP); gl.uniform1i(u.uGRes, GRES); gl.uniform1f(u.uGExt, GEXT); };
-  // shadow pass
-  const sh = gShadowFB(shRes); gl.bindFramebuffer(gl.FRAMEBUFFER, sh.f); gl.viewport(0, 0, sh.n, sh.n); gl.clearDepth(1); gl.clear(gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1.5, 2);
-  ground(gGroundSh, LVP); gl.drawArrays(gl.TRIANGLES, 0, GRES * GRES * 6);
-  if (P.gOn) { blade(gBladeSh, LVP); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 2 * (seg + 1), GN * GN); }
-  gl.disable(gl.POLYGON_OFFSET_FILL);
-  // main pass (4x MSAA, resolved into T.a)
-  const ms = gMSFB(T.w, T.h); gl.bindFramebuffer(gl.FRAMEBUFFER, ms.f); gl.viewport(0, 0, T.w, T.h); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  const sI = P.gSunI, kI = P.gSkyI; const sun = L0.sun.map((v: number) => v * sI), sky = L0.sky.map((v: number) => v * kI), gnd = L0.gnd.map((v: number) => v * kI), hz = L0.haze.map((v: number) => v * kI);
-  const lightU = (u: any) => { gl.uniform3f(u.uEye, C.eye[0], C.eye[1], C.eye[2]); gl.uniform3f(u.uSunDir, sd[0], sd[1], sd[2]); gl.uniform3fv(u.uSunCol, sun); gl.uniform3fv(u.uSkyCol, sky); gl.uniform3fv(u.uGndCol, gnd); gl.uniform3fv(u.uHazeCol, hz);
-    gl.uniform1f(u.uHaze, L0.hd * P.gHaze); gl.uniform1f(u.uShSoft, P.gShSoft); gl.uniform1f(u.uShTex, 1 / sh.n); gl.uniform1f(u.uAOMin, P.gAO); gl.uniform1f(u.uTrans, P.gTrans); gl.uniform1f(u.uSpec, P.gSpec); gl.uniform1f(u.uSpecP, 60);
-    gl.uniformMatrix4fv(u.uLVP, false, LVP); gl.activeTexture(gl.TEXTURE14); gl.bindSampler(14, null); gl.bindTexture(gl.TEXTURE_2D, sh.t); gl.uniform1i(u.uShadow, 14); colorUniforms(u); };
-  gl.disable(gl.DEPTH_TEST); gl.useProgram(gSky.p); { const u = gSky.u; gl.uniformMatrix4fv(u.uInvVP, false, inv4(C.VP)); gl.uniform3f(u.uEye, C.eye[0], C.eye[1], C.eye[2]); gl.uniform3f(u.uSunDir, sd[0], sd[1], sd[2]); gl.uniform3fv(u.uSunCol, sun); gl.uniform3fv(u.uSkyCol, sky); gl.uniform3fv(u.uHazeCol, hz); } quad();
-  gl.enable(gl.DEPTH_TEST);
-  ground(gGround, C.VP); lightU(gGround.u); { const u = gGround.u; gl.uniform1i(u.uGrassOn, P.gOn ? 1 : 0); gl.uniform1f(u.uGR, R); const so = hex(P.gSoil), gt = hex(P.gTip), gb = hex(P.gBase).map((v, i) => Math.pow(v * 0.45 + gt[i] * 0.55, 2.2)); gl.uniform3f(u.uSoil, Math.pow(so[0], 2.2), Math.pow(so[1], 2.2), Math.pow(so[2], 2.2)); gl.uniform3f(u.uGBase, gb[0] * .85, gb[1] * .85, gb[2] * .85); }
-  gl.drawArrays(gl.TRIANGLES, 0, GRES * GRES * 6);
-  if (P.gOn) { blade(gBlade, C.VP); lightU(gBlade.u); const u = gBlade.u; gl.uniform1i(u.uGrassColor, P.gColor === 'patchwork' ? 1 : 0); gl.uniform1f(u.uColRand, P.gColRand); gl.uniform1f(u.uDry, P.gDry);
-    const lin = (h: string) => hex(h).map(v => Math.pow(v, 2.2)); gl.uniform3fv(u.uGBase, lin(P.gBase)); gl.uniform3fv(u.uGTip, lin(P.gTip)); gl.uniform3fv(u.uGDry, lin(P.gDryC));
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 2 * (seg + 1), GN * GN); }
-  gl.disable(gl.DEPTH_TEST);
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, ms.f); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, T.a.f); gl.blitFramebuffer(0, 0, T.w, T.h, 0, 0, T.w, T.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-}
 function inv4(m: number[]) { const a = m, o = new Array(16); const b00 = a[0] * a[5] - a[1] * a[4], b01 = a[0] * a[6] - a[2] * a[4], b02 = a[0] * a[7] - a[3] * a[4], b03 = a[1] * a[6] - a[2] * a[5], b04 = a[1] * a[7] - a[3] * a[5], b05 = a[2] * a[7] - a[3] * a[6], b06 = a[8] * a[13] - a[9] * a[12], b07 = a[8] * a[14] - a[10] * a[12], b08 = a[8] * a[15] - a[11] * a[12], b09 = a[9] * a[14] - a[10] * a[13], b10 = a[9] * a[15] - a[11] * a[13], b11 = a[10] * a[15] - a[11] * a[14];
   let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06; det = 1 / (det || 1e-12);
   o[0] = (a[5] * b11 - a[6] * b10 + a[7] * b09) * det; o[1] = (a[2] * b10 - a[1] * b11 - a[3] * b09) * det; o[2] = (a[13] * b05 - a[14] * b04 + a[15] * b03) * det; o[3] = (a[10] * b04 - a[9] * b05 - a[11] * b03) * det;
@@ -1115,26 +1093,24 @@ function inv4(m: number[]) { const a = m, o = new Array(16); const b00 = a[0] * 
   o[8] = (a[4] * b10 - a[5] * b08 + a[7] * b06) * det; o[9] = (a[1] * b08 - a[0] * b10 - a[3] * b06) * det; o[10] = (a[12] * b04 - a[13] * b02 + a[15] * b00) * det; o[11] = (a[9] * b02 - a[8] * b04 - a[11] * b00) * det;
   o[12] = (a[5] * b07 - a[4] * b09 - a[6] * b06) * det; o[13] = (a[0] * b09 - a[1] * b07 + a[2] * b06) * det; o[14] = (a[13] * b01 - a[12] * b03 - a[14] * b00) * det; o[15] = (a[8] * b03 - a[9] * b01 + a[10] * b00) * det; return o; }
 // mouse camera (Grass mode only): drag = orbit, wheel = zoom, right/shift-drag = pan
-{ let drag: any = null; canvas.addEventListener('contextmenu', e => { if (P.mode === 'Grass Field' || isW()) e.preventDefault(); });
-  canvas.addEventListener('pointerdown', e => { if (P.mode !== 'Grass Field' && !isW()) return; drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey }; canvas.setPointerCapture(e.pointerId); });
+{ let drag: any = null; canvas.addEventListener('contextmenu', e => { if (isW()) e.preventDefault(); });
+  canvas.addEventListener('pointerdown', e => { if (!isW()) return; drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey }; canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
     if (isW()) { if (drag.pan) { P.wcPanX -= dx * P.wcDist * 0.0012; P.wcPanY += dy * P.wcDist * 0.0012; } else { P.wcYaw -= dx * 0.2; P.wcPitch += dy * 0.15; } wClamp(); }
-    else if (drag.pan) { const y = P.gcYaw * Math.PI / 180, k = P.gcDist * 0.0015; P.gcPanX -= (Math.cos(y) * dx - Math.sin(y) * dy) * k; P.gcPanZ -= (-Math.sin(y) * dx - Math.cos(y) * dy) * k; }
-    else { P.gcYaw = ((P.gcYaw - dx * 0.3) % 360 + 540) % 360 - 180; P.gcPitch += dy * 0.2; }
     gui.controllersRecursive().forEach(c => c.updateDisplay()); });
   canvas.addEventListener('pointerup', () => { drag = null; });
-  canvas.addEventListener('wheel', e => { if (P.mode !== 'Grass Field' && !isW()) return; e.preventDefault(); if (isW()) { P.wcDist *= Math.exp(e.deltaY * 0.001); wClamp(); } else P.gcDist *= Math.exp(e.deltaY * 0.001); gui.controllersRecursive().forEach(c => c.updateDisplay()); }, { passive: false }); }
+  canvas.addEventListener('wheel', e => { if (!isW()) return; e.preventDefault(); P.wcDist *= Math.exp(e.deltaY * 0.001); wClamp(); gui.controllersRecursive().forEach(c => c.updateDisplay()); }, { passive: false }); }
 
 // ---------- tiled still render ----------
 const status = { text: 'idle' };
 async function renderStill() {
   if (busy) return; busy = true; V = P; // stills use the final (target) values, not the eased ones
   const W = Math.round(P.width), H = Math.round(P.height), aspect = W / H, half = worldHalf(aspect), N = frame; curAspect = aspect;
-  const pxScale = Math.min(W, H) / 1080; const isP = P.mode === 'Particle Fabric', isS = isLS(), isG = P.mode === 'Grass Field'; const is3D = P.mode === '3D fabric' || isP || isS || isG;
+  const pxScale = Math.min(W, H) / 1080; const isP = P.mode === 'Particle Fabric', isS = isLS(); const is3D = P.mode === '3D fabric' || isP || isS;
   const K = is3D ? 0 : Math.min(N, Math.min(900, Math.max(30, Math.ceil(Math.log(0.002) / Math.log(P.decay)))));
   const TILE = Math.min(2048, MAXTEX - 512); const M = Math.ceil(24 * pxScale + P.pointSize * pxScale) + 4;
   const job = Math.random().toString(36).slice(2); const t0 = performance.now();
-  const name = `still_${isG ? 'grass' : isS ? 'spheres-' + P.lsStyle.toLowerCase() : isP ? 'particles' : is3D ? '3d' : '2d'}_${W}x${H}_seed${P.seed}_${P.palette.replace(/\W+/g, '')}_f${N}${P.cmykSafe ? '_cmyksafe' : ''}`;
+  const name = `still_${isS ? 'grass' : isS ? 'spheres-' + P.lsStyle.toLowerCase() : isP ? 'particles' : is3D ? '3d' : '2d'}_${W}x${H}_seed${P.seed}_${P.palette.replace(/\W+/g, '')}_f${N}${P.cmykSafe ? '_cmyksafe' : ''}`;
   const yieldUI = () => new Promise(r => setTimeout(r, 0));
   const ft = (f: number) => f * DT * P.evolution, fo = (f: number) => [P.driftX * f * DT, P.driftY * f * DT];
   let snap: FB | undefined; let t3s = t3;
@@ -1159,7 +1135,7 @@ async function renderStill() {
     const px0 = x0 - M, px1 = x0 + tw + M, py0 = y0 - M, py1 = y0 + th + M;
     if (is3D) {
       const sr = [px0 / W, px1 / W, py0 / H, py1 / H]; settleFrame = N;
-      if (isG) renderGrass(T, aspect, N * DT, sr, pxScale, 4096); else if (isS) render3D(T, aspect, t3s, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport, sphereHooks); else if (isP) renderParticleScene(T, aspect, t3s, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport); else render3D(T, aspect, t3, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport);
+      if (isS) render3D(T, aspect, t3s, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport, sphereHooks); else if (isP) renderParticleScene(T, aspect, t3s, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport); else render3D(T, aspect, t3, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport);
       status.text = `tile ${ty * cols + tx + 1}/${cols * rows}`; gl.flush(); await yieldUI();
     } else {
       const wx = (px: number) => -vh[0] + px / W * 2 * vh[0], wy = (py: number) => vh[1] - py / H * 2 * vh[1];
@@ -1189,8 +1165,8 @@ async function renderStill() {
 }
 // ---------- deterministic MP4 (frames -> ffmpeg) ----------
 async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
-  if (busy || P.mode === '2D flow') return; busy = true; V = P; const isP = P.mode === 'Particle Fabric', isS = isLS(), isG = P.mode === 'Grass Field'; const aspect = w / h; curAspect = aspect;
-  const name = `video_${isW() ? 'wall-' + P.wMat : isG ? 'grass' : isS ? 'spheres-' + P.lsStyle.toLowerCase() : isP ? 'particles' : '3d'}_${w}x${h}_seed${P.seed}_${P.palette.replace(/\W+/g, '')}_${seconds}s`; const t0 = performance.now();
+  if (busy || P.mode === '2D flow') return; busy = true; V = P; const isP = P.mode === 'Particle Fabric', isS = isLS(); const aspect = w / h; curAspect = aspect;
+  const name = `video_${isW() ? 'wall-' + P.wMat : isS ? 'spheres-' + P.lsStyle.toLowerCase() : isP ? 'particles' : '3d'}_${w}x${h}_seed${P.seed}_${P.palette.replace(/\W+/g, '')}_${seconds}s`; const t0 = performance.now();
   await fetch(`/api/vstart?name=${name}&w=${w}&h=${h}&fps=60&crf=26`, { method: 'POST' });
   const T = makeTrails(w, h); const out = fbo(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST); const px = new Uint8Array(w * h * 4);
   if (isP) { pStep(0, aspect, 0, true); for (let f = 0; f < warm; f++) pStep(f, aspect, f * DT * P.evolution3d); }
@@ -1199,7 +1175,7 @@ async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
   for (let k = 0; k < n; k++) {
     const f = warm + k; if (isP) pStep(f, aspect, f * DT * P.evolution3d); if (isS) sStep(f, aspect, f * DT * P.evolution3d);
     const tt = (f + 1) * DT * P.evolution3d, to = (f + 1) * DT * P.orbitSpeed; settleFrame = f + 1;
-    if (isG) renderGrass(T, aspect, (f + 1) * DT, [0, 1, 0, 1], pxScale); else if (isS) render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale, 1, P.shadowResLive, sphereHooks); else if (isP) renderParticleScene(T, aspect, tt, to, [0, 1, 0, 1], pxScale); else render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale);
+    if (isS) render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale, 1, P.shadowResLive, sphereHooks); else if (isP) renderParticleScene(T, aspect, tt, to, [0, 1, 0, 1], pxScale); else render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale);
     bloomPass(T); gl.bindFramebuffer(gl.FRAMEBUFFER, out.f); composite(T, [0, 0], [0, 0, w, h]);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     await fetch('/api/vframe', { method: 'POST', body: px }); status.text = `video frame ${k + 1}/${n}`;
@@ -1813,7 +1789,7 @@ const rec = sessionStorage.getItem('flow-recover'); if (rec) { sessionStorage.re
 if (q.get('mode') === '2d') P.mode = '2D flow';
 if (q.get('mode') === 'particles') P.mode = 'Particle Fabric';
 if (q.get('mode') === 'spheres') P.mode = 'Liquid Spheres';
-if (q.get('mode') === 'grass') P.mode = 'Grass Field';
+// Grass mode removed
 if (q.get('mode') === 'spheres') P.mode = 'Liquid Spheres';
 if (isW()) wallDefaults();
 if (q.get('wmat')) P.wMat = q.get('wmat')!; if (q.get('wobj')) P.wObj = q.get('wobj') === '1'; if (q.get('omat')) P.wObjMat = q.get('omat')!; if (q.get('wview')) applyWView(q.get('wview')!);

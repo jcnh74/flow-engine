@@ -104,12 +104,15 @@ export const PRESET_GALLERY: Preset[] = [
   {
     name: 'Fractal Dreams',
     mode: '3D Fractal',
-    description: 'Mandelbulb with slow morph',
+    description: 'Mandelbulb with audio-driven morph',
     params: {
       frType: 0,
       frPower: 8,
       frIter: 12,
-      frRotSpeed: 0.2,
+      frRotSpeed: 0.4, // Increased for visible motion
+      frMorph: 0.5, // Enable morph
+      frCamOrbit: true, // Enable camera orbit
+      frCamOrbitSpeed: 0.3,
       stops: [[0, '#0033ff'], [0.5, '#ff00ff'], [1, '#ffff00']]
     }
   },
@@ -185,12 +188,16 @@ export const PRESET_GALLERY: Preset[] = [
   {
     name: 'Mandel Vortex',
     mode: '3D Fractal',
-    description: 'Rotating Mandelbulb',
+    description: 'Audio-driven rotating Mandelbulb',
     params: {
       frType: 0,
       frPower: 12,
       frIter: 15,
-      frRotSpeed: 0.3,
+      frRotSpeed: 0.5, // Increased for visible rotation
+      frJuliaOrbit: true, // Enable Julia orbit
+      frJuliaSpeed: 0.4,
+      frCamOrbit: true, // Enable camera orbit
+      frCamOrbitSpeed: 0.2,
       stops: [[0, '#ff0000'], [0.5, '#ffff00'], [1, '#ff0000']]
     }
   },

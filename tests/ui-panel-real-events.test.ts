@@ -198,7 +198,7 @@ test('Real events > Integer params are properly rounded', () => {
 });
 
 test('Real events > Checkbox params work correctly', () => {
-  const { panel, params } = createPanel('Grass Field');
+  const { panel, params } = createPanel('Wall Studio');
   const container = (panel as any).container;
   
   const checkbox = container.querySelector('input[data-param="gOn"]') as HTMLInputElement;

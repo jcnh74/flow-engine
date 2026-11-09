@@ -474,12 +474,13 @@ export class AudioAnalyzer {
       this.lastBeatTime = now;
       this.state.onset = 1.0; // Trigger onset impulse
       
-      // Update estimated BPM from detected beats
+      // Update estimated BPM from detected beats (old simple detection)
       if (this.beatHistory.length > 0 && now - this.beatHistory[this.beatHistory.length - 1] < 2000) {
         const interval = now - this.beatHistory[this.beatHistory.length - 1];
         const detectedBpm = 60000 / interval;
         if (detectedBpm > 40 && detectedBpm < 240) {
-          this.state.bpm = Math.round(this.state.bpm * 0.8 + detectedBpm * 0.2);
+          // More aggressive BPM tracking
+          this.state.bpm = Math.round(this.state.bpm * 0.5 + detectedBpm * 0.5);
         }
       }
     } else {
@@ -621,7 +622,7 @@ export class AudioAnalyzer {
     if (this.fluxHistory.length >= this.FLUX_HISTORY_SIZE) {
       const sorted = [...this.fluxHistory].sort((a, b) => a - b);
       const medianFlux = sorted[Math.floor(sorted.length / 2)];
-      const threshold = medianFlux * 1.5; // Sensitivity multiplier
+      const threshold = medianFlux * 1.2; // Sensitivity multiplier (lower = more sensitive)
       
       // Detect onset if current flux exceeds threshold
       const now = performance.now();
@@ -637,9 +638,11 @@ export class AudioAnalyzer {
             this.ioiHistory.push(ioi);
             if (this.ioiHistory.length > 20) this.ioiHistory.shift();
             
-            // Update estimated BPM from IOI histogram mode
+            // Update estimated BPM from IOI histogram (more aggressive tracking)
             const avgIoi = this.ioiHistory.reduce((a, b) => a + b, 0) / this.ioiHistory.length;
-            this.state.bpm = 60 / avgIoi;
+            const detectedBpm = 60 / avgIoi;
+            // Fast convergence for accurate tracking
+            this.state.bpm = Math.round(this.state.bpm * 0.3 + detectedBpm * 0.7);
           }
         }
         
