@@ -1,0 +1,436 @@
+// Main Control Panel - Complete UI replacement for lil-gui
+import type { AudioState } from '../audio';
+import type ModulationSystem from '../modulation';
+import { BeatLinkPopup } from './BeatLinkPopup';
+
+interface ControlConfig {
+  params: any;
+  audioState: AudioState;
+  modulationSystem: ModulationSystem;
+  onModeChange?: () => void;
+  onReset?: () => void;
+  onRandomize?: () => void;
+}
+
+export class MainControlPanel {
+  private container: HTMLElement;
+  private config: ControlConfig;
+  private controls: Map<string, HTMLElement> = new Map();
+  private sections: Map<string, HTMLElement> = new Map();
+  private beatPulse: HTMLElement | null = null;
+  private audioMeters: Map<string, { bar: HTMLElement; value: HTMLElement }> = new Map();
+
+  constructor(config: ControlConfig) {
+    this.config = config;
+    this.container = this.build();
+    document.body.appendChild(this.container);
+    this.setupEventListeners();
+  }
+
+  private build(): HTMLElement {
+    const panel = document.createElement('div');
+    panel.className = 'flow-panel';
+    panel.innerHTML = `
+      <div class="panel-header">
+        <h1 class="panel-title">Flow Engine</h1>
+        <div class="panel-controls">
+          <button class="panel-btn" data-action="collapse" title="Collapse (C)">−</button>
+          <button class="panel-btn" data-action="hide" title="Hide (H)">×</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        ${this.buildSections()}
+        ${this.buildKeyboardHints()}
+      </div>
+    `;
+    return panel;
+  }
+
+  private buildSections(): string {
+    const mode = this.config.params.mode;
+    let html = '';
+
+    // Scene section (always visible)
+    html += this.buildSection('Scene', [
+      this.buildSelect('mode', 'Mode', ['Wall Studio', '3D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
+      this.buildSlider('seed', 'Seed', 0, 999999, 1),
+      this.buildButton('randomize', '🎲 Randomize', 'randomize'),
+      this.buildButton('reset', '⛑ Reset', 'reset'),
+      this.buildCheckbox('paused', 'Paused')
+    ]);
+
+    // Mode-specific sections
+    if (mode === '3D Fractal') {
+      html += this.buildSection('Fractal', [
+        this.buildSelect('frType', 'Type', { 'Mandelbulb': 0, 'Mandelbox': 1 }),
+        this.buildSlider('frPower', 'Power', 2, 16, 0.1, true),
+        this.buildSlider('frIter', 'Iterations', 4, 24, 1, true),
+        this.buildSlider('frBailout', 'Bailout', 1, 10, 0.1, true),
+        this.buildSlider('frScale', 'Scale', -3, 3, 0.1, true),
+      ]);
+      html += this.buildSection('Camera', [
+        this.buildSlider('frCamDist', 'Distance', 1, 10, 0.1, true),
+        this.buildSlider('frCamFov', 'FOV', 30, 90, 1, true),
+        this.buildSlider('frRotSpeed', 'Rotation', 0, 0.5, 0.01, true),
+      ]);
+      html += this.buildSection('Lighting', [
+        this.buildSlider('frLightAz', 'Azimuth', 0, 360, 1, true),
+        this.buildSlider('frLightEl', 'Elevation', -90, 90, 1, true),
+        this.buildSlider('frAmbient', 'Ambient', 0, 1, 0.01, true),
+        this.buildSlider('frDiffuse', 'Diffuse', 0, 2, 0.1, true),
+        this.buildSlider('frGlow', 'Glow', 0, 2, 0.1, true),
+      ]);
+      html += this.buildSection('Quality', [
+        this.buildSlider('frMaxSteps', 'Ray Steps', 64, 256, 1, true),
+        this.buildSlider('frMaxDist', 'Max Distance', 10, 50, 1, true),
+      ]);
+    }
+
+    // Color section (always visible)
+    html += this.buildSection('Color', [
+      this.buildSlider('exposure', 'Exposure', 0.4, 4, 0.01, true),
+      this.buildSlider('bloom', 'Bloom', 0, 2, 0.01, true),
+      this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true),
+    ]);
+
+    // Audio section (always visible)
+    html += this.buildAudioSection();
+
+    // Presets section (always visible)
+    html += this.buildPresetsSection();
+
+    return html;
+  }
+
+  private buildSection(title: string, controls: string[]): string {
+    return `
+      <div class="panel-section" data-section="${title.toLowerCase()}">
+        <div class="section-header">
+          <span class="section-arrow">▼</span>
+          <span>${title}</span>
+        </div>
+        <div class="section-body">
+          ${controls.join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  private buildSlider(param: string, label: string, min: number, max: number, step: number, modulatable = false): string {
+    const value = this.config.params[param] ?? ((min + max) / 2);
+    const beatBtn = modulatable ? `<button class="beat-link-btn" data-param="${param}" title="Link to beat">🔗</button>` : '';
+    return `
+      <div class="control" data-param="${param}">
+        <div class="control-row">
+          <label class="control-label">${label}</label>
+          <input type="range" class="control-slider" 
+            data-param="${param}"
+            min="${min}" max="${max}" step="${step}" value="${value}" />
+          <span class="control-value" data-value="${param}">${typeof value === 'number' ? value.toFixed(2) : value}</span>
+          ${beatBtn}
+        </div>
+      </div>
+    `;
+  }
+
+  private buildSelect(param: string, label: string, options: any): string {
+    const value = this.config.params[param];
+    const opts = Array.isArray(options) ? options : Object.keys(options);
+    const optionsHtml = opts.map(opt => {
+      const val = Array.isArray(options) ? opt : options[opt];
+      return `<option value="${val}" ${value == val ? 'selected' : ''}>${opt}</option>`;
+    }).join('');
+    
+    return `
+      <div class="control" data-param="${param}">
+        <div class="control-row">
+          <label class="control-label">${label}</label>
+          <select class="control-select" data-param="${param}">
+            ${optionsHtml}
+          </select>
+        </div>
+      </div>
+    `;
+  }
+
+  private buildCheckbox(param: string, label: string): string {
+    const checked = this.config.params[param] ? 'checked' : '';
+    return `
+      <div class="control" data-param="${param}">
+        <div class="control-row">
+          <label class="control-label">
+            <input type="checkbox" data-param="${param}" ${checked} />
+            ${label}
+          </label>
+        </div>
+      </div>
+    `;
+  }
+
+  private buildButton(action: string, label: string, callback: string): string {
+    return `
+      <div class="control">
+        <button class="control-button" data-action="${callback}">${label}</button>
+      </div>
+    `;
+  }
+
+  private buildAudioSection(): string {
+    return `
+      <div class="panel-section" data-section="audio">
+        <div class="section-header">
+          <span class="section-arrow">▼</span>
+          <span>Audio & Beat</span>
+        </div>
+        <div class="section-body">
+          <div class="audio-source">Source: <span id="audio-source">None</span></div>
+          <div class="audio-meters">
+            <div class="meter-row">
+              <label class="meter-label">Level</label>
+              <div class="meter-bar"><div class="meter-fill level" data-meter="level"></div></div>
+              <span class="meter-value" data-meter-value="level">0.00</span>
+            </div>
+            <div class="meter-row">
+              <label class="meter-label">Bass</label>
+              <div class="meter-bar"><div class="meter-fill bass" data-meter="bass"></div></div>
+              <span class="meter-value" data-meter-value="bass">0.00</span>
+            </div>
+            <div class="meter-row">
+              <label class="meter-label">Mid</label>
+              <div class="meter-bar"><div class="meter-fill mid" data-meter="mid"></div></div>
+              <span class="meter-value" data-meter-value="mid">0.00</span>
+            </div>
+            <div class="meter-row">
+              <label class="meter-label">High</label>
+              <div class="meter-bar"><div class="meter-fill high" data-meter="high"></div></div>
+              <span class="meter-value" data-meter-value="high">0.00</span>
+            </div>
+          </div>
+          <div class="beat-indicator">
+            <div class="beat-pulse" id="beat-pulse"></div>
+            <span class="bpm-display" id="bpm-display">120 BPM</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private buildPresetsSection(): string {
+    return `
+      <div class="panel-section" data-section="presets">
+        <div class="section-header">
+          <span class="section-arrow">▼</span>
+          <span>Presets</span>
+        </div>
+        <div class="section-body">
+          <div class="control">
+            <button class="control-button" data-action="save-preset">💾 Save Preset</button>
+          </div>
+          <div class="control">
+            <button class="control-button" data-action="export-json">⬇ Export JSON</button>
+          </div>
+          <div class="control">
+            <button class="control-button" data-action="import-json">⬆ Import JSON</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private buildKeyboardHints(): string {
+    return `
+      <div class="keyboard-hint">
+        <span><kbd>H</kbd> Hide</span>
+        <span><kbd>C</kbd> Collapse</span>
+        <span><kbd>Shift</kbd>+<kbd>R</kbd> Randomize</span>
+        <span><kbd>Space</kbd> Pause</span>
+      </div>
+    `;
+  }
+
+  private setupEventListeners(): void {
+    // Panel controls
+    this.container.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const action = target.dataset.action;
+      
+      if (action === 'collapse') {
+        this.container.classList.toggle('collapsed');
+      } else if (action === 'hide') {
+        this.container.classList.add('hidden');
+      } else if (action === 'randomize' && this.config.onRandomize) {
+        this.config.onRandomize();
+      } else if (action === 'reset' && this.config.onReset) {
+        this.config.onReset();
+      }
+    });
+
+    // Section collapse
+    this.container.querySelectorAll('.section-header').forEach(header => {
+      header.addEventListener('click', () => {
+        header.closest('.panel-section')?.classList.toggle('collapsed');
+      });
+    });
+
+    // Parameter controls
+    this.container.querySelectorAll('[data-param]').forEach(el => {
+      const input = el as HTMLInputElement;
+      const param = input.dataset.param!;
+      
+      input.addEventListener('input', () => {
+        let value: any = input.value;
+        
+        if (input.type === 'range') {
+          value = parseFloat(value);
+          // Round integers safely
+          if (param === 'frIter' || param === 'frMaxSteps' || param === 'seed') {
+            value = Math.round(value);
+          }
+        } else if (input.type === 'checkbox') {
+          value = input.checked;
+        } else if (input.tagName === 'SELECT') {
+          value = isNaN(parseFloat(value)) ? value : parseFloat(value);
+        }
+        
+        this.config.params[param] = value;
+        this.updateValueDisplay(param, value);
+        
+        if (param === 'mode' && this.config.onModeChange) {
+          this.config.onModeChange();
+          this.rebuild();
+        }
+      });
+    });
+
+    // Beat link buttons
+    this.container.querySelectorAll('.beat-link-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const param = (btn as HTMLElement).dataset.param!;
+        this.showBeatLinkPopup(param);
+      });
+    });
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      if (e.key === 'h' || e.key === 'H') {
+        this.container.classList.toggle('hidden');
+        e.preventDefault();
+      } else if (e.key === 'c' || e.key === 'C') {
+        this.container.classList.toggle('collapsed');
+        e.preventDefault();
+      }
+    });
+
+    // Store refs
+    this.beatPulse = this.container.querySelector('#beat-pulse');
+    this.container.querySelectorAll('[data-meter]').forEach(el => {
+      const type = (el as HTMLElement).dataset.meter!;
+      const valueEl = this.container.querySelector(`[data-meter-value="${type}"]`) as HTMLElement;
+      this.audioMeters.set(type, { bar: el as HTMLElement, value: valueEl });
+    });
+  }
+
+  private updateValueDisplay(param: string, value: any): void {
+    const valueEl = this.container.querySelector(`[data-value="${param}"]`);
+    if (valueEl) {
+      valueEl.textContent = typeof value === 'number' ? value.toFixed(2) : value.toString();
+    }
+  }
+
+  private showBeatLinkPopup(param: string): void {
+    const currentMapping = this.config.modulationSystem.getAllMappings()
+      .find((m: any) => m.target === param);
+
+    new BeatLinkPopup({
+      param,
+      currentMapping: currentMapping ? {
+        source: currentMapping.source,
+        amount: currentMapping.depth || 0.5,
+        smoothing: currentMapping.smoothing || 0.7,
+        invert: false // Note: current API doesn't support invert
+      } : undefined,
+      onSave: (mapping) => {
+        const baseValue = this.config.params[param];
+        
+        // Remove existing mapping if any
+        this.config.modulationSystem.removeMapping(param);
+        
+        // Add new mapping (API: target, source, baseValue)
+        const newMapping = this.config.modulationSystem.addMapping(param, mapping.source as any, baseValue);
+        
+        // Update mapping properties
+        newMapping.depth = mapping.amount;
+        newMapping.smoothing = mapping.smoothing;
+        // Note: invert not currently supported by ModulationSystem
+        
+        // Update UI indicator
+        const btn = this.container.querySelector(`.beat-link-btn[data-param="${param}"]`);
+        if (btn) btn.classList.add('active');
+      },
+      onRemove: () => {
+        this.config.modulationSystem.removeMapping(param);
+        const btn = this.container.querySelector(`.beat-link-btn[data-param="${param}"]`);
+        if (btn) btn.classList.remove('active');
+      },
+      onCancel: () => {
+        // Nothing needed
+      }
+    });
+  }
+
+  update(): void {
+    const audio = this.config.audioState;
+    
+    // Update audio meters
+    this.updateMeter('level', audio.level);
+    this.updateMeter('bass', audio.bass);
+    this.updateMeter('mid', audio.mid);
+    this.updateMeter('high', audio.high);
+    
+    // Update beat pulse
+    if (this.beatPulse && audio.beatDetected) {
+      this.beatPulse.classList.add('active');
+      setTimeout(() => this.beatPulse?.classList.remove('active'), 100);
+    }
+    
+    // Update BPM
+    const bpmEl = this.container.querySelector('#bpm-display');
+    if (bpmEl) bpmEl.textContent = `${Math.round(audio.bpm)} BPM`;
+    
+    // Update source
+    const sourceEl = this.container.querySelector('#audio-source');
+    if (sourceEl) {
+      const labels: Record<string, string> = {
+        'none': 'None',
+        'file': audio.fileName || 'File',
+        'mic': 'Microphone',
+        'system': 'System (Spotify)'
+      };
+      sourceEl.textContent = labels[audio.source] || audio.source;
+    }
+  }
+
+  private updateMeter(type: string, value: number): void {
+    const meter = this.audioMeters.get(type);
+    if (!meter) return;
+    
+    const percent = Math.min(100, Math.max(0, value * 100));
+    meter.bar.style.width = `${percent}%`;
+    meter.value.textContent = value.toFixed(2);
+  }
+
+  private rebuild(): void {
+    const body = this.container.querySelector('.panel-body');
+    if (body) {
+      body.innerHTML = this.buildSections() + this.buildKeyboardHints();
+      this.setupEventListeners();
+    }
+  }
+
+  destroy(): void {
+    this.container.remove();
+  }
+}
