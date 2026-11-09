@@ -52,7 +52,7 @@ const modulationSystem = new ModulationSystem();
 
 // ---------- params ----------
 const P: any = {
-  mode: 'Wall Studio', seed: 1977,
+  mode: 'Wall Studio', seed: 1977, // Start on Wall Studio
   // Trippy mode params
   trippyMode: 0, trippySpeed: 1.0,
   
@@ -1267,7 +1267,30 @@ camF.add({ reset: () => { P.gcYaw = 0; P.gcView = 'Eye level'; applyGView('Eye l
 camF.add({ tip: 'drag = orbit · wheel = zoom · right/shift-drag = pan' }, 'tip').name('mouse').disable();
 const ex = gui.addFolder('Export'); ex.close();
 const wsU = () => gui.controllersRecursive().forEach(c => c.updateDisplay());
-function wallDefaults() { P.lightPreset = 'C4D Studio Softbox'; applyLightPreset(P.lightPreset); P.toneMap = 'Filmic (AgX-style)'; P.bloom = 0.18; P.ao = 1.4; P.ssaoRadius = 0.3; P.shadowSoft = 1.4; P.shadowBias = 0.003; P.lsFloorCol = '#9a9a9a'; P.lsFloorRough = 0.6; P.fog = 0; P.lsCount = 32768; P.lsRadius = 0.04; P.fold = 0.32; P.warp = 0.45; P.iridescence = 0.15; }
+function wallDefaults() { 
+  // DJ visualizer defaults - striking look
+  P.lightPreset = 'Dramatic Rim Light'; 
+  applyLightPreset(P.lightPreset); 
+  P.toneMap = 'ACES'; 
+  P.bloom = 0.35; 
+  P.ao = 0.8; 
+  P.ssaoRadius = 0.4; 
+  P.shadowSoft = 2.0; 
+  P.shadowBias = 0.002; 
+  P.lsFloorCol = '#1a1a1a'; 
+  P.lsFloorRough = 0.3; 
+  P.fog = 0.05; 
+  P.lsCount = 65536; 
+  P.lsRadius = 0.045; 
+  P.fold = 0.48; 
+  P.warp = 0.62; 
+  P.frequency = 0.7; 
+  P.iridescence = 0.35;
+  P.wcAuto = true; // Auto-orbit camera
+  P.wcDist = 2.8; // Pull back slightly
+  P.lsFlowU = 0.08; // Add motion
+  P.lsFlowV = 0.05;
+}
 const wMatF = gui.addFolder('Material');
 wMatF.add(P, 'wMat', WMATS).name('wall material'); wMatF.addColor(P, 'wColor').name('color'); wMatF.add(P, 'wPatch').name('palette patchwork (no objects)');
 wMatF.add(P, 'wRough', 0, 0.6, 0.01).name('glass frost'); wMatF.add(P, 'wAbsorb', 0, 4, 0.01).name('absorption / thickness'); wMatF.add(P, 'wDisp', 0, 0.1, 0.001).name('glass dispersion');
