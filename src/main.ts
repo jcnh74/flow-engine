@@ -2,7 +2,7 @@ import GUI from 'lil-gui';
 import * as S from './shaders';
 import * as GS from './grass_shaders';
 import * as FS from './fractal_shaders';
-import * as FS2 from './fractal2d_shaders';
+// 2D Fractal shaders removed
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
 import { MainControlPanel } from './ui/MainControlPanel';
@@ -52,10 +52,7 @@ const modulationSystem = new ModulationSystem();
 // ---------- params ----------
 const P: any = {
   mode: 'Wall Studio', seed: 1977,
-  // 2D Fractal params
-  fr2Type: 0, fr2MaxIter: 256, fr2Zoom: 1.5, fr2CenterX: -0.5, fr2CenterY: 0,
-  fr2Rotation: 0, fr2JuliaCX: -0.4, fr2JuliaCY: 0.6, fr2JuliaOrbit: false,
-  fr2OrbitSpeed: 0.2, fr2AutoZoom: false, fr2ZoomSpeed: 0.1, fr2PaletteCycle: 0,
+  // 2D Fractal params removed
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
   wObj: false, wObjMat: 'glossy', cycA: '#d8d8d8', cycB: '#8e8e8e', cycOn: true, grain: 0.025,
   wcView: 'Front', wcYaw: 0, wcPitch: 0, wcDist: 5.0, wcFov: 40, wcPanX: 0, wcPanY: 0, wcAuto: false,
@@ -90,7 +87,6 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'gH','gW','gCurv','gDensity','gWind','gWindAz','gGustK','gGustSpeed','gcDist','gcHeight','gcFov','gDry','hueShift','cHueCycle',
   'lsRadius','lsDrip','lsVisc','lsCoh',
   'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos',
-  'fr2Zoom','fr2CenterX','fr2CenterY','fr2Rotation','fr2JuliaCX','fr2JuliaCY','fr2OrbitSpeed','fr2ZoomSpeed','fr2PaletteCycle','fr2MaxIter',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
@@ -144,7 +140,7 @@ const hdrFB = (w: number, h: number) => fbo(w, h, gl.RGBA16F, gl.RGBA, gl.HALF_F
 const sim = prog(S.QUAD_VS, S.SIM_FS), draw = prog(S.DRAW_VS, S.DRAW_FS), fade = prog(S.QUAD_VS, S.FADE_FS),
   bright = prog(S.QUAD_VS, S.BRIGHT_FS), blur = prog(S.QUAD_VS, S.BLUR_FS), comp = prog(S.QUAD_VS, S.COMP_FS);
 const fractal = prog(FS.FRACTAL_VS, FS.FRACTAL_FS);
-const fractal2d = prog(FS2.vert, FS2.frag);
+// fractal2d shader removed
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -696,62 +692,7 @@ function renderFractal(T: Trails, vp: number[]) {
   quad();
 }
 
-// ---------- 2D Fractal rendering ----------
-function render2DFractal(T: Trails) {
-  gl.disable(gl.BLEND);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f);
-  gl.viewport(0, 0, T.w, T.h);
-  gl.clearColor(0, 0, 0, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.useProgram(fractal2d.p);
-  
-  // Update Julia orbit
-  if (P.fr2JuliaOrbit && !P.paused) {
-    const t = frame * 0.016 * P.fr2OrbitSpeed;
-    P.fr2JuliaCX = Math.cos(t) * 0.7;
-    P.fr2JuliaCY = Math.sin(t) * 0.7;
-  }
-  
-  // Auto zoom
-  if (P.fr2AutoZoom && !P.paused) {
-    const zoomTarget = 1e6; // Max safe zoom for float32
-    P.fr2Zoom = Math.min(zoomTarget, P.fr2Zoom * (1 + P.fr2ZoomSpeed * 0.01));
-  }
-  
-  // Palette cycling
-  const paletteOffset = (frame * P.fr2PaletteCycle * 0.001) % 1.0;
-  
-  // Build palette from current stops
-  const pal = new Float32Array(8 * 3);
-  const usedStops = stops.slice(0, 8);
-  for (let i = 0; i < usedStops.length; i++) {
-    const c = hex(usedStops[i][1]);
-    pal[i * 3] = c[0];
-    pal[i * 3 + 1] = c[1];
-    pal[i * 3 + 2] = c[2];
-  }
-  
-  const u = fractal2d.u;
-  
-  gl.uniform1i(u.frType, P.fr2Type);
-  gl.uniform2f(u.center, P.fr2CenterX, P.fr2CenterY);
-  gl.uniform1f(u.zoom, P.fr2Zoom);
-  gl.uniform2f(u.juliaC, P.fr2JuliaCX, P.fr2JuliaCY);
-  gl.uniform1i(u.maxIter, Math.round(P.fr2MaxIter));
-  gl.uniform1f(u.time, frame * 0.016);
-  
-  // Set palette array uniform - try both possible location names
-  const palLoc = u['palette[0]'] || u.palette;
-  if (palLoc) {
-    gl.uniform3fv(palLoc, pal);
-  }
-  
-  gl.uniform1i(u.paletteSize, usedStops.length);
-  gl.uniform1f(u.paletteOffset, paletteOffset);
-  gl.uniform1f(u.rotation, P.fr2Rotation);
-  
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
-}
+// 2D Fractal rendering removed
 
 function tick(now: number) {
   requestAnimationFrame(tick); if (busy || gl.isContextLost()) return;
@@ -772,9 +713,6 @@ function tick(now: number) {
   if (P.mode === '3D Fractal') {
     if (!P.paused) frame++;
     renderFractal(T, [0, 1, 0, 1]);
-  } else if (P.mode === '2D Fractal') {
-    if (!P.paused) frame++;
-    render2DFractal(T);
   } else if (P.mode === 'Grass Field') {
     if (!P.paused) frame++; renderGrass(T, previewAspect, frame * DT, [0, 1, 0, 1], px);
   } else if (P.mode === '3D fabric') {
@@ -1461,8 +1399,7 @@ canvas.addEventListener('mousemove', e => {
     const dx = (e.clientX - fr2LastX) / canvas.width;
     const dy = (e.clientY - fr2LastY) / canvas.height;
     const aspect = canvas.width / canvas.height;
-    P.fr2CenterX -= dx * 4 / P.fr2Zoom * aspect;
-    P.fr2CenterY += dy * 4 / P.fr2Zoom;
+    // 2D fractal panning removed
     fr2LastX = e.clientX;
     fr2LastY = e.clientY;
   }
@@ -1476,7 +1413,7 @@ canvas.addEventListener('wheel', e => {
   if (P.mode === '2D Fractal') {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    P.fr2Zoom = Math.max(1, Math.min(1e6, P.fr2Zoom * zoomFactor));
+    // 2D fractal zoom removed
   }
 }, { passive: false });
 

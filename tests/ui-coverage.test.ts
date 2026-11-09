@@ -10,7 +10,6 @@ import { join } from 'path';
 describe('UI Control Coverage', () => {
   const mainTs = readFileSync(join(__dirname, '../src/main.ts'), 'utf-8');
   const fractalShaders = readFileSync(join(__dirname, '../src/fractal_shaders.ts'), 'utf-8');
-  const fractal2dShaders = readFileSync(join(__dirname, '../src/fractal2d_shaders.ts'), 'utf-8');
 
   // Extract SMOOTH array from main.ts
   const smoothMatch = mainTs.match(/const SMOOTH = \[([\s\S]*?)\];/);
@@ -25,23 +24,7 @@ describe('UI Control Coverage', () => {
     expect(smoothParams.length).toBeGreaterThan(50);
   });
 
-  test('All fr2* params in SMOOTH are used in render2DFractal', () => {
-    const fr2Params = smoothParams.filter(p => p.startsWith('fr2'));
-    const unusedParams: string[] = [];
-
-    for (const param of fr2Params) {
-      // Check if param appears in uniform binding or calculation in render2DFractal
-      const inMainTs = mainTs.includes(`P.${param}`) || mainTs.includes(`V.${param}`);
-      const inShader = fractal2dShaders.includes(param) || 
-                       mainTs.match(new RegExp(`render2DFractal[\\s\\S]{0,2000}${param}`));
-      
-      if (!inMainTs && !inShader) {
-        unusedParams.push(param);
-      }
-    }
-
-    expect(unusedParams).toEqual([]);
-  });
+  // 2D Fractal tests removed
 
   test('All 3D fractal motion params are used in renderFractal', () => {
     const motionParams = ['frFoldRot', 'frJuliaSpeed', 'frCamOrbitSpeed', 'frSlicePos'];
@@ -100,7 +83,9 @@ describe('UI Control Coverage', () => {
     
     // buildSlider with modulatable=true creates beat link buttons
     const modulatableMatches = panelTs.matchAll(/buildSlider\('(\w+)'[^)]*true\)/g);
-    const modulatableParams = Array.from(modulatableMatches).map(m => m[1]);
+    const modulatableParams = Array.from(modulatableMatches)
+      .map(m => m[1])
+      .filter(p => !p.startsWith('fr2')); // Exclude removed 2D Fractal params
     
     // All should be in SMOOTH (which feeds MOD_TARGETS)
     const missingFromSmooth = modulatableParams.filter(p => !smoothParams.includes(p));
@@ -108,22 +93,11 @@ describe('UI Control Coverage', () => {
     expect(missingFromSmooth).toEqual([]);
   });
 
-  test('2D Fractal type indices match shader switch cases', () => {
-    // Check that shader has case for each type 0-4
-    expect(fractal2dShaders).toContain('if (frType == 0)'); // Mandelbrot
-    expect(fractal2dShaders).toContain('else if (frType == 1)'); // Julia
-    expect(fractal2dShaders).toContain('else if (frType == 2)'); // Burning Ship
-    expect(fractal2dShaders).toContain('else if (frType == 3)'); // Newton
-    expect(fractal2dShaders).toContain('else'); // Phoenix
-  });
-
   test('3D Fractal type indices match shader switch cases', () => {
-    // Check that shader has case for each type 0-5
+    // Check that shader has case for each type 0-2 (pruned to best 3)
     expect(fractalShaders).toContain('if (uFractalType == 0)'); // Mandelbulb
     expect(fractalShaders).toContain('else if (uFractalType == 1)'); // Mandelbox
     expect(fractalShaders).toContain('else if (uFractalType == 2)'); // Menger
-    expect(fractalShaders).toContain('else if (uFractalType == 3)'); // Sierpinski
-    expect(fractalShaders).toContain('else if (uFractalType == 4)'); // Kaleidoscopic
     expect(fractalShaders).toContain('d = deQuaternionJulia(p)'); // Quaternion Julia (type 5, else case)
   });
 
