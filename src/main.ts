@@ -8,6 +8,7 @@ import { PRESET_GALLERY, getRandomPreset } from './presets';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
 import { MidiManager } from './midi';
+import { RemoteSync } from './remote';
 import { MainControlPanel } from './ui/MainControlPanel';
 import { BeatLinkPopup } from './ui/BeatLinkPopup';
 import { PresetGallery } from './ui/PresetGallery';
@@ -1326,12 +1327,16 @@ const midiManager = new MidiManager(P, (param, value) => {
   gui.controllersRecursive().forEach(c => c.updateDisplay());
 });
 
+// ---------- Remote Sync (declare early, connect later) ----------
+let remoteSync: RemoteSync;
+
 // Create the new MainControlPanel
 const panel = new MainControlPanel({
   params: P,
   audioState: audioAnalyzer.state,
   modulationSystem,
   midiManager,
+  get remoteSync() { return remoteSync; },
   onModeChange: () => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); },
   onReset: () => recover('button'),
   onRandomize: randomize,
@@ -1388,6 +1393,30 @@ const panel = new MainControlPanel({
   },
 });
 
+// ---------- Remote Sync (WebSocket) ----------
+remoteSync = new RemoteSync(P, 
+  (action) => {
+    // Handle actions from remote
+    if (action === 'next') presetGallery.nextPreset();
+    else if (action === 'prev') presetGallery.prevPreset();
+    else if (action === 'random') presetGallery.randomPreset();
+    else if (action === 'tap') audioAnalyzer.tapTempo();
+    else if (action === 'pause') P.paused = !P.paused;
+    else if (action === 'reset') recover('remote');
+    else if (action === 'blackout') {
+      P.exposure = P.exposure > 0.1 ? 0 : 1.0;
+    }
+  },
+  (presetName) => {
+    // Handle preset selection from remote
+    const preset = PRESET_GALLERY.find(p => p.name === presetName);
+    if (preset) {
+      loadPresetFromGallery(preset);
+      presetGallery.setCurrentPreset(preset.name);
+    }
+  }
+);
+
 // Preset loading function with beat-link support
 function loadPresetFromGallery(preset: any) {
   load(preset.params, true);
@@ -1407,6 +1436,9 @@ function loadPresetFromGallery(preset: any) {
   updateFolders();
   gui.controllersRecursive().forEach(c => c.updateDisplay());
   panel.update();
+  
+  // Sync to remotes
+  remoteSync.syncState();
 }
 
 // Create the preset gallery
@@ -1598,6 +1630,10 @@ midiManager.init().then(success => {
     panel.rebuild(); // Rebuild to show MIDI devices
   }
 });
+
+// Initialize Remote Sync
+remoteSync.connect();
+log(`Remote URL: ${remoteSync.state.remoteUrl}`);
 
 requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);

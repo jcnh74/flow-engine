@@ -2,6 +2,7 @@
 import type { AudioState } from '../audio';
 import type ModulationSystem from '../modulation';
 import type { MidiManager } from '../midi';
+import type { RemoteSync } from '../remote';
 import { BeatLinkPopup } from './BeatLinkPopup';
 import { COLOR_PRESETS, applyColorPreset, type ColorPreset } from './ColorPresets';
 import { LIGHTING_RIGS, applyLightingRig, type LightingRig } from './LightingPresets';
@@ -11,6 +12,7 @@ interface ControlConfig {
   audioState: AudioState;
   modulationSystem: ModulationSystem;
   midiManager?: MidiManager;
+  remoteSync?: RemoteSync;
   onModeChange?: () => void;
   onReset?: () => void;
   onRandomize?: () => void;
@@ -238,6 +240,9 @@ export class MainControlPanel {
     // MIDI section (always visible)
     html += this.buildMidiSection();
 
+    // Remote section (always visible)
+    html += this.buildRemoteSection();
+
     return html;
   }
 
@@ -457,6 +462,29 @@ export class MainControlPanel {
             <button class="control-button" data-action="import-midi">⬆ Import MIDI Map</button>
           </div>
           <div class="control-hint">Mappings: <span id="midi-mapping-count">${midi?.state.mappings.length ?? 0}</span></div>
+        </div>
+      </div>
+    `;
+  }
+
+  private buildRemoteSection(): string {
+    const remote = this.config.remoteSync;
+    const connected = remote?.state.connected ?? false;
+    const remoteUrl = remote?.state.remoteUrl ?? '';
+    const qrCode = remote?.state.qrCode ?? '';
+    
+    return `
+      <div class="panel-section" data-section="remote">
+        <div class="section-header">
+          <span class="section-arrow">▼</span>
+          <span>Remote Control</span>
+        </div>
+        <div class="section-body">
+          <div class="midi-status" id="remote-status">${connected ? '✅ Connected' : '⚠️ Relay Offline'}</div>
+          <div class="control-hint">Scan QR code with iPhone/iPad</div>
+          ${qrCode ? `<div class="qr-code"><img src="${qrCode}" alt="Remote QR Code" /></div>` : ''}
+          <div class="control-hint remote-url">${remoteUrl}</div>
+          <div class="control-hint">Start relay: <code>bun relay-server.ts</code></div>
         </div>
       </div>
     `;

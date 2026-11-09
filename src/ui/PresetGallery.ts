@@ -104,17 +104,17 @@ export class PresetGallery {
     this.updateActiveCard();
   }
 
-  private prevPreset() {
+  public prevPreset() {
     this.currentIndex = (this.currentIndex - 1 + PRESET_GALLERY.length) % PRESET_GALLERY.length;
     this.loadPresetByIndex(this.currentIndex);
   }
 
-  private nextPreset() {
+  public nextPreset() {
     this.currentIndex = (this.currentIndex + 1) % PRESET_GALLERY.length;
     this.loadPresetByIndex(this.currentIndex);
   }
 
-  private randomPreset() {
+  public randomPreset() {
     const preset = getRandomPreset();
     const index = PRESET_GALLERY.findIndex(p => p.name === preset.name);
     this.loadPresetByIndex(index);
