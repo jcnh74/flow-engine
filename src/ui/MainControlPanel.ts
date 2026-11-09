@@ -511,18 +511,18 @@ export class MainControlPanel {
         // Apply per-type defaults for 3D fractals
         if (param === 'frType') {
           const P = this.config.params;
-          if (value === 2) { // Menger Sponge
+          if (value === 0) { // Mandelbulb (explicit, not else)
+            P.frIter = 12; P.frPower = 8; P.frCamDist = 2.5;
+          } else if (value === 1) { // Mandelbox
+            P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
+          } else if (value === 2) { // Menger Sponge
             P.frIter = 5; P.frCamDist = 4;
           } else if (value === 3) { // Sierpinski
             P.frIter = 6; P.frCamDist = 3.5;
           } else if (value === 4) { // Kaleidoscopic IFS
-            P.frIter = 10; P.frCamDist = 4;
+            P.frIter = 10; P.frCamDist = 5;
           } else if (value === 5) { // Quaternion Julia
-            P.frIter = 16; P.frCamDist = 2.5;
-          } else if (value === 1) { // Mandelbox
-            P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
-          } else { // Mandelbulb
-            P.frIter = 12; P.frPower = 8; P.frCamDist = 2;
+            P.frIter = 16; P.frCamDist = 3;
           }
           this.syncDisplayedValues();
         }
@@ -530,16 +530,16 @@ export class MainControlPanel {
         // Apply per-type defaults for 2D fractals
         if (param === 'fr2Type') {
           const P = this.config.params;
-          if (value === 2) { // Burning Ship
-            P.fr2CenterX = -0.5; P.fr2CenterY = -0.5; P.fr2Zoom = 1.8;
+          if (value === 0) { // Mandelbrot (explicit)
+            P.fr2CenterX = -0.5; P.fr2CenterY = 0; P.fr2Zoom = 1.5;
           } else if (value === 1) { // Julia Set
             P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
+          } else if (value === 2) { // Burning Ship - full ship view
+            P.fr2CenterX = -0.4; P.fr2CenterY = -0.6; P.fr2Zoom = 1.2;
           } else if (value === 3) { // Newton
             P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.5;
           } else if (value === 4) { // Phoenix
             P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
-          } else { // Mandelbrot
-            P.fr2CenterX = -0.5; P.fr2CenterY = 0; P.fr2Zoom = 1.5;
           }
           this.syncDisplayedValues();
         }

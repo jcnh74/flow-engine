@@ -190,54 +190,35 @@ float deSierpinski(vec3 p) {
   return (length(z) - 2.0) / s;
 }
 
-// Kaleidoscopic IFS distance estimator
+// Kaleidoscopic IFS distance estimator (Mandelbox-style)
 float deKaleidoscopic(vec3 p) {
   vec3 z = p;
   float scale = 2.0;
-  float mr2 = 0.25;
-  float fr2 = 1.0;
+  float minRadius2 = 0.5;
+  float fixedRadius2 = 1.0;
   float dr = 1.0;
-  
-  // Rotation matrix for variation
-  float angle = 0.3;
-  float c = cos(angle);
-  float s = sin(angle);
-  mat3 rot = mat3(
-    c, -s, 0.0,
-    s, c, 0.0,
-    0.0, 0.0, 1.0
-  );
   
   for (int i = 0; i < 16; i++) {
     if (i >= uIterations) break;
     
-    // Octahedral folding (kaleidoscopic symmetry)
-    z = abs(z);
-    float t;
-    if (z.x < z.y) { t = z.x; z.x = z.y; z.y = t; }
-    if (z.x < z.z) { t = z.x; z.x = z.z; z.z = t; }
-    if (z.y < z.z) { t = z.y; z.y = z.z; z.z = t; }
+    // Box fold (creates kaleidoscopic symmetry)
+    z = clamp(z, -1.0, 1.0) * 2.0 - z;
     
-    // Apply rotation for more interesting structure
-    z = rot * z;
-    
-    // Spherical inversion (gives recursive detail)
+    // Spherical fold (creates recursive detail)
     float r2 = dot(z, z);
-    if (r2 < mr2) {
-      float temp = fr2 / mr2;
+    if (r2 < minRadius2) {
+      float temp = fixedRadius2 / minRadius2;
       z *= temp;
       dr *= temp;
-    } else if (r2 < fr2) {
-      float temp = fr2 / r2;
+    } else if (r2 < fixedRadius2) {
+      float temp = fixedRadius2 / r2;
       z *= temp;
       dr *= temp;
     }
     
     // Scale and translate
-    z = z * scale - vec3(1.0, 1.0, 0.5);
+    z = z * scale + p;
     dr = dr * abs(scale) + 1.0;
-    
-    if (dot(z, z) > 100.0) break;
   }
   
   return length(z) / abs(dr);
@@ -296,8 +277,10 @@ float map(vec3 p) {
     d = deSierpinski(p);
   } else if (uFractalType == 4) {
     d = deKaleidoscopic(p);
-  } else {
+  } else if (uFractalType == 5) {
     d = deQuaternionJulia(p);
+  } else {
+    d = deMandelbulb(p); // Fallback
   }
   
   // Slice plane

@@ -179,8 +179,10 @@ void main() {
     iter = burningShip(coord);
   } else if (frType == 3) {
     iter = newton(coord);
-  } else {
+  } else if (frType == 4) {
     iter = phoenix(coord);
+  } else {
+    iter = mandelbrot(coord); // Fallback
   }
   
   vec3 color = getColor(iter);

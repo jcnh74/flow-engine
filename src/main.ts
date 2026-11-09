@@ -1214,18 +1214,18 @@ modF.add(modState, 'mappingCount').name('Active mappings').listen().disable();
 const frF = gui.addFolder('3D Fractal');
 
 const fractalDefaults = (type: number) => {
-  if (type === 2) { // Menger Sponge
+  if (type === 0) { // Mandelbulb (MUST be explicit, not 'else')
+    P.frIter = 12; P.frPower = 8; P.frCamDist = 2.5;
+  } else if (type === 1) { // Mandelbox
+    P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
+  } else if (type === 2) { // Menger Sponge
     P.frIter = 5; P.frCamDist = 4;
   } else if (type === 3) { // Sierpinski
     P.frIter = 6; P.frCamDist = 3.5;
   } else if (type === 4) { // Kaleidoscopic IFS
-    P.frIter = 10; P.frCamDist = 4;
+    P.frIter = 10; P.frCamDist = 5;
   } else if (type === 5) { // Quaternion Julia
-    P.frIter = 16; P.frCamDist = 2.5;
-  } else if (type === 1) { // Mandelbox
-    P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
-  } else { // Mandelbulb
-    P.frIter = 12; P.frPower = 8; P.frCamDist = 2;
+    P.frIter = 16; P.frCamDist = 3;
   }
   gui.controllersRecursive().forEach(c => c.updateDisplay());
 };
@@ -1268,16 +1268,16 @@ frAdv.add(P, 'frSurfDist', 0.1, 2, 0.01).name('Surface detail');
 const fr2F = gui.addFolder('2D Fractal');
 
 const fractal2DDefaults = (type: number) => {
-  if (type === 2) { // Burning Ship - classic view
-    P.fr2CenterX = -0.5; P.fr2CenterY = -0.5; P.fr2Zoom = 1.8;
+  if (type === 0) { // Mandelbrot (explicit)
+    P.fr2CenterX = -0.5; P.fr2CenterY = 0; P.fr2Zoom = 1.5;
   } else if (type === 1) { // Julia Set
     P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
+  } else if (type === 2) { // Burning Ship - full ship view
+    P.fr2CenterX = -0.4; P.fr2CenterY = -0.6; P.fr2Zoom = 1.2;
   } else if (type === 3) { // Newton
     P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.5;
   } else if (type === 4) { // Phoenix
     P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
-  } else { // Mandelbrot
-    P.fr2CenterX = -0.5; P.fr2CenterY = 0; P.fr2Zoom = 1.5;
   }
   gui.controllersRecursive().forEach(c => c.updateDisplay());
 };
