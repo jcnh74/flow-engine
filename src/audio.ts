@@ -18,6 +18,17 @@ export interface AudioState {
   mid: number;        // mid freq 0-1
   high: number;       // high freq 0-1
   envelope: number;   // smoothed amplitude for modulation
+  // Enhanced drum detection
+  kick: number;       // kick drum presence 0-1
+  snare: number;      // snare drum presence 0-1
+  hat: number;        // hi-hat presence 0-1
+  kickDetected: boolean;
+  snareDetected: boolean;
+  hatDetected: boolean;
+  // Beat-division envelopes
+  envelope8th: number;  // 8th note envelope
+  envelope16th: number; // 16th note envelope
+  envelope32nd: number; // 32nd note envelope
   systemAudioSupported: boolean;
   systemAudioError: string;
 }
@@ -37,6 +48,19 @@ export class AudioAnalyzer {
   private lastBeatTime = 0;
   private beatThreshold = 0.6;
   
+  // Drum detection tracking
+  private lastKickTime = 0;
+  private lastSnareTime = 0;
+  private lastHatTime = 0;
+  private kickThreshold = 0.65;
+  private snareThreshold = 0.55;
+  private hatThreshold = 0.45;
+  
+  // Beat-division tracking
+  private last8thTime = 0;
+  private last16thTime = 0;
+  private last32ndTime = 0;
+  
   public state: AudioState = {
     isPlaying: false,
     isMicActive: false,
@@ -54,6 +78,15 @@ export class AudioAnalyzer {
     mid: 0,
     high: 0,
     envelope: 0,
+    kick: 0,
+    snare: 0,
+    hat: 0,
+    kickDetected: false,
+    snareDetected: false,
+    hatDetected: false,
+    envelope8th: 0,
+    envelope16th: 0,
+    envelope32nd: 0,
     systemAudioSupported: this.checkSystemAudioSupport(),
     systemAudioError: ''
   };
@@ -313,14 +346,38 @@ export class AudioAnalyzer {
     const bassEnd = Math.floor(bins * 0.1);
     const midEnd = Math.floor(bins * 0.4);
     
+    // Sub-bass for kick (20-80 Hz)
+    const kickEnd = Math.floor(bins * 0.04);
+    // Snare range (150-300 Hz)
+    const snareStart = Math.floor(bins * 0.08);
+    const snareEnd = Math.floor(bins * 0.15);
+    // Hi-hat range (6-12 kHz)
+    const hatStart = Math.floor(bins * 0.6);
+    const hatEnd = Math.floor(bins * 0.8);
+    
     let bassSum = 0, midSum = 0, highSum = 0;
+    let kickSum = 0, snareSum = 0, hatSum = 0;
+    
     for (let i = 0; i < bassEnd; i++) bassSum += this.freqData[i];
     for (let i = bassEnd; i < midEnd; i++) midSum += this.freqData[i];
     for (let i = midEnd; i < bins; i++) highSum += this.freqData[i];
     
+    for (let i = 0; i < kickEnd; i++) kickSum += this.freqData[i];
+    for (let i = snareStart; i < snareEnd; i++) snareSum += this.freqData[i];
+    for (let i = hatStart; i < hatEnd; i++) hatSum += this.freqData[i];
+    
     this.state.bass = (bassSum / bassEnd) / 255;
     this.state.mid = (midSum / (midEnd - bassEnd)) / 255;
     this.state.high = (highSum / (bins - midEnd)) / 255;
+    
+    // Smooth drum signals
+    const kickRaw = (kickSum / kickEnd) / 255;
+    const snareRaw = (snareSum / (snareEnd - snareStart)) / 255;
+    const hatRaw = (hatSum / (hatEnd - hatStart)) / 255;
+    
+    this.state.kick = this.state.kick * 0.7 + kickRaw * 0.3;
+    this.state.snare = this.state.snare * 0.7 + snareRaw * 0.3;
+    this.state.hat = this.state.hat * 0.7 + hatRaw * 0.3;
     
     // Overall level
     let sum = 0;
@@ -348,6 +405,64 @@ export class AudioAnalyzer {
       }
     } else {
       this.state.beatDetected = false;
+    }
+    
+    // Kick detection (sub-bass spike)
+    if (this.state.kick > this.kickThreshold && now - this.lastKickTime > 150) {
+      this.state.kickDetected = true;
+      this.lastKickTime = now;
+    } else {
+      this.state.kickDetected = false;
+    }
+    
+    // Snare detection (mid-range transient)
+    if (this.state.snare > this.snareThreshold && now - this.lastSnareTime > 180) {
+      this.state.snareDetected = true;
+      this.lastSnareTime = now;
+    } else {
+      this.state.snareDetected = false;
+    }
+    
+    // Hi-hat detection (high-freq presence)
+    if (this.state.hat > this.hatThreshold && now - this.lastHatTime > 80) {
+      this.state.hatDetected = true;
+      this.lastHatTime = now;
+    } else {
+      this.state.hatDetected = false;
+    }
+    
+    // Beat-division envelopes based on manual BPM
+    const beatInterval = 60000 / this.state.manualBpm;
+    const eighth = beatInterval / 2;  // 8th note
+    const sixteenth = beatInterval / 4;  // 16th note
+    const thirtysecond = beatInterval / 8;  // 32nd note
+    
+    // 8th note envelope
+    if (now - this.last8thTime > eighth) {
+      this.last8thTime = now;
+      this.state.envelope8th = 1.0;
+    } else {
+      // Exponential decay
+      const elapsed = now - this.last8thTime;
+      this.state.envelope8th = Math.max(0, 1.0 - (elapsed / eighth));
+    }
+    
+    // 16th note envelope
+    if (now - this.last16thTime > sixteenth) {
+      this.last16thTime = now;
+      this.state.envelope16th = 1.0;
+    } else {
+      const elapsed = now - this.last16thTime;
+      this.state.envelope16th = Math.max(0, 1.0 - (elapsed / sixteenth));
+    }
+    
+    // 32nd note envelope
+    if (now - this.last32ndTime > thirtysecond) {
+      this.last32ndTime = now;
+      this.state.envelope32nd = 1.0;
+    } else {
+      const elapsed = now - this.last32ndTime;
+      this.state.envelope32nd = Math.max(0, 1.0 - (elapsed / thirtysecond));
     }
   }
   

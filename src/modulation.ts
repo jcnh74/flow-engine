@@ -3,7 +3,7 @@
 
 import type { AudioState } from './audio';
 
-export type ModulationSource = 'beat' | 'bass' | 'mid' | 'high' | 'level' | 'envelope';
+export type ModulationSource = 'beat' | 'bass' | 'mid' | 'high' | 'level' | 'envelope' | 'kick' | 'snare' | 'hat' | 'envelope8th' | 'envelope16th' | 'envelope32nd';
 
 export interface ModulationMapping {
   id: string;
@@ -120,6 +120,12 @@ export class ModulationSystem {
       let sourceValue = 0;
       if (mapping.source === 'beat') {
         sourceValue = audioState.beatDetected ? 1 : 0;
+      } else if (mapping.source === 'kick') {
+        sourceValue = audioState.kickDetected ? audioState.kick : audioState.kick * 0.5;
+      } else if (mapping.source === 'snare') {
+        sourceValue = audioState.snareDetected ? audioState.snare : audioState.snare * 0.5;
+      } else if (mapping.source === 'hat') {
+        sourceValue = audioState.hatDetected ? audioState.hat : audioState.hat * 0.5;
       } else {
         sourceValue = audioState[mapping.source] || 0;
       }

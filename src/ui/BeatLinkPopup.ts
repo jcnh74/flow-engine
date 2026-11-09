@@ -65,6 +65,12 @@ export class BeatLinkPopup {
             <label><input type="radio" name="source" value="mid" ${current.source === 'mid' ? 'checked' : ''}> Mid</label>
             <label><input type="radio" name="source" value="high" ${current.source === 'high' ? 'checked' : ''}> High</label>
             <label><input type="radio" name="source" value="level" ${current.source === 'level' ? 'checked' : ''}> Level</label>
+            <label><input type="radio" name="source" value="kick" ${current.source === 'kick' ? 'checked' : ''}> Kick</label>
+            <label><input type="radio" name="source" value="snare" ${current.source === 'snare' ? 'checked' : ''}> Snare</label>
+            <label><input type="radio" name="source" value="hat" ${current.source === 'hat' ? 'checked' : ''}> Hi-Hat</label>
+            <label><input type="radio" name="source" value="envelope8th" ${current.source === 'envelope8th' ? 'checked' : ''}> 8th Note</label>
+            <label><input type="radio" name="source" value="envelope16th" ${current.source === 'envelope16th' ? 'checked' : ''}> 16th Note</label>
+            <label><input type="radio" name="source" value="envelope32nd" ${current.source === 'envelope32nd' ? 'checked' : ''}> 32nd Note</label>
           </div>
         </div>
         

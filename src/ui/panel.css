@@ -151,6 +151,17 @@
   background: var(--bg-panel);
 }
 
+.section-subheader {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin: 12px 0 8px 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
 /* Controls */
 .control {
   margin-bottom: 10px;

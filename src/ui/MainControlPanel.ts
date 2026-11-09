@@ -338,6 +338,42 @@ export class MainControlPanel {
               <span class="meter-value" data-meter-value="high">0.00</span>
             </div>
           </div>
+          <div class="section-subheader">Drums</div>
+          <div class="audio-meters">
+            <div class="meter-row">
+              <label class="meter-label">Kick</label>
+              <div class="meter-bar"><div class="meter-fill kick" data-meter="kick"></div></div>
+              <span class="meter-value" data-meter-value="kick">0.00</span>
+            </div>
+            <div class="meter-row">
+              <label class="meter-label">Snare</label>
+              <div class="meter-bar"><div class="meter-fill snare" data-meter="snare"></div></div>
+              <span class="meter-value" data-meter-value="snare">0.00</span>
+            </div>
+            <div class="meter-row">
+              <label class="meter-label">Hat</label>
+              <div class="meter-bar"><div class="meter-fill hat" data-meter="hat"></div></div>
+              <span class="meter-value" data-meter-value="hat">0.00</span>
+            </div>
+          </div>
+          <div class="section-subheader">Envelopes</div>
+          <div class="audio-meters">
+            <div class="meter-row">
+              <label class="meter-label">8th</label>
+              <div class="meter-bar"><div class="meter-fill envelope8th" data-meter="envelope8th"></div></div>
+              <span class="meter-value" data-meter-value="envelope8th">0.00</span>
+            </div>
+            <div class="meter-row">
+              <label class="meter-label">16th</label>
+              <div class="meter-bar"><div class="meter-fill envelope16th" data-meter="envelope16th"></div></div>
+              <span class="meter-value" data-meter-value="envelope16th">0.00</span>
+            </div>
+            <div class="meter-row">
+              <label class="meter-label">32nd</label>
+              <div class="meter-bar"><div class="meter-fill envelope32nd" data-meter="envelope32nd"></div></div>
+              <span class="meter-value" data-meter-value="envelope32nd">0.00</span>
+            </div>
+          </div>
           <div class="beat-indicator">
             <div class="beat-pulse" id="beat-pulse"></div>
             <span class="bpm-display" id="bpm-display">120 BPM</span>
@@ -647,6 +683,16 @@ export class MainControlPanel {
     this.updateMeter('bass', audio.bass);
     this.updateMeter('mid', audio.mid);
     this.updateMeter('high', audio.high);
+    
+    // Update drum meters
+    this.updateMeter('kick', audio.kick);
+    this.updateMeter('snare', audio.snare);
+    this.updateMeter('hat', audio.hat);
+    
+    // Update envelope meters
+    this.updateMeter('envelope8th', audio.envelope8th);
+    this.updateMeter('envelope16th', audio.envelope16th);
+    this.updateMeter('envelope32nd', audio.envelope32nd);
     
     // Update beat pulse
     if (this.beatPulse && audio.beatDetected) {
