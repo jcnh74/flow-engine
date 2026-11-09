@@ -1303,6 +1303,12 @@ function load(o: any, quiet = false) {
   const pc = o.particles !== P.particles || (o.pCount && o.pCount !== P.pCount); 
   const lights = o.lights, wells = o.wells, modMappings = o.modulationMappings;
   o = { ...o }; 
+  
+  // Migrate removed modes to Wall Studio
+  if (o.mode === 'Grass Field' || o.mode === '2D Fractal') {
+    o.mode = 'Wall Studio';
+  }
+  
   delete o.lights; delete o.wells; delete o.modulationMappings;
   if (Array.isArray(wells)) wells.forEach((w: any, i: number) => P.wells[i] && Object.assign(P.wells[i], w)); 
   Object.assign(P, o); 
