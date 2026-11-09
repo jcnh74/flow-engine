@@ -1,0 +1,454 @@
+/* Flow Engine Control Panel - House Music Visualizer Aesthetic */
+
+:root {
+  --bg-deep: #0a0a0f;
+  --bg-panel: #151520;
+  --bg-section: #1a1a2e;
+  --border: #2a2a3e;
+  --text: #e0e0e8;
+  --text-dim: #8888a0;
+  --accent: #6b5fff;
+  --beat: #ff3366;
+  --audio: #00ff88;
+  --mod: #ffaa00;
+}
+
+.flow-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 320px;
+  max-height: calc(100vh - 40px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  overflow: hidden;
+  z-index: 10000;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.flow-panel.hidden {
+  transform: translateX(calc(100% + 30px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.flow-panel.collapsed .panel-body {
+  display: none;
+}
+
+/* Header */
+.panel-header {
+  padding: 12px 16px;
+  background: var(--bg-section);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.panel-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.panel-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.panel-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(107, 95, 255, 0.1);
+}
+
+/* Body */
+.panel-body {
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-body::-webkit-scrollbar-track {
+  background: var(--bg-panel);
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.panel-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+/* Sections */
+.panel-section {
+  border-bottom: 1px solid var(--border);
+}
+
+.section-header {
+  padding: 12px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-section);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s;
+}
+
+.section-header:hover {
+  background: #202035;
+}
+
+.section-arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.panel-section.collapsed .section-arrow {
+  transform: rotate(-90deg);
+}
+
+.panel-section.collapsed .section-body {
+  display: none;
+}
+
+.section-body {
+  padding: 12px 16px;
+  background: var(--bg-panel);
+}
+
+/* Controls */
+.control {
+  margin-bottom: 10px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.control-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 0 0 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control.modulated .control-label {
+  color: var(--mod);
+  font-weight: 500;
+}
+
+/* Slider */
+.control-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.control-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.control-slider::-webkit-slider-thumb:hover {
+  background: #8b7fff;
+  transform: scale(1.1);
+}
+
+.control-slider::-webkit-slider-thumb:active {
+  transform: scale(0.95);
+}
+
+.control.modulated .control-slider::-webkit-slider-thumb {
+  background: var(--mod);
+}
+
+.control-value {
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 11px;
+  flex: 0 0 45px;
+  text-align: right;
+  color: var(--text);
+}
+
+/* Beat Link Button */
+.beat-link-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.beat-link-btn:hover {
+  border-color: var(--mod);
+  color: var(--mod);
+}
+
+.beat-link-btn.active {
+  background: var(--mod);
+  border-color: var(--mod);
+  color: var(--bg-panel);
+}
+
+/* Select/Dropdown */
+.control-select {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+
+.control-select:hover {
+  border-color: var(--accent);
+}
+
+.control-select:focus {
+  border-color: var(--accent);
+  background: #1f1f34;
+}
+
+/* Button */
+.control-button {
+  padding: 6px 12px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.control-button:hover {
+  border-color: var(--accent);
+  background: rgba(107, 95, 255, 0.1);
+}
+
+.control-button:active {
+  transform: scale(0.98);
+}
+
+/* Audio Meters */
+.audio-meters {
+  margin-bottom: 12px;
+}
+
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.meter-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  flex: 0 0 40px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.meter-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.08s ease-out;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.meter-fill.level {
+  background: linear-gradient(to right, var(--audio), #ffdd00, var(--beat));
+}
+
+.meter-fill.bass {
+  background: linear-gradient(to right, #ff3366, #ff6699);
+}
+
+.meter-fill.mid {
+  background: linear-gradient(to right, #ffaa00, #ffcc00);
+}
+
+.meter-fill.high {
+  background: linear-gradient(to right, #00ff88, #00ffcc);
+}
+
+.meter-value {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 10px;
+  flex: 0 0 38px;
+  text-align: right;
+  color: var(--audio);
+}
+
+/* Beat Indicator */
+.beat-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-section);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.beat-pulse {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--beat);
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
+}
+
+.beat-pulse.active {
+  transform: scale(1.4);
+  opacity: 0.8;
+  box-shadow: 0 0 12px var(--beat);
+}
+
+.bpm-display {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--beat);
+  flex: 1;
+}
+
+.audio-source {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* Preset Selector */
+.preset-selector {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.preset-selector select {
+  flex: 1;
+}
+
+.preset-selector button {
+  flex: 0 0 auto;
+}
+
+/* Help Text */
+.help-text {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--bg-section);
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+/* Keyboard Hint */
+.keyboard-hint {
+  font-size: 9px;
+  color: var(--text-dim);
+  padding: 6px 12px;
+  background: var(--bg-section);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.keyboard-hint span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.keyboard-hint kbd {
+  background: var(--border);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 9px;
+}
+
+/* Animations */
+@keyframes pulse-beat {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.6; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Utility */
+.hidden { display: none !important; }
+.visible { display: block !important; }
