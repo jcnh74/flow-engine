@@ -4,10 +4,12 @@ import * as GS from './grass_shaders';
 import * as FS from './fractal_shaders';
 // 2D Fractal shaders removed
 import * as TRIPPY from './trippy_shaders';
+import { PRESET_GALLERY, getRandomPreset } from './presets';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
 import { MainControlPanel } from './ui/MainControlPanel';
 import { BeatLinkPopup } from './ui/BeatLinkPopup';
+import { PresetGallery } from './ui/PresetGallery';
 import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -1353,6 +1355,33 @@ const panel = new MainControlPanel({
   },
 });
 
+// Preset loading function with beat-link support
+function loadPresetFromGallery(preset: any) {
+  load(preset.params, true);
+  P.mode = preset.mode;
+  
+  // Apply beat links if present
+  if (preset.beatLinks && Array.isArray(preset.beatLinks)) {
+    modulationSystem.clearAllMappings();
+    for (const link of preset.beatLinks) {
+      const baseValue = P[link.target] || 0;
+      modulationSystem.addMapping(link.target, link.source as any, baseValue);
+    }
+  }
+  
+  if (isW()) wallDefaults();
+  reset();
+  updateFolders();
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+  panel.update();
+}
+
+// Create the preset gallery
+const presetGallery = new PresetGallery({
+  onLoadPreset: loadPresetFromGallery,
+  currentPreset: null
+});
+
 // Hide the legacy GUI by default (toggle with 'G' key)
 gui.domElement.style.display = 'none';
 P.stillMeshMul = 2;
@@ -1410,6 +1439,7 @@ addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.key === 'r') randomize(); 
   if (e.key === 'Escape') recover('Esc'); 
   if (e.key === 'g') gui.domElement.style.display = gui.domElement.style.display === 'none' ? '' : 'none';
+  if (e.key === 'p') presetGallery.toggle();
 });
 
 // ---------- boot + automation via URL params ----------
@@ -1460,7 +1490,17 @@ if (q.get('cmyk')) P.cmykSafe = true;
 if (q.get('light')) { P.lightPreset = Object.keys(LIGHT_PRESETS).find(k => k.toLowerCase().startsWith(q.get('light')!.toLowerCase())) ?? P.lightPreset; applyLightPreset(P.lightPreset); }
 if (q.get('nolight')) { P.lights.forEach((x: Light) => x.shadow = false); P.ao = 0; }
 applyPreset(); SMOOTH.forEach(k => L[k] = P[k]); rebuildStops(); buildPalette(); reset(); gui.controllersRecursive().forEach(c => c.updateDisplay());
-updateFolders(); requestAnimationFrame(tick);
+updateFolders();
+
+// Load startup preset if no URL params override
+if (!q.get('mode') && !rec) {
+  const startupPreset = PRESET_GALLERY.find(p => p.name === 'Deep House Wall') || PRESET_GALLERY[0];
+  loadPresetFromGallery(startupPreset);
+  presetGallery.setCurrentPreset(startupPreset.name);
+  log(`Loaded startup preset: ${startupPreset.name}`);
+}
+
+requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
 (window as any).engine = { P, renderStill, reset, recover, renderVideo };
