@@ -66,7 +66,6 @@ const modulationSystem = new ModulationSystem();
 const P: any = {
   mode: 'Wall Studio', seed: 1977, // Start on Wall Studio
   performanceMode: false, // Performance mode: fullscreen, no UI, no cursor
-  tonemapMode: 0, // 0=AgX, 1=ACES, 2=Neutral
   // Trippy mode params
   trippyMode: 0, trippySpeed: 1.0,
   // Tunnel params
@@ -105,7 +104,7 @@ const P: any = {
   background: '#020208', densityComp: true, smoothing: 0.08,
   fold: 0.55, warp: 0.6, layers: 2, layerSep: 0.45, detail: 2, meshRes: 512, scale3d: 0.6, gloss: 70, spec: 1.0, iridescence: 0.5, rim: 0.7, saturation: 1.3, brightness: 0.6, ao: 0.7, evolution3d: 0.08,
   orbitSpeed: 0.05, camDist: 4.2, fov: 40, lightAngle: 35, fog: 0.5,
-  lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, toneMap: 'ACES', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
+  lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, tonemapMode: 'AgX', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
   exportPreset: '4K UHD 3840×2160', orientation: 'landscape', width: 3840, height: 2160, dpi: 300, tiff: false, pdf: false, frameToExport: true,
 };
@@ -258,14 +257,44 @@ function bloomPass(T: Trails, pxScale: number) {
   pass(T.b1, T.b1t, k, 0); pass(T.b1t, T.b1, 0, k);
   pass(T.b1, T.b2t, 2 * k, 0); pass(T.b2t, T.b2, 0, k); pass(T.b2, T.b2t, k, 0); pass(T.b2t, T.b2, 0, k);
 }
+// HDR composite buffer for tonemap pass
+let hdrComp: FB | null = null;
+
 function composite(T: Trails, off: number[], vp: number[]) {
+  // Composite to HDR buffer (no tonemap yet)
+  if (!hdrComp || hdrComp.w !== canvas.width || hdrComp.h !== canvas.height) {
+    hdrComp = hdrFB(canvas.width, canvas.height);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+  gl.viewport(0, 0, hdrComp.w, hdrComp.h);
+  
   gl.disable(gl.BLEND); gl.useProgram(comp.p); const u = comp.u;
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(u.uT, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, T.b1.t); gl.uniform1i(u.uB1, 1);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.b2.t); gl.uniform1i(u.uB2, 2); gl.activeTexture(gl.TEXTURE0);
-  gl.uniform2f(u.uOff, off[0], off[1]); gl.uniform2f(u.uFull, T.w, T.h); gl.uniform1f(u.uExp, V.exposure); gl.uniform1f(u.uBloom, V.bloom);
-  const bg = hex(P.background); gl.uniform3f(u.uBg, bg[0], bg[1], bg[2]); gl.uniform1i(u.uCmyk, P.cmykSafe ? 1 : 0); { const a = hex(P.cycA), b = hex(P.cycB); gl.uniform1i(u.uCyc, isW() && P.cycOn ? 1 : 0); gl.uniform3f(u.uCycA, a[0], a[1], a[2]); gl.uniform3f(u.uCycB, b[0], b[1], b[2]); gl.uniform1f(u.uGrain, isW() ? P.grain : 0); gl.uniform1f(u.uGSeed, frame % 97); } gl.uniform1i(u.uTone, P.mode !== '2D flow' ? (P.toneMap === 'ACES' ? 1 : P.toneMap === 'Exponential' ? 0 : 2) : 0);
-  gl.viewport(vp[0], vp[1], vp[2], vp[3]); quad();
+  gl.uniform2f(u.uOff, off[0], off[1]); gl.uniform2f(u.uFull, T.w, T.h); gl.uniform1f(u.uExp, 1.0); gl.uniform1f(u.uBloom, V.bloom);
+  const bg = hex(P.background); gl.uniform3f(u.uBg, bg[0], bg[1], bg[2]); gl.uniform1i(u.uCmyk, P.cmykSafe ? 1 : 0); { const a = hex(P.cycA), b = hex(P.cycB); gl.uniform1i(u.uCyc, isW() && P.cycOn ? 1 : 0); gl.uniform3f(u.uCycA, a[0], a[1], a[2]); gl.uniform3f(u.uCycB, b[0], b[1], b[2]); gl.uniform1f(u.uGrain, isW() ? P.grain : 0); gl.uniform1f(u.uGSeed, frame % 97); } gl.uniform1i(u.uTone, 0); // No tonemap in composite
+  quad();
+}
+
+function tonemapPass(vp: number[]) {
+  // Final tonemap pass: exposure -> AgX/ACES/Neutral -> sRGB -> dither
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(vp[0], vp[1], vp[2], vp[3]);
+  gl.useProgram(tonemap.p);
+  
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, hdrComp!.t);
+  gl.uniform1i(tonemap.u.uSrc, 0);
+  gl.uniform1f(tonemap.u.uExposure, V.exposure);
+  
+  // tonemapMode: 0=AgX, 1=ACES, 2=Khronos Neutral
+  const tonemapModeVal = P.tonemapMode === 'ACES' ? 1 : P.tonemapMode === 'Khronos Neutral' ? 2 : 0;
+  gl.uniform1i(tonemap.u.uTonemapMode, tonemapModeVal);
+  gl.uniform1f(tonemap.u.uFrame, frame);
+  gl.uniform2f(tonemap.u.uResolution, canvas.width, canvas.height);
+  
+  quad();
 }
 let curAspect = 16 / 9;
 function gainNorm() { let g = Math.pow(1048576 / P.particles, 0.6); if (P.densityComp) g *= Math.max(1, Math.max(curAspect, 1 / curAspect) / (16 / 9)); return g; }
@@ -849,8 +878,10 @@ function tick(now: number) {
     simStep(frame, half, false, tSim, off2d); trailStep(T, [0, 0], [half[0] / V.zoom, half[1] / V.zoom], px); frame++;
   }
   if (P.mode !== '3D Fractal') bloomPass(T, px);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
+  // Composite to HDR, then tonemap to screen
   composite(T, [-frameRect[0], -frameRect[1]], frameRect);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
+  tonemapPass(frameRect);
   const what = P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
   const frameTime = dt * 1000; // ms
   hud.textContent = `${fps.toFixed(1)} fps (${frameTime.toFixed(1)}ms)  ·  ${what}  ·  time ${currentTime.toFixed(1)}s  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
@@ -1142,6 +1173,7 @@ sim_.add(P, 'driftX', -0.1, 0.1, 0.001).name('field drift X'); sim_.add(P, 'drif
 sim_.add(P, 'densityComp').name('density compensation');
 const look = gui.addFolder('Look');
 look.add(P, 'exposure', 0.4, 4, 0.01); look.add(P, 'bloom', 0, 2, 0.01).name('bloom strength'); look.add(P, 'bloomThreshold', 0, 0.8, 0.01);
+look.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral']).name('tonemap');
 look.addColor(P, 'background');
 const col = gui.addFolder('Palette');
 col.add(P, 'palette', Object.keys(PALETTES)).onChange((v: string) => { stops = PALETTES[v].map(s => [s[0], s[1]] as Stop); syncStops(); rebuildStops(); buildPalette(); });
@@ -1327,6 +1359,7 @@ const glF = gui.addFolder('Lighting'); glF.add(P, 'gLight', Object.keys(G_LIGHTS
 glF.add(P, 'gSunAz', 0, 360, 1).name('sun direction (°)'); glF.add(P, 'gSunEl', 1, 89, 0.5).name('sun height (°)'); glF.add(P, 'gSunI', 0, 3, 0.01).name('sun intensity'); glF.add(P, 'gSkyI', 0, 3, 0.01).name('sky fill');
 glF.add(P, 'gShSoft', 0.5, 6, 0.1).name('shadow softness'); glF.add(P, 'gTrans', 0, 3, 0.01).name('translucency / backlight'); glF.add(P, 'gSpec', 0, 2, 0.01).name('blade sheen'); glF.add(P, 'gAO', 0, 1, 0.01).name('root darkness (min AO)'); glF.add(P, 'gHaze', 0, 4, 0.01).name('haze');
 glF.add(P, 'exposure', 0.2, 4, 0.01).name('exposure');
+glF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral']).name('tonemap');
 const camF = gui.addFolder('Camera'); camF.add(P, 'gcView', Object.keys(G_VIEWS)).name('preset view').onChange((v: string) => { applyGView(v); gui.controllersRecursive().forEach(c => c.updateDisplay()); });
 camF.add(P, 'gcHeight', 0, 3, 0.01).name('look-at height (m)'); camF.add(P, 'gcDist', 0.3, 7, 0.01).name('distance (m)'); camF.add(P, 'gcPitch', -2, 89, 0.5).name('angle / pitch (°)'); camF.add(P, 'gcYaw', -180, 180, 0.5).name('turn / yaw (°)');
 camF.add(P, 'gcFov', 15, 90, 0.5).name('field of view (° vertical)'); camF.add(P, 'gcAuto').name('auto orbit'); camF.add(P, 'gcAutoSpd', -20, 20, 0.1).name('orbit speed (°/s)');
@@ -1370,6 +1403,7 @@ wCamF.add(P, 'wcYaw', -50, 50, 0.5).name('orbit (deg)'); wCamF.add(P, 'wcPitch',
 wCamF.add(P, 'wcPanX', -2, 2, 0.01).name('pan X'); wCamF.add(P, 'wcPanY', -2, 2, 0.01).name('pan Y'); wCamF.add(P, 'wcAuto').name('gentle auto orbit');
 wCamF.add({ r: () => { applyWView('Front'); wsU(); } }, 'r').name('reset camera');
 wCamF.add(P, 'cycOn').name('cyclorama'); wCamF.addColor(P, 'cycA').name('cyc top'); wCamF.addColor(P, 'cycB').name('cyc bottom'); wCamF.add(P, 'grain', 0, 0.1, 0.001).name('film grain');
+wCamF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral']).name('tonemap');
 function updateFolders() { 
   const w = isW(), fr = P.mode === '3D Fractal';
   // Fixed: pre (Presets) folder should always be visible like cf and ex

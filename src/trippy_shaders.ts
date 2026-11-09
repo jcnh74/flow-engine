@@ -88,11 +88,11 @@ vec3 renderTunnel(vec2 uv) {
   float speed = uSpeed * (1.0 + uKickEnv * 2.0);
   float z = uTime * speed + r;
   
-  // Apply twist
-  a += z * uTunnelTwist;
+  // Apply twist (hat-driven jitter)
+  a += z * uTunnelTwist * (1.0 + uHatEnv * 0.5);
   
-  // Domain warp
-  r += sin(z * 5.0) * uTunnelWarp * 0.1;
+  // Domain warp (bass-driven)
+  r += sin(z * 5.0) * uTunnelWarp * 0.1 * (1.0 + uBassEnv * 0.3);
   
   // Tunnel layers with controllable rings
   float tunnel = mod(z * uTunnelRings * 0.25, 1.0);
@@ -103,13 +103,13 @@ vec3 renderTunnel(vec2 uv) {
   float seg = mod(a / (3.14159 * 2.0) * segments + z * 0.5, 1.0);
   float pattern = smoothstep(0.4, 0.6, seg);
   
-  // Color from palette
+  // Color from palette - linear HDR base
   vec3 col = getPaletteColor(z * 0.1 + r * 0.3);
-  col *= (0.5 + rings * 0.5 + pattern * 0.3);
+  col *= (0.8 + rings * 1.2 + pattern * 0.8);
   
-  // Glow at center
-  float glow = 1.0 / (1.0 + r * r * 4.0);
-  col += glow * getPaletteColor(uTime * 0.1) * 0.5;
+  // HDR glow at center (2.0-8.0 emissive range)
+  float glow = 1.0 / (1.0 + r * r * 2.0);
+  col += glow * getPaletteColor(uTime * 0.1) * (2.0 + uOnset * 6.0 + uKickEnv * 3.0);
   
   return col;
 }
@@ -138,17 +138,17 @@ vec3 renderKaleido(vec2 uv) {
   // Reconstruct position
   vec2 kp = vec2(cos(a), sin(a)) * r;
   
-  // Animated pattern with feedback
-  float fb = uKaleidoFeedback;
+  // Animated pattern with feedback (mid-driven modulation)
+  float fb = uKaleidoFeedback * (1.0 + uMidEnv * 0.3);
   float pattern = sin(kp.x * 10.0 * fb + uTime) * sin(kp.y * 10.0 * fb - uTime * 0.7);
   pattern += sin(length(kp) * 8.0 * fb - uTime * 2.0) * 0.5;
   pattern = pattern * 0.5 + 0.5;
   
-  // Color
+  // Color - linear HDR with emissive highlights
   vec3 col = getPaletteColor(pattern * 0.5 + uTime * 0.05 + r * 0.2);
   
-  // Pulse on kick (smoothed envelope)
-  col *= 1.0 + uKickEnv * 0.5 + uOnset * 0.3;
+  // HDR pulse on kick (2-6 range for emissive)
+  col *= (1.5 + uKickEnv * 2.0 + uOnset * 4.5 + uHighEnv * 1.0);
   
   return col;
 }
@@ -180,11 +180,14 @@ vec3 renderPlasma(vec2 uv) {
   // Apply contrast
   plasma = pow(plasma, 1.0 / uPlasmaContrast);
   
-  // Bass modulation
-  plasma += uBassLevel * 0.2;
+  // Bass modulation using envelope
+  plasma += uBassEnv * 0.3;
   
-  // Color from palette
+  // Color from palette - linear HDR
   vec3 col = getPaletteColor(plasma + uTime * 0.02);
+  
+  // HDR boost (2-5 range, driven by mid/high)
+  col *= (1.8 + uMidEnv * 1.5 + uHighEnv * 1.7);
   
   return col;
 }
@@ -212,20 +215,22 @@ vec3 renderMorph(vec2 uv) {
     field += 1.0 / max(dist, 0.1);
   }
   
-  field *= 1.0 + uBassEnv * 0.5;
+  field *= 1.0 + uBassEnv * 0.8;
   
   // Smoothness control
   float threshold = 2.0 + uMorphSmooth * 2.0;
   float shape = smoothstep(threshold, threshold + 1.0, field);
   float edge = smoothstep(threshold + 0.5, threshold + 0.7, field);
   
-  // Color
+  // Color - linear HDR
   vec3 col = getPaletteColor(field * 0.1 + uTime * 0.05);
-  col = mix(col * 0.2, col, shape);
-  col += edge * getPaletteColor(uTime * 0.1) * uMorphGlow;
+  col = mix(col * 0.3, col * 1.5, shape);
   
-  // Kick pulse (smoothed envelope)
-  col *= 1.0 + uKickEnv * 0.3 + uOnset * 0.5;
+  // HDR edge glow (emissive 2-8 range)
+  col += edge * getPaletteColor(uTime * 0.1) * uMorphGlow * (2.0 + uOnset * 6.0);
+  
+  // Kick pulse (HDR boost)
+  col *= (1.2 + uKickEnv * 1.5 + uSnareEnv * 0.8);
   
   return col;
 }

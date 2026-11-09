@@ -92,12 +92,12 @@ void main(){ float w[5]=float[5](.227,.1945,.1216,.054,.0162); vec3 c=texture(uT
  for(int i=1;i<5;i++){ vec2 d=uDir*float(i); c+=(texture(uT,vUv+d).rgb+texture(uT,vUv-d).rgb)*w[i]; } o=vec4(c,1);}`;
 export const COMP_FS = `#version 300 es
 precision highp float; uniform sampler2D uT,uB1,uB2; uniform vec2 uOff,uFull; uniform float uExp,uBloom; uniform vec3 uBg; uniform int uCmyk,uFlip,uTone,uCyc; uniform vec3 uCycA,uCycB; uniform float uGrain,uGSeed;
-vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.); }
-vec3 filmic(vec3 x){ float L=dot(x,vec3(.2126,.7152,.0722)); vec3 c=x/(1.+L); float w=smoothstep(.6,4.,L); return clamp(mix(c,vec3(L/(1.+L)),w*.6)*1.15,0.,1.); }
 out vec4 o;
 void main(){
   vec2 uv=(gl_FragCoord.xy+uOff)/uFull;
-  vec3 r=texture(uT,uv).rgb; if(any(isnan(r))) r=vec3(0); vec3 x=max(r,0.)*uExp; vec3 c=uTone==1?aces(x):uTone==2?filmic(x):1.-exp(-x);
+  vec3 r=texture(uT,uv).rgb; if(any(isnan(r))) r=vec3(0); 
+  // No tonemap here - keep HDR, will tonemap in final pass
+  vec3 c=max(r,0.);
   vec3 bl=texture(uB1,uv).rgb*.6+texture(uB2,uv).rgb*.8; if(any(isnan(bl))) bl=vec3(0); c+=max(bl,0.)*uBloom;
   if(uCyc==1){ float a=clamp(texture(uT,uv).a,0.,1.); vec2 q=uv-.5; vec3 bg=mix(uCycB,uCycA,clamp(uv.y*1.1,0.,1.))*(1.-dot(q,q)*.35); c=mix(bg,c,a); }
   else c=clamp(uBg+c,0.,1.);
