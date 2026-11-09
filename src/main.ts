@@ -4,6 +4,7 @@ import * as GS from './grass_shaders';
 import * as FS from './fractal_shaders';
 // 2D Fractal shaders removed
 import * as TRIPPY from './trippy_shaders';
+import * as TONEMAP from './tonemap_shaders';
 import { PRESET_GALLERY, getRandomPreset } from './presets';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
@@ -12,6 +13,7 @@ import { RemoteSync } from './remote';
 import { MainControlPanel } from './ui/MainControlPanel';
 import { BeatLinkPopup } from './ui/BeatLinkPopup';
 import { PresetGallery } from './ui/PresetGallery';
+import { hexToLinear, srgbToLinear } from './render-graph';
 import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -36,7 +38,13 @@ const PALETTES: Record<string, Stop[]> = {
   'Neon Bloom': [[0, '#ff00a8'], [0.33, '#7a00ff'], [0.66, '#00e5ff'], [1, '#c6ff00']],
   'Pastel Data': [[0, '#ffadad'], [0.25, '#ffd6a5'], [0.5, '#caffbf'], [0.75, '#9bf6ff'], [1, '#bdb2ff']],
 };
+// Convert hex to sRGB [0-1]
 const hex = (h: string) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+// Convert hex to linear (for HDR workflow)
+const hexLinear = (h: string) => {
+  const srgb = hex(h);
+  return [srgbToLinear(srgb[0]), srgbToLinear(srgb[1]), srgbToLinear(srgb[2])];
+};
 function hueRot(c: number[], deg: number) { // YIQ rotation
   const a = deg * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
   const y = .299 * c[0] + .587 * c[1] + .114 * c[2], i = .596 * c[0] - .274 * c[1] - .322 * c[2], q = .211 * c[0] - .523 * c[1] + .312 * c[2];
@@ -58,6 +66,7 @@ const modulationSystem = new ModulationSystem();
 const P: any = {
   mode: 'Wall Studio', seed: 1977, // Start on Wall Studio
   performanceMode: false, // Performance mode: fullscreen, no UI, no cursor
+  tonemapMode: 0, // 0=AgX, 1=ACES, 2=Neutral
   // Trippy mode params
   trippyMode: 0, trippySpeed: 1.0,
   // Tunnel params
@@ -162,6 +171,7 @@ const sim = prog(S.QUAD_VS, S.SIM_FS), draw = prog(S.DRAW_VS, S.DRAW_FS), fade =
 const fractal = prog(FS.FRACTAL_VS, FS.FRACTAL_FS);
 // fractal2d shader removed
 const trippy = prog(TRIPPY.trippyVert, TRIPPY.trippyFrag);
+const tonemap = prog(TONEMAP.TONEMAP_VS, TONEMAP.TONEMAP_FS);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -617,7 +627,10 @@ const sphereHooks = {
 };
 
 // ---------- preview ----------
-let frame = 0, trails: Trails | undefined, frameRect = [0, 0, 1, 1], previewAspect = 16 / 9;
+// Timing state (real time from performance.now())
+let startTime = 0, currentTime = 0, dt = 0, lastFrameTime = 0;
+let frame = 0; // Frame counter (for compatibility, but timing uses currentTime)
+let trails: Trails | undefined, frameRect = [0, 0, 1, 1], previewAspect = 16 / 9;
 let tSim = 0, off2d = [0, 0], t3 = 0, tOrbit = 0;
 function layout() {
   const dpr = Math.min(2, devicePixelRatio || 1);
@@ -723,15 +736,22 @@ function renderTrippy(T: Trails, modeIndex: number) {
   gl.useProgram(trippy.p);
   
   const u = trippy.u;
-  gl.uniform1f(u.uTime, frame * 0.016);
+  gl.uniform1f(u.uTime, currentTime);
   gl.uniform1i(u.uMode, modeIndex);
   gl.uniform2f(u.uResolution, T.w, T.h);
-  gl.uniform1f(u.uKickStrength, audioAnalyzer.state.beatDetected ? 1.0 : 0.0);
-  gl.uniform1f(u.uBassLevel, audioAnalyzer.state.bass);
+  // Smoothed audio envelopes
+  if (u.uKickEnv !== undefined) gl.uniform1f(u.uKickEnv, audioAnalyzer.state.kickEnv);
+  if (u.uSnareEnv !== undefined) gl.uniform1f(u.uSnareEnv, audioAnalyzer.state.snareEnv);
+  if (u.uHatEnv !== undefined) gl.uniform1f(u.uHatEnv, audioAnalyzer.state.hatEnv);
+  if (u.uBassEnv !== undefined) gl.uniform1f(u.uBassEnv, audioAnalyzer.state.bassEnv);
+  if (u.uMidEnv !== undefined) gl.uniform1f(u.uMidEnv, audioAnalyzer.state.midEnv);
+  if (u.uHighEnv !== undefined) gl.uniform1f(u.uHighEnv, audioAnalyzer.state.highEnv);
+  if (u.uOnset !== undefined) gl.uniform1f(u.uOnset, audioAnalyzer.state.onset);
   gl.uniform1f(u.uSpeed, L.trippySpeed);
-  const c1 = hex(stops[0][1]);
-  const c2 = hex(stops[Math.min(1, stops.length-1)][1]);
-  const c3 = hex(stops[Math.min(2, stops.length-1)][1]);
+  // Use linear colors for HDR
+  const c1 = hexLinear(stops[0][1]);
+  const c2 = hexLinear(stops[Math.min(1, stops.length-1)][1]);
+  const c3 = hexLinear(stops[Math.min(2, stops.length-1)][1]);
   gl.uniform3f(u.uColor1, c1[0], c1[1], c1[2]);
   gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
   gl.uniform3f(u.uColor3, c3[0], c3[1], c3[2]);
@@ -755,10 +775,10 @@ function renderTrippy(T: Trails, modeIndex: number) {
   if (u.uMorphRate !== undefined) gl.uniform1f(u.uMorphRate, L.morphRate);
   if (u.uMorphGlow !== undefined) gl.uniform1f(u.uMorphGlow, L.morphGlow);
   
-  // Pass palette
+  // Pass palette (linear colors for HDR)
   const pal = new Float32Array(8 * 3);
   for (let i = 0; i < Math.min(8, stops.length); i++) {
-    const c = hex(stops[i][1]);
+    const c = hexLinear(stops[i][1]);
     pal[i * 3] = c[0];
     pal[i * 3 + 1] = c[1];
     pal[i * 3 + 2] = c[2];
@@ -772,7 +792,19 @@ function renderTrippy(T: Trails, modeIndex: number) {
 
 function tick(now: number) {
   requestAnimationFrame(tick); if (busy || gl.isContextLost()) return;
-  const dt = now - last; last = now; fpsAcc += dt; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
+  
+  // Initialize start time on first frame
+  if (startTime === 0) startTime = now;
+  
+  // Update timing (real seconds, not frame*0.016)
+  const deltaNow = now - last;
+  last = now;
+  dt = deltaNow / 1000; // Convert to seconds
+  currentTime = (now - startTime) / 1000; // Total elapsed seconds
+  frame++; // Frame counter (for compatibility)
+  
+  // FPS tracking
+  fpsAcc += deltaNow; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
   
   // Update audio analysis
   audioAnalyzer.update();
@@ -787,16 +819,16 @@ function tick(now: number) {
   const half = worldHalf(previewAspect);
   const T = trails!; const px = Math.min(T.w, T.h) / 1080;
   if (P.mode === 'Tunnel') {
-    if (!P.paused) frame++;
+    if (!P.paused) { t3 += dt * V.evolution3d; tOrbit += dt * V.orbitSpeed; }
     renderTrippy(T, 0);
   } else if (P.mode === 'Kaleido') {
-    if (!P.paused) frame++;
+    if (!P.paused) { t3 += dt * V.evolution3d; tOrbit += dt * V.orbitSpeed; }
     renderTrippy(T, 1);
   } else if (P.mode === 'Plasma') {
-    if (!P.paused) frame++;
+    if (!P.paused) { t3 += dt * V.evolution3d; tOrbit += dt * V.orbitSpeed; }
     renderTrippy(T, 2);
   } else if (P.mode === 'Morph') {
-    if (!P.paused) frame++;
+    if (!P.paused) { t3 += dt * V.orbitSpeed; }
     renderTrippy(T, 3);
   } else if (P.mode === '3D Fractal') {
     if (!P.paused) frame++;
@@ -820,7 +852,8 @@ function tick(now: number) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
   composite(T, [-frameRect[0], -frameRect[1]], frameRect);
   const what = P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
-  hud.textContent = `${fps.toFixed(1)} fps  ·  ${what}  ·  frame ${frame}  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
+  const frameTime = dt * 1000; // ms
+  hud.textContent = `${fps.toFixed(1)} fps (${frameTime.toFixed(1)}ms)  ·  ${what}  ·  time ${currentTime.toFixed(1)}s  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
 }
 function log(m: string) { fetch('/api/log', { method: 'POST', body: m }).catch(() => { }); }
 setInterval(() => !busy && log(`fps=${fps.toFixed(1)} mode=${P.mode} particles=${isLS() ? sN : P.mode === 'Particle Fabric' ? P.pCount : P.particles} style=${P.lsStyle} fabric=${P.lsFabric} mesh=${mesh.rx}x${mesh.ry}x${P.layers} preview=${trails?.w}x${trails?.h} frame=${frame}`), 3000);

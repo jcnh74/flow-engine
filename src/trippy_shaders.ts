@@ -20,8 +20,14 @@ out vec4 fragColor;
 uniform float uTime;
 uniform int uMode; // 0=Tunnel, 1=Kaleido, 2=Plasma, 3=Morph
 uniform vec2 uResolution;
-uniform float uKickStrength;
-uniform float uBassLevel;
+// Smoothed audio envelopes
+uniform float uKickEnv;
+uniform float uSnareEnv;
+uniform float uHatEnv;
+uniform float uBassEnv;
+uniform float uMidEnv;
+uniform float uHighEnv;
+uniform float uOnset;
 uniform float uSpeed;
 uniform vec3 uColor1;
 uniform vec3 uColor2;
@@ -78,8 +84,8 @@ vec3 renderTunnel(vec2 uv) {
   float r = length(p);
   float a = atan(p.y, p.x);
   
-  // Tunnel depth (kick-driven speed)
-  float speed = uSpeed * (1.0 + uKickStrength * 2.0);
+  // Tunnel depth (kick-driven speed using smoothed envelope)
+  float speed = uSpeed * (1.0 + uKickEnv * 2.0);
   float z = uTime * speed + r;
   
   // Apply twist
@@ -141,8 +147,8 @@ vec3 renderKaleido(vec2 uv) {
   // Color
   vec3 col = getPaletteColor(pattern * 0.5 + uTime * 0.05 + r * 0.2);
   
-  // Pulse on kick
-  col *= 1.0 + uKickStrength * 0.5;
+  // Pulse on kick (smoothed envelope)
+  col *= 1.0 + uKickEnv * 0.5 + uOnset * 0.3;
   
   return col;
 }
@@ -206,7 +212,7 @@ vec3 renderMorph(vec2 uv) {
     field += 1.0 / max(dist, 0.1);
   }
   
-  field *= 1.0 + uBassLevel * 0.5;
+  field *= 1.0 + uBassEnv * 0.5;
   
   // Smoothness control
   float threshold = 2.0 + uMorphSmooth * 2.0;
@@ -218,8 +224,8 @@ vec3 renderMorph(vec2 uv) {
   col = mix(col * 0.2, col, shape);
   col += edge * getPaletteColor(uTime * 0.1) * uMorphGlow;
   
-  // Kick pulse
-  col *= 1.0 + uKickStrength * 0.3;
+  // Kick pulse (smoothed envelope)
+  col *= 1.0 + uKickEnv * 0.3 + uOnset * 0.5;
   
   return col;
 }
