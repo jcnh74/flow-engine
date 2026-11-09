@@ -113,6 +113,8 @@ const P: any = {
   lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, tonemapMode: 'AgX', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
   // Post FX (Phase 1)
   bloomStrength: 0.15, bloomThreshold2: 0.8, kickBloomAmount: 0.3, caStrength: 0.0, distortion: 0.0,
+  // Quality governor (Issue 8)
+  resolutionScale: 1.0, autoQuality: false,
   lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.0, vibrance: 0.0,
   vignetteStrength: 0.0, vignetteRadius: 1.2, grainStrength: 0.0,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
@@ -759,6 +761,12 @@ function layout() {
   const cw = canvas.width, ch = canvas.height;
   previewAspect = Math.min(8, Math.max(1 / 8, P.frameToExport && P.width > 0 && P.height > 0 ? P.width / P.height : cw / ch));
   let w = cw, h = Math.round(cw / previewAspect); if (h > ch) { h = ch; w = Math.round(ch * previewAspect); }
+  
+  // Apply resolution scale (Quality governor - Issue 8)
+  const scale = Math.max(0.5, Math.min(1.0, P.resolutionScale));
+  w = Math.floor(w * scale);
+  h = Math.floor(h * scale);
+  
   w = Math.max(64, w); h = Math.max(64, h);
   frameRect = [Math.floor((cw - w) / 2), Math.floor((ch - h) / 2), w, h];
   freeTrails(trails); trails = makeTrails(w, h);

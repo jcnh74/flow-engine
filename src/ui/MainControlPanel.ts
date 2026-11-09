@@ -67,6 +67,7 @@ export class MainControlPanel {
     html += this.buildSection('Scene', [
       this.buildSelect('mode', 'Mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
       this.buildSlider('seed', 'Seed', 0, 999999, 1),
+      this.buildSlider('resolutionScale', 'Quality / Resolution', 0.5, 1.0, 0.05, false),
       this.buildButton('randomize', '🎲 Randomize', 'randomize'),
       this.buildButton('reset', '⛑ Reset', 'reset'),
       this.buildCheckbox('paused', 'Paused')
