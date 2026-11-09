@@ -59,7 +59,7 @@ export class MainControlPanel {
 
     // Scene section (always visible)
     html += this.buildSection('Scene', [
-      this.buildSelect('mode', 'Mode', ['Wall Studio', '3D Fractal', '2D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
+      this.buildSelect('mode', 'Mode', ['Wall Studio', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
       this.buildSlider('seed', 'Seed', 0, 999999, 1),
       this.buildButton('randomize', '🎲 Randomize', 'randomize'),
       this.buildButton('reset', '⛑ Reset', 'reset'),
@@ -67,7 +67,7 @@ export class MainControlPanel {
     ]);
 
     // Mode-specific sections
-    if (mode === '2D Fractal') {
+    if (false && mode === '2D Fractal') { // Removed
       html += this.buildSection('Fractal Type', [
         this.buildSelect('fr2Type', 'Type', { 'Mandelbrot': 0, 'Julia': 1, 'Burning Ship': 2, 'Newton': 3, 'Phoenix': 4 }),
         this.buildSlider('fr2MaxIter', 'Iterations', 32, 512, 1, true),
@@ -220,7 +220,7 @@ export class MainControlPanel {
     html += this.buildColorSection(mode);
 
     // Unified Lighting section (3D modes only)
-    const is2D = mode === '2D flow' || mode === '2D Fractal';
+    const is2D = mode === '2D flow';
     if (!is2D) {
       html += this.buildLightingSection(mode);
     }
@@ -511,38 +511,20 @@ export class MainControlPanel {
         // Apply per-type defaults for 3D fractals
         if (param === 'frType') {
           const P = this.config.params;
-          if (value === 0) { // Mandelbulb (explicit, not else)
+          // Auto-rotation for all fractals
+          P.frRotSpeed = 0.15;
+          
+          if (value === 0) { // Mandelbulb
             P.frIter = 12; P.frPower = 8; P.frCamDist = 2.5;
           } else if (value === 1) { // Mandelbox
             P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
           } else if (value === 2) { // Menger Sponge
             P.frIter = 5; P.frCamDist = 4;
-          } else if (value === 3) { // Sierpinski
-            P.frIter = 6; P.frCamDist = 3.5;
-          } else if (value === 4) { // Kaleidoscopic IFS
-            P.frIter = 10; P.frCamDist = 5;
-          } else if (value === 5) { // Quaternion Julia
-            P.frIter = 16; P.frCamDist = 3;
           }
           this.syncDisplayedValues();
         }
         
-        // Apply per-type defaults for 2D fractals
-        if (param === 'fr2Type') {
-          const P = this.config.params;
-          if (value === 0) { // Mandelbrot (explicit)
-            P.fr2CenterX = -0.5; P.fr2CenterY = 0; P.fr2Zoom = 1.5;
-          } else if (value === 1) { // Julia Set
-            P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
-          } else if (value === 2) { // Burning Ship - full ship view
-            P.fr2CenterX = -0.4; P.fr2CenterY = -0.6; P.fr2Zoom = 1.2;
-          } else if (value === 3) { // Newton
-            P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.5;
-          } else if (value === 4) { // Phoenix
-            P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
-          }
-          this.syncDisplayedValues();
-        }
+        // 2D Fractal removed
         
         if (param === 'mode' && this.config.onModeChange) {
           this.config.onModeChange();

@@ -1016,7 +1016,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', '3D Fractal', '2D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
+gui.add(P, 'mode', ['Wall Studio', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
 gui.add({ r() { recover('button'); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -1214,18 +1214,15 @@ modF.add(modState, 'mappingCount').name('Active mappings').listen().disable();
 const frF = gui.addFolder('3D Fractal');
 
 const fractalDefaults = (type: number) => {
-  if (type === 0) { // Mandelbulb (MUST be explicit, not 'else')
+  // Auto-rotation for all fractals
+  P.frRotSpeed = 0.15;
+  
+  if (type === 0) { // Mandelbulb
     P.frIter = 12; P.frPower = 8; P.frCamDist = 2.5;
   } else if (type === 1) { // Mandelbox
     P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
   } else if (type === 2) { // Menger Sponge
     P.frIter = 5; P.frCamDist = 4;
-  } else if (type === 3) { // Sierpinski
-    P.frIter = 6; P.frCamDist = 3.5;
-  } else if (type === 4) { // Kaleidoscopic IFS
-    P.frIter = 10; P.frCamDist = 5;
-  } else if (type === 5) { // Quaternion Julia
-    P.frIter = 16; P.frCamDist = 3;
   }
   gui.controllersRecursive().forEach(c => c.updateDisplay());
 };
@@ -1233,10 +1230,7 @@ const fractalDefaults = (type: number) => {
 frF.add(P, 'frType', { 
   'Mandelbulb': 0, 
   'Mandelbox': 1,
-  'Menger Sponge': 2,
-  'Sierpinski': 3,
-  'Kaleidoscopic IFS': 4,
-  'Quaternion Julia': 5
+  'Menger Sponge': 2
 }).name('Fractal type').onChange(fractalDefaults);
 frF.add(P, 'frPower', 2, 16, 0.1).name('Power (Mandelbulb)');
 frF.add(P, 'frIter', 4, 24, 1).name('Max iterations');
@@ -1264,45 +1258,7 @@ frAdv.add(P, 'frMaxSteps', 64, 256, 1).name('Max ray steps');
 frAdv.add(P, 'frMaxDist', 10, 50, 1).name('Max ray distance');
 frAdv.add(P, 'frSurfDist', 0.1, 2, 0.01).name('Surface detail');
 
-// 2D Fractal folder
-const fr2F = gui.addFolder('2D Fractal');
-
-const fractal2DDefaults = (type: number) => {
-  if (type === 0) { // Mandelbrot (explicit)
-    P.fr2CenterX = -0.5; P.fr2CenterY = 0; P.fr2Zoom = 1.5;
-  } else if (type === 1) { // Julia Set
-    P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
-  } else if (type === 2) { // Burning Ship - full ship view
-    P.fr2CenterX = -0.4; P.fr2CenterY = -0.6; P.fr2Zoom = 1.2;
-  } else if (type === 3) { // Newton
-    P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.5;
-  } else if (type === 4) { // Phoenix
-    P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
-  }
-  gui.controllersRecursive().forEach(c => c.updateDisplay());
-};
-
-fr2F.add(P, 'fr2Type', { 
-  'Mandelbrot': 0, 
-  'Julia Set': 1, 
-  'Burning Ship': 2, 
-  'Newton': 3,
-  'Phoenix': 4
-}).name('Fractal type').onChange(fractal2DDefaults);
-fr2F.add(P, 'fr2MaxIter', 64, 1000, 1).name('Max iterations');
-fr2F.add(P, 'fr2Zoom', 0.5, 10000, 0.1).name('Zoom');
-fr2F.add(P, 'fr2CenterX', -2, 2, 0.01).name('Center X');
-fr2F.add(P, 'fr2CenterY', -2, 2, 0.01).name('Center Y');
-fr2F.add(P, 'fr2Rotation', -180, 180, 1).name('Rotation');
-fr2F.add(P, 'fr2JuliaCX', -1.5, 1.5, 0.01).name('Julia C (real)');
-fr2F.add(P, 'fr2JuliaCY', -1.5, 1.5, 0.01).name('Julia C (imag)');
-fr2F.add(P, 'fr2JuliaOrbit').name('Animate Julia C');
-fr2F.add(P, 'fr2OrbitSpeed', 0, 1, 0.01).name('Orbit speed');
-fr2F.add(P, 'fr2AutoZoom').name('Auto-zoom');
-fr2F.add(P, 'fr2ZoomSpeed', 0, 1, 0.01).name('Zoom speed');
-fr2F.add(P, 'fr2PaletteCycle', 0, 10, 0.1).name('Palette cycling');
-
-const gF = gui.addFolder('Grass'); gF.add(P, 'gOn').name('grass on (off = colored plane)'); gF.add(P, 'gDensity', 128, 768, 16).name('density (blades per side)');
+const gF = gui.addFolder('Grass (deprecated)'); gF.add(P, 'gOn').name('grass on (off = colored plane)'); gF.add(P, 'gDensity', 128, 768, 16).name('density (blades per side)');
 gF.add(P, 'gH', 0.05, 1.2, 0.01).name('height (m)'); gF.add(P, 'gHR', 0, 1, 0.01).name('height randomness'); gF.add(P, 'gW', 0.003, 0.04, 0.001).name('blade width (m)');
 gF.add(P, 'gCurv', 0, 1.5, 0.01).name('curvature'); gF.add(P, 'gStiff', 0.2, 3, 0.01).name('stiffness'); gF.add(P, 'gLean', 0, 1, 0.01).name('lean randomness'); gF.add(P, 'gTwist', 0, 2, 0.01).name('twist');
 gF.add(P, 'gClump', 0, 1, 0.01).name('clumping'); gF.add(P, 'gSeg', 2, 8, 1).name('segments'); gF.add(P, 'gTerrA', 0, 1, 0.01).name('terrain roll (m)');
@@ -1333,18 +1289,16 @@ wCamF.add(P, 'wcPanX', -2, 2, 0.01).name('pan X'); wCamF.add(P, 'wcPanY', -2, 2,
 wCamF.add({ r: () => { applyWView('Front'); wsU(); } }, 'r').name('reset camera');
 wCamF.add(P, 'cycOn').name('cyclorama'); wCamF.addColor(P, 'cycA').name('cyc top'); wCamF.addColor(P, 'cycB').name('cyc bottom'); wCamF.add(P, 'grain', 0, 0.1, 0.001).name('film grain');
 function updateFolders() { 
-  const g = P.mode === 'Grass Field', w = isW(), fr = P.mode === '3D Fractal', fr2 = P.mode === '2D Fractal';
+  const w = isW(), fr = P.mode === '3D Fractal';
   // Fixed: pre (Presets) folder should always be visible like cf and ex
-  for (const f of [f3, gf, lsf, pf, lf, sim_, look, col]) f.show(!g && !w && !fr && !fr2);
-  for (const f of [gF, wF, glF, camF]) f.show(g);
+  for (const f of [f3, gf, lsf, pf, lf, sim_, look, col]) f.show(!w && !fr);
   for (const f of [wMatF, wObjF, wCamF]) f.show(w);
   frF.show(fr);
-  fr2F.show(fr2);
   if (w) { f3.show(true); lf.show(true); f3.title('Wall'); lf.title('Lighting'); } 
-  else if (!fr && !fr2) { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); }
+  else if (!fr) { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); }
   cf.show(true); pre.show(true); ex.show(true); // Always show Color, Presets, Export
   audioF.show(true); modF.show(true); // Always show Audio and Modulation
-  if (g || w) cf.close();
+  if (w) cf.close();
 }
 
 // Create the new MainControlPanel
