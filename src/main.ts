@@ -1193,6 +1193,33 @@ const panel = new MainControlPanel({
   onModeChange: () => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); },
   onReset: () => recover('button'),
   onRandomize: randomize,
+  onSavePreset: () => {
+    const name = prompt('Preset name', 'my-preset');
+    if (name) {
+      const all = JSON.parse(localStorage.getItem('flow-presets') || '{}');
+      all[name] = snapshot();
+      localStorage.setItem('flow-presets', JSON.stringify(all));
+    }
+  },
+  onExportJSON: () => {
+    const name = prompt('Export filename', 'flow-preset') || 'flow-preset';
+    const b = new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = name + '.json';
+    a.click();
+  },
+  onImportJSON: () => {
+    const i = document.createElement('input');
+    i.type = 'file';
+    i.accept = '.json';
+    i.onchange = async () => {
+      if (i.files && i.files[0]) {
+        load(JSON.parse(await i.files[0].text()));
+      }
+    };
+    i.click();
+  },
 });
 
 // Hide the legacy GUI by default (toggle with 'G' key)

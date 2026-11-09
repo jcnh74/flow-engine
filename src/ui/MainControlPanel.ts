@@ -10,6 +10,9 @@ interface ControlConfig {
   onModeChange?: () => void;
   onReset?: () => void;
   onRandomize?: () => void;
+  onSavePreset?: () => void;
+  onExportJSON?: () => void;
+  onImportJSON?: () => void;
 }
 
 export class MainControlPanel {
@@ -346,6 +349,12 @@ export class MainControlPanel {
         this.config.onRandomize();
       } else if (action === 'reset' && this.config.onReset) {
         this.config.onReset();
+      } else if (action === 'save-preset' && this.config.onSavePreset) {
+        this.config.onSavePreset();
+      } else if (action === 'export-json' && this.config.onExportJSON) {
+        this.config.onExportJSON();
+      } else if (action === 'import-json' && this.config.onImportJSON) {
+        this.config.onImportJSON();
       }
     });
 
