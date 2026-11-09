@@ -1016,7 +1016,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', '3D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
+gui.add(P, 'mode', ['Wall Studio', '3D Fractal', '2D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
 gui.add({ r() { recover('button'); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -1263,6 +1263,29 @@ const frAdv = frF.addFolder('Advanced'); frAdv.close();
 frAdv.add(P, 'frMaxSteps', 64, 256, 1).name('Max ray steps');
 frAdv.add(P, 'frMaxDist', 10, 50, 1).name('Max ray distance');
 frAdv.add(P, 'frSurfDist', 0.1, 2, 0.01).name('Surface detail');
+
+// 2D Fractal folder
+const fr2F = gui.addFolder('2D Fractal');
+fr2F.add(P, 'fr2Type', { 
+  'Mandelbrot': 0, 
+  'Julia Set': 1, 
+  'Burning Ship': 2, 
+  'Newton': 3,
+  'Phoenix': 4
+}).name('Fractal type');
+fr2F.add(P, 'fr2MaxIter', 64, 1000, 1).name('Max iterations');
+fr2F.add(P, 'fr2Zoom', 0.5, 10000, 0.1).name('Zoom');
+fr2F.add(P, 'fr2CenterX', -2, 2, 0.01).name('Center X');
+fr2F.add(P, 'fr2CenterY', -2, 2, 0.01).name('Center Y');
+fr2F.add(P, 'fr2Rotation', -180, 180, 1).name('Rotation');
+fr2F.add(P, 'fr2JuliaCX', -1.5, 1.5, 0.01).name('Julia C (real)');
+fr2F.add(P, 'fr2JuliaCY', -1.5, 1.5, 0.01).name('Julia C (imag)');
+fr2F.add(P, 'fr2JuliaOrbit').name('Animate Julia C');
+fr2F.add(P, 'fr2OrbitSpeed', 0, 1, 0.01).name('Orbit speed');
+fr2F.add(P, 'fr2AutoZoom').name('Auto-zoom');
+fr2F.add(P, 'fr2ZoomSpeed', 0, 1, 0.01).name('Zoom speed');
+fr2F.add(P, 'fr2PaletteCycle', 0, 10, 0.1).name('Palette cycling');
+
 const gF = gui.addFolder('Grass'); gF.add(P, 'gOn').name('grass on (off = colored plane)'); gF.add(P, 'gDensity', 128, 768, 16).name('density (blades per side)');
 gF.add(P, 'gH', 0.05, 1.2, 0.01).name('height (m)'); gF.add(P, 'gHR', 0, 1, 0.01).name('height randomness'); gF.add(P, 'gW', 0.003, 0.04, 0.001).name('blade width (m)');
 gF.add(P, 'gCurv', 0, 1.5, 0.01).name('curvature'); gF.add(P, 'gStiff', 0.2, 3, 0.01).name('stiffness'); gF.add(P, 'gLean', 0, 1, 0.01).name('lean randomness'); gF.add(P, 'gTwist', 0, 2, 0.01).name('twist');
@@ -1294,14 +1317,15 @@ wCamF.add(P, 'wcPanX', -2, 2, 0.01).name('pan X'); wCamF.add(P, 'wcPanY', -2, 2,
 wCamF.add({ r: () => { applyWView('Front'); wsU(); } }, 'r').name('reset camera');
 wCamF.add(P, 'cycOn').name('cyclorama'); wCamF.addColor(P, 'cycA').name('cyc top'); wCamF.addColor(P, 'cycB').name('cyc bottom'); wCamF.add(P, 'grain', 0, 0.1, 0.001).name('film grain');
 function updateFolders() { 
-  const g = P.mode === 'Grass Field', w = isW(), fr = P.mode === '3D Fractal';
+  const g = P.mode === 'Grass Field', w = isW(), fr = P.mode === '3D Fractal', fr2 = P.mode === '2D Fractal';
   // Fixed: pre (Presets) folder should always be visible like cf and ex
-  for (const f of [f3, gf, lsf, pf, lf, sim_, look, col]) f.show(!g && !w && !fr);
+  for (const f of [f3, gf, lsf, pf, lf, sim_, look, col]) f.show(!g && !w && !fr && !fr2);
   for (const f of [gF, wF, glF, camF]) f.show(g);
   for (const f of [wMatF, wObjF, wCamF]) f.show(w);
   frF.show(fr);
+  fr2F.show(fr2);
   if (w) { f3.show(true); lf.show(true); f3.title('Wall'); lf.title('Lighting'); } 
-  else if (!fr) { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); }
+  else if (!fr && !fr2) { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); }
   cf.show(true); pre.show(true); ex.show(true); // Always show Color, Presets, Export
   audioF.show(true); modF.show(true); // Always show Audio and Modulation
   if (g || w) cf.close();
