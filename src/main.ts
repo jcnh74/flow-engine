@@ -120,7 +120,8 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'lsRadius','lsDrip','lsVisc','lsCoh',
   'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos',
   'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
-  'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius'];
+  'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
+  'bloomStrength','bloomThreshold2','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
 function easeParams() { for (const k of SMOOTH) { const d = P[k] - L[k]; L[k] = Math.abs(d) < 1e-6 ? P[k] : L[k] + d * Math.min(1, P.smoothing <= 0 ? 1 : P.smoothing * 2); } }
