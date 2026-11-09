@@ -7,6 +7,7 @@ import * as TRIPPY from './trippy_shaders';
 import { PRESET_GALLERY, getRandomPreset } from './presets';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
+import { MidiManager } from './midi';
 import { MainControlPanel } from './ui/MainControlPanel';
 import { BeatLinkPopup } from './ui/BeatLinkPopup';
 import { PresetGallery } from './ui/PresetGallery';
@@ -48,7 +49,7 @@ function cmykSafe(c: number[]) {
   return o.map(v => Math.min(.93, Math.max(.035, v)));
 }
 
-// ---------- Audio and Modulation ----------
+// ---------- Audio, Modulation ----------
 const audioAnalyzer = new AudioAnalyzer();
 const modulationSystem = new ModulationSystem();
 
@@ -1319,11 +1320,18 @@ function updateFolders() {
   if (w) cf.close();
 }
 
+// ---------- MIDI Manager (after P is defined) ----------
+const midiManager = new MidiManager(P, (param, value) => {
+  // MIDI param change callback
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+});
+
 // Create the new MainControlPanel
 const panel = new MainControlPanel({
   params: P,
   audioState: audioAnalyzer.state,
   modulationSystem,
+  midiManager,
   onModeChange: () => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); },
   onReset: () => recover('button'),
   onRandomize: randomize,
@@ -1350,6 +1358,30 @@ const panel = new MainControlPanel({
     i.onchange = async () => {
       if (i.files && i.files[0]) {
         load(JSON.parse(await i.files[0].text()));
+      }
+    };
+    i.click();
+  },
+  onExportMidi: () => {
+    const json = midiManager.exportMappings();
+    const b = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'flow-midi-mappings.json';
+    a.click();
+  },
+  onImportMidi: () => {
+    const i = document.createElement('input');
+    i.type = 'file';
+    i.accept = '.json';
+    i.onchange = async () => {
+      if (i.files && i.files[0]) {
+        const json = await i.files[0].text();
+        if (midiManager.importMappings(json)) {
+          alert('MIDI mappings imported successfully');
+        } else {
+          alert('Failed to import MIDI mappings');
+        }
       }
     };
     i.click();
@@ -1558,6 +1590,14 @@ if (!q.get('mode') && !rec) {
   presetGallery.setCurrentPreset(startupPreset.name);
   log(`Loaded startup preset: ${startupPreset.name}`);
 }
+
+// Initialize MIDI
+midiManager.init().then(success => {
+  if (success) {
+    log('MIDI initialized successfully');
+    panel.rebuild(); // Rebuild to show MIDI devices
+  }
+});
 
 requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);

@@ -681,6 +681,31 @@
   border-radius: 3px;
 }
 
+/* MIDI */
+.midi-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 6px 0;
+}
+
+.control-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 4px 0;
+  font-style: italic;
+}
+
+input.midi-learning {
+  border: 2px solid var(--mod) !important;
+  box-shadow: 0 0 8px var(--mod);
+  animation: pulse-midi 1s infinite;
+}
+
+@keyframes pulse-midi {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 /* Preset Gallery */
 .preset-gallery {
   position: fixed;

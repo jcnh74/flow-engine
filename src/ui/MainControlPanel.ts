@@ -1,6 +1,7 @@
 // Main Control Panel - Complete UI replacement for lil-gui
 import type { AudioState } from '../audio';
 import type ModulationSystem from '../modulation';
+import type { MidiManager } from '../midi';
 import { BeatLinkPopup } from './BeatLinkPopup';
 import { COLOR_PRESETS, applyColorPreset, type ColorPreset } from './ColorPresets';
 import { LIGHTING_RIGS, applyLightingRig, type LightingRig } from './LightingPresets';
@@ -9,12 +10,15 @@ interface ControlConfig {
   params: any;
   audioState: AudioState;
   modulationSystem: ModulationSystem;
+  midiManager?: MidiManager;
   onModeChange?: () => void;
   onReset?: () => void;
   onRandomize?: () => void;
   onSavePreset?: () => void;
   onExportJSON?: () => void;
   onImportJSON?: () => void;
+  onExportMidi?: () => void;
+  onImportMidi?: () => void;
 }
 
 export class MainControlPanel {
@@ -231,6 +235,9 @@ export class MainControlPanel {
     // Presets section (always visible)
     html += this.buildPresetsSection();
 
+    // MIDI section (always visible)
+    html += this.buildMidiSection();
+
     return html;
   }
 
@@ -400,6 +407,56 @@ export class MainControlPanel {
           <div class="control">
             <button class="control-button" data-action="import-json">⬆ Import JSON</button>
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private buildMidiSection(): string {
+    const midi = this.config.midiManager;
+    const supported = midi?.state.supported ?? false;
+    const enabled = midi?.state.enabled ?? false;
+    const devices = midi?.state.devices ?? [];
+    const selectedId = midi?.state.selectedDeviceId ?? null;
+    
+    if (!supported) {
+      return `
+        <div class="panel-section" data-section="midi">
+          <div class="section-header">
+            <span class="section-arrow">▼</span>
+            <span>MIDI</span>
+          </div>
+          <div class="section-body">
+            <div class="midi-status">Web MIDI not supported</div>
+          </div>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="panel-section" data-section="midi">
+        <div class="section-header">
+          <span class="section-arrow">▼</span>
+          <span>MIDI</span>
+        </div>
+        <div class="section-body">
+          <div class="midi-status" id="midi-status">${enabled ? '✅ Connected' : '❌ Disconnected'}</div>
+          ${devices.length > 0 ? `
+            <div class="control">
+              <label class="control-label">Device</label>
+              <select class="control-select" id="midi-device">
+                ${devices.map(d => `<option value="${d.id}" ${d.id === selectedId ? 'selected' : ''}>${d.name}</option>`).join('')}
+              </select>
+            </div>
+          ` : '<div class="midi-status">No MIDI devices</div>'}
+          <div class="control-hint">Right-click any slider to MIDI Learn</div>
+          <div class="control">
+            <button class="control-button" data-action="export-midi">⬇ Export MIDI Map</button>
+          </div>
+          <div class="control">
+            <button class="control-button" data-action="import-midi">⬆ Import MIDI Map</button>
+          </div>
+          <div class="control-hint">Mappings: <span id="midi-mapping-count">${midi?.state.mappings.length ?? 0}</span></div>
         </div>
       </div>
     `;
@@ -578,6 +635,28 @@ export class MainControlPanel {
       });
     });
 
+    // MIDI Learn on right-click
+    this.container.querySelectorAll('input[data-param][type="range"]').forEach(input => {
+      input.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const param = (input as HTMLElement).dataset.param!;
+        if (this.config.midiManager) {
+          this.config.midiManager.startLearning(param);
+          // Visual feedback
+          input.classList.add('midi-learning');
+          setTimeout(() => input.classList.remove('midi-learning'), 5000);
+        }
+      });
+    });
+
+    // MIDI device selection
+    const midiDevice = this.container.querySelector('#midi-device') as HTMLSelectElement;
+    if (midiDevice && this.config.midiManager) {
+      midiDevice.addEventListener('change', () => {
+        this.config.midiManager!.selectDevice(midiDevice.value);
+      });
+    }
+
     // Store refs
     this.beatPulse = this.container.querySelector('#beat-pulse');
     this.container.querySelectorAll('[data-meter]').forEach(el => {
@@ -610,6 +689,10 @@ export class MainControlPanel {
         this.config.onExportJSON();
       } else if (action === 'import-json' && this.config.onImportJSON) {
         this.config.onImportJSON();
+      } else if (action === 'export-midi' && this.config.onExportMidi) {
+        this.config.onExportMidi();
+      } else if (action === 'import-midi' && this.config.onImportMidi) {
+        this.config.onImportMidi();
       }
     });
 
@@ -751,7 +834,7 @@ export class MainControlPanel {
     meter.value.textContent = value.toFixed(2);
   }
 
-  private rebuild(): void {
+  rebuild(): void {
     const body = this.container.querySelector('.panel-body');
     if (body) {
       body.innerHTML = this.buildSections() + this.buildKeyboardHints();
