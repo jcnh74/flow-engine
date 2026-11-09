@@ -200,6 +200,16 @@ export class MainControlPanel {
         this.buildSlider('frDiffuse', 'Diffuse', 0, 2, 0.1, true),
         this.buildSlider('frGlow', 'Glow', 0, 2, 0.1, true),
       ]);
+      html += this.buildSection('Motion', [
+        this.buildSlider('frMorph', 'Morph Amount', 0, 1, 0.01, true),
+        this.buildCheckbox('frJuliaOrbit', 'Julia C Orbit'),
+        this.buildSlider('frJuliaSpeed', 'Julia Orbit Speed', 0, 2, 0.01, true),
+        this.buildSlider('frFoldRot', 'Fold Rotation', 0, 360, 1, true),
+        this.buildCheckbox('frCamOrbit', 'Camera Orbit'),
+        this.buildSlider('frCamOrbitSpeed', 'Orbit Speed', 0, 1, 0.01, true),
+        this.buildCheckbox('frSlicePlane', 'Slice Plane'),
+        this.buildSlider('frSlicePos', 'Slice Position', -2, 2, 0.01, true),
+      ]);
       html += this.buildSection('Quality', [
         this.buildSlider('frMaxSteps', 'Ray Steps', 64, 256, 1, true),
         this.buildSlider('frMaxDist', 'Max Distance', 10, 50, 1, true),

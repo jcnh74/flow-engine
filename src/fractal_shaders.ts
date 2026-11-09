@@ -51,6 +51,8 @@ uniform float uSurfDist;
 // Animation
 uniform float uRotSpeed;
 uniform float uMorphAmt;
+uniform bool uSlicePlane;
+uniform float uSlicePos;
 
 const float PI = 3.14159265359;
 
@@ -254,6 +256,12 @@ float map(vec3 p) {
     d = deKaleidoscopic(p);
   } else {
     d = deQuaternionJulia(p);
+  }
+  
+  // Slice plane
+  if (uSlicePlane) {
+    float planeDist = p.y - uSlicePos;
+    d = max(d, planeDist);
   }
   
   return d * uSurfDist;

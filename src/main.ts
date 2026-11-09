@@ -67,6 +67,8 @@ const P: any = {
   frType: 0, frPower: 8, frIter: 12, frBailout: 4, frScale: -1.5, frFold: 1.0, frMinR: 0.5, frFixedR: 1.0, frCamDist: 3, frCamFov: 50,
   frRotSpeed: 0.05, frMorph: 0, frColor1: '#ff0080', frColor2: '#00e5ff', frColorMix: 2, frAmbient: 0.15, frDiffuse: 0.7, frGlow: 0.3,
   frShadow: 0.6, frMaxSteps: 128, frMaxDist: 20, frSurfDist: 0.6, frLightAz: 45, frLightEl: 35,
+  frJuliaOrbit: false, frJuliaSpeed: 0.2, frFoldRot: 0, frCamOrbit: false, frCamOrbitSpeed: 0.2,
+  frSlicePlane: false, frSlicePos: 0,
   gcView: 'Eye level', gcYaw: 0, gcPitch: 10, gcDist: 4.5, gcHeight: 0.9, gcFov: 45, gcPanX: 0, gcPanZ: 0, gcAuto: false, gcAutoSpd: 3,
   lsCam: 0.85, lsPrim: 'sphere', lsRotRand: 1, lsSizeRand: 0.15, lsFlow: false, lsDetach: false, lsFlowU: 0.03, lsFlowV: -0.04, lsSSS: 1, cL0Pal: '(main)', cL1Pal: '(main)', cOPal: 'Liquid Spectrum', cL0H: 0, cL0S: 1, cL0C: 1, cL1H: 0.08, cL1S: 1, cL1C: 1, cOH: 0, cOS: 1.3, cOC: 1.05, cMix1: 'normal', cMixA1: 1, cMixO: 'normal', cMixAO: 0, cHueCycle: 0, cGrad: 'folds', beadMode: 'patchwork', pShape: 'voronoi', pScale: 4, pSoft: 0.15, pSeed: 3, pJit: 0.35, pDrift: 0, pFab: 0, pOff: 0, beadSolid: '#ffd27a', lsDripLen: 0.35, lsDripAmt: 0.25, lsStyle: 'Beads', lsCount: 32768, lsRadius: 0.0375, lsRand: 0.1, lsVisc: 0.08, lsCoh: 0.25, lsCohR: 0.3, lsBounce: 0.25, lsFric: 0.7, lsDamp: 0.4, lsDrip: 300, lsTurn: 0, lsFloor: -1.25, lsBoxX: 4, lsBoxZ: 2.5, lsTank: false, lsSlide: 0.15, lsSub: 2,
   lsFabric: true, lsHem: -5, lsFloorOn: true, lsFloorCol: '#4a505c', lsFloorRough: 0.42, lsAbsorb: 3, lsInflate: 1.3, lsGain: 1.6,
@@ -625,7 +627,13 @@ function renderFractal(T: Trails, vp: number[]) {
   
   const t = frame * DT;
   const camDist = V.frCamDist;
-  const camAngle = t * V.frRotSpeed;
+  
+  // Camera orbit
+  let camAngle = t * V.frRotSpeed;
+  if (P.frCamOrbit) {
+    camAngle += t * P.frCamOrbitSpeed;
+  }
+  
   const camPos = [Math.cos(camAngle) * camDist, camDist * 0.3, Math.sin(camAngle) * camDist];
   const camTarget = [0, 0, 0];
   
@@ -666,6 +674,8 @@ function renderFractal(T: Trails, vp: number[]) {
   gl.uniform1f(u.uSurfDist, V.frSurfDist);
   gl.uniform1f(u.uRotSpeed, V.frRotSpeed);
   gl.uniform1f(u.uMorphAmt, V.frMorph);
+  gl.uniform1i(u.uSlicePlane, P.frSlicePlane ? 1 : 0);
+  gl.uniform1f(u.uSlicePos, P.frSlicePos);
   
   quad();
 }
