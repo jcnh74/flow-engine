@@ -1219,11 +1219,11 @@ const fractalDefaults = (type: number) => {
   } else if (type === 3) { // Sierpinski
     P.frIter = 6; P.frCamDist = 3.5;
   } else if (type === 4) { // Kaleidoscopic IFS
-    P.frIter = 8; P.frCamDist = 3;
+    P.frIter = 10; P.frCamDist = 4;
   } else if (type === 5) { // Quaternion Julia
-    P.frIter = 12; P.frCamDist = 2.5;
+    P.frIter = 16; P.frCamDist = 2.5;
   } else if (type === 1) { // Mandelbox
-    P.frIter = 12; P.frScale = -1.5; P.frCamDist = 3;
+    P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
   } else { // Mandelbulb
     P.frIter = 12; P.frPower = 8; P.frCamDist = 2;
   }
@@ -1266,13 +1266,29 @@ frAdv.add(P, 'frSurfDist', 0.1, 2, 0.01).name('Surface detail');
 
 // 2D Fractal folder
 const fr2F = gui.addFolder('2D Fractal');
+
+const fractal2DDefaults = (type: number) => {
+  if (type === 2) { // Burning Ship - classic view
+    P.fr2CenterX = -0.5; P.fr2CenterY = -0.5; P.fr2Zoom = 1.8;
+  } else if (type === 1) { // Julia Set
+    P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
+  } else if (type === 3) { // Newton
+    P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.5;
+  } else if (type === 4) { // Phoenix
+    P.fr2CenterX = 0; P.fr2CenterY = 0; P.fr2Zoom = 2.0;
+  } else { // Mandelbrot
+    P.fr2CenterX = -0.5; P.fr2CenterY = 0; P.fr2Zoom = 1.5;
+  }
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+};
+
 fr2F.add(P, 'fr2Type', { 
   'Mandelbrot': 0, 
   'Julia Set': 1, 
   'Burning Ship': 2, 
   'Newton': 3,
   'Phoenix': 4
-}).name('Fractal type');
+}).name('Fractal type').onChange(fractal2DDefaults);
 fr2F.add(P, 'fr2MaxIter', 64, 1000, 1).name('Max iterations');
 fr2F.add(P, 'fr2Zoom', 0.5, 10000, 0.1).name('Zoom');
 fr2F.add(P, 'fr2CenterX', -2, 2, 0.01).name('Center X');

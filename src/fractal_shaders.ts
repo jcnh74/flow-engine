@@ -198,17 +198,30 @@ float deKaleidoscopic(vec3 p) {
   float fr2 = 1.0;
   float dr = 1.0;
   
+  // Rotation matrix for variation
+  float angle = 0.3;
+  float c = cos(angle);
+  float s = sin(angle);
+  mat3 rot = mat3(
+    c, -s, 0.0,
+    s, c, 0.0,
+    0.0, 0.0, 1.0
+  );
+  
   for (int i = 0; i < 16; i++) {
     if (i >= uIterations) break;
     
-    // Kaleidoscopic folding
+    // Octahedral folding (kaleidoscopic symmetry)
     z = abs(z);
     float t;
-    if (z.x - z.y < 0.0) { t = z.x; z.x = z.y; z.y = t; }
-    if (z.x - z.z < 0.0) { t = z.x; z.x = z.z; z.z = t; }
-    if (z.y - z.z < 0.0) { t = z.y; z.y = z.z; z.z = t; }
+    if (z.x < z.y) { t = z.x; z.x = z.y; z.y = t; }
+    if (z.x < z.z) { t = z.x; z.x = z.z; z.z = t; }
+    if (z.y < z.z) { t = z.y; z.y = z.z; z.z = t; }
     
-    // Spherical folding
+    // Apply rotation for more interesting structure
+    z = rot * z;
+    
+    // Spherical inversion (gives recursive detail)
     float r2 = dot(z, z);
     if (r2 < mr2) {
       float temp = fr2 / mr2;
@@ -220,9 +233,11 @@ float deKaleidoscopic(vec3 p) {
       dr *= temp;
     }
     
-    // Scale and shift
-    z = z * scale - vec3(1.0, 1.0, 0.0);
+    // Scale and translate
+    z = z * scale - vec3(1.0, 1.0, 0.5);
     dr = dr * abs(scale) + 1.0;
+    
+    if (dot(z, z) > 100.0) break;
   }
   
   return length(z) / abs(dr);
@@ -241,27 +256,25 @@ vec4 qMul(vec4 q1, vec4 q2) {
 // Quaternion Julia distance estimator
 float deQuaternionJulia(vec3 p) {
   vec4 z = vec4(p, 0.0);
-  vec4 c = vec4(-0.2, 0.8, 0.0, 0.0);
+  vec4 c = vec4(-0.2, 0.6, 0.2, 0.2); // Constant with visible structure
   vec4 dz = vec4(1.0, 0.0, 0.0, 0.0);
   
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 20; i++) {
     if (i >= uIterations) break;
     
     float r2 = dot(z, z);
     if (r2 > 256.0) break;
     
-    // dz = 2 * z * dz
-    dz = vec4(2.0 * (z.x * dz.x - z.y * dz.y - z.z * dz.z - z.w * dz.w),
-              2.0 * (z.x * dz.y + z.y * dz.x + z.z * dz.w - z.w * dz.z),
-              2.0 * (z.x * dz.z - z.y * dz.w + z.z * dz.x + z.w * dz.y),
-              2.0 * (z.x * dz.w + z.y * dz.z - z.z * dz.y + z.w * dz.x));
+    // dz = 2 * qMul(z, dz)
+    dz = 2.0 * qMul(z, dz);
     
-    // z = z^2 + c
+    // z = qMul(z, z) + c
     z = qMul(z, z) + c;
   }
   
   float r = length(z);
-  return 0.5 * r * log(r) / max(length(dz), 0.001);
+  float dr = length(dz);
+  return 0.5 * r * log(max(r, 1e-6)) / max(dr, 1e-6);
 }
 
 // Main distance function

@@ -199,7 +199,7 @@ async function run() {
     const selectedMode = await page.$eval('select[data-param="mode"]', el => el.value);
     
     // Also verify window.engine.P.mode matches
-    const engineMode = await page.evaluate(() => (window as any).engine?.P?.mode);
+    const engineMode = await page.evaluate(() => window.engine?.P?.mode);
     
     if (selectedMode !== mode) {
       const failure = `Mode dropdown shows "${selectedMode}" but should show "${mode}"`;
