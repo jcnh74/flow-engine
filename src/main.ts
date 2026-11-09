@@ -1443,6 +1443,10 @@ remoteSync = new RemoteSync(P,
       loadPresetFromGallery(preset);
       presetGallery.setCurrentPreset(preset.name);
     }
+  },
+  () => {
+    // Refresh remote section when QR code is ready
+    panel.refreshRemote();
   }
 );
 

@@ -931,6 +931,26 @@ export class MainControlPanel {
     }
   }
 
+  refreshRemote(): void {
+    const remoteSection = this.container.querySelector('[data-section="remote"]');
+    if (remoteSection) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = this.buildRemoteSection();
+      const newRemote = tempDiv.firstElementChild;
+      if (newRemote) {
+        remoteSection.replaceWith(newRemote);
+        // Re-attach collapse/expand listener
+        const header = newRemote.querySelector('.section-header');
+        if (header) {
+          header.addEventListener('click', () => {
+            const body = newRemote.querySelector('.section-body');
+            body?.classList.toggle('collapsed');
+          });
+        }
+      }
+    }
+  }
+
   show(): void {
     this.container.classList.remove('hidden');
   }

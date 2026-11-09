@@ -14,6 +14,7 @@ export class RemoteSync {
   private params: any;
   private onAction?: (action: string) => void;
   private onPreset?: (name: string) => void;
+  private onQRReady?: () => void;
   
   public state: RemoteState = {
     connected: false,
@@ -21,10 +22,11 @@ export class RemoteSync {
     qrCode: ''
   };
 
-  constructor(params: any, onAction?: (action: string) => void, onPreset?: (name: string) => void) {
+  constructor(params: any, onAction?: (action: string) => void, onPreset?: (name: string) => void, onQRReady?: () => void) {
     this.params = params;
     this.onAction = onAction;
     this.onPreset = onPreset;
+    this.onQRReady = onQRReady;
     
     // Fetch LAN IP from server endpoint
     this.fetchLANIP();
@@ -37,9 +39,9 @@ export class RemoteSync {
       this.state.remoteUrl = `http://${ip}:${port}/remote.html`;
       await this.generateQRCode();
       
-      // Notify UI to re-render (panel will check this state)
-      if ((window as any).panel) {
-        (window as any).panel.update();
+      // Notify UI that QR is ready
+      if (this.onQRReady) {
+        this.onQRReady();
       }
     } catch (err) {
       console.error('Failed to fetch LAN IP:', err);
@@ -48,8 +50,8 @@ export class RemoteSync {
       const port = location.port ? `:${location.port}` : '';
       this.state.remoteUrl = `http://${host}${port}/remote.html`;
       await this.generateQRCode();
-      if ((window as any).panel) {
-        (window as any).panel.update();
+      if (this.onQRReady) {
+        this.onQRReady();
       }
     }
   }

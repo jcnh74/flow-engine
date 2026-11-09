@@ -31,6 +31,17 @@ const helper = () => ({
     server.middlewares.use(async (req, res, next) => {
       if (!req.url.startsWith('/api/')) return next();
       const u = new URL(req.url, 'http://x'); const q = Object.fromEntries(u.searchParams);
+      
+      // Security: restrict helper APIs to loopback only
+      const remoteAddr = req.socket?.remoteAddress || '';
+      const isLoopback = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
+      const restrictedPaths = ['/api/log', '/api/vstart', '/api/vframe', '/api/vend', '/api/tile', '/api/finish'];
+      
+      if (restrictedPaths.includes(u.pathname) && !isLoopback) {
+        res.statusCode = 403;
+        return res.end('Forbidden: this endpoint is only accessible from localhost');
+      }
+      
       try {
         if (u.pathname === '/api/lan-ip') {
           const os = await import('node:os');
@@ -82,4 +93,4 @@ const helper = () => ({
     });
   }
 });
-export default defineConfig({ plugins: [helper()], server: { host: true, port: 5190 } });
+export default defineConfig({ plugins: [helper()], server: { port: 5190 } });

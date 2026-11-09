@@ -13,11 +13,22 @@ export interface AudioState {
   manualBpm: number;
   beatDetected: boolean;
   beatPhase: number;  // 0-1 phase within beat cycle
+  bar: number;        // Current bar (0, 1, 2, 3, ...)
+  barPhase: number;   // 0-1 phase within bar (4 beats)
+  phrase: number;     // Current phrase (0, 1, 2, 3, ...)
   level: number;      // overall amplitude 0-1
   bass: number;       // low freq 0-1
   mid: number;        // mid freq 0-1
   high: number;       // high freq 0-1
   envelope: number;   // smoothed amplitude for modulation
+  // Smoothed envelopes (attack/release)
+  kickEnv: number;    // smoothed kick envelope
+  snareEnv: number;   // smoothed snare envelope
+  hatEnv: number;     // smoothed hat envelope
+  bassEnv: number;    // smoothed bass envelope
+  midEnv: number;     // smoothed mid envelope
+  highEnv: number;    // smoothed high envelope
+  onset: number;      // decaying impulse on any onset
   // Enhanced drum detection
   kick: number;       // kick drum presence 0-1
   snare: number;      // snare drum presence 0-1
@@ -73,11 +84,21 @@ export class AudioAnalyzer {
     manualBpm: 120,
     beatDetected: false,
     beatPhase: 0,
+    bar: 0,
+    barPhase: 0,
+    phrase: 0,
     level: 0,
     bass: 0,
     mid: 0,
     high: 0,
     envelope: 0,
+    kickEnv: 0,
+    snareEnv: 0,
+    hatEnv: 0,
+    bassEnv: 0,
+    midEnv: 0,
+    highEnv: 0,
+    onset: 0,
     kick: 0,
     snare: 0,
     hat: 0,
@@ -387,6 +408,37 @@ export class AudioAnalyzer {
     // Smooth envelope
     this.state.envelope = this.state.envelope * 0.9 + this.state.level * 0.1;
     
+    // Smoothed envelopes with attack/release
+    const attackRate = 0.3;  // Fast attack
+    const releaseRate = 0.92; // Slower release
+    
+    this.state.kickEnv = this.state.kick > this.state.kickEnv 
+      ? this.state.kickEnv + (this.state.kick - this.state.kickEnv) * attackRate
+      : this.state.kickEnv * releaseRate;
+    
+    this.state.snareEnv = this.state.snare > this.state.snareEnv
+      ? this.state.snareEnv + (this.state.snare - this.state.snareEnv) * attackRate
+      : this.state.snareEnv * releaseRate;
+    
+    this.state.hatEnv = this.state.hat > this.state.hatEnv
+      ? this.state.hatEnv + (this.state.hat - this.state.hatEnv) * attackRate
+      : this.state.hatEnv * releaseRate;
+    
+    this.state.bassEnv = this.state.bass > this.state.bassEnv
+      ? this.state.bassEnv + (this.state.bass - this.state.bassEnv) * attackRate
+      : this.state.bassEnv * releaseRate;
+    
+    this.state.midEnv = this.state.mid > this.state.midEnv
+      ? this.state.midEnv + (this.state.mid - this.state.midEnv) * attackRate
+      : this.state.midEnv * releaseRate;
+    
+    this.state.highEnv = this.state.high > this.state.highEnv
+      ? this.state.highEnv + (this.state.high - this.state.highEnv) * attackRate
+      : this.state.highEnv * releaseRate;
+    
+    // Onset detection (decaying impulse)
+    this.state.onset *= 0.85; // Decay
+    
     // Beat detection (simple energy-based)
     const energy = this.state.bass * 2 + this.state.mid;
     const now = performance.now();
@@ -394,6 +446,7 @@ export class AudioAnalyzer {
     if (energy > this.beatThreshold && now - this.lastBeatTime > 200) {
       this.state.beatDetected = true;
       this.lastBeatTime = now;
+      this.state.onset = 1.0; // Trigger onset impulse
       
       // Update estimated BPM from detected beats
       if (this.beatHistory.length > 0 && now - this.beatHistory[this.beatHistory.length - 1] < 2000) {
@@ -411,6 +464,7 @@ export class AudioAnalyzer {
     if (this.state.kick > this.kickThreshold && now - this.lastKickTime > 150) {
       this.state.kickDetected = true;
       this.lastKickTime = now;
+      this.state.onset = Math.max(this.state.onset, 1.0); // Trigger onset impulse
     } else {
       this.state.kickDetected = false;
     }
@@ -464,6 +518,13 @@ export class AudioAnalyzer {
       const elapsed = now - this.last32ndTime;
       this.state.envelope32nd = Math.max(0, 1.0 - (elapsed / thirtysecond));
     }
+    
+    // Update beatPhase and calculate bar/phrase
+    this.state.beatPhase = (now % beatInterval) / beatInterval;
+    const totalBeats = Math.floor(now / beatInterval);
+    this.state.bar = Math.floor(totalBeats / 4);
+    this.state.barPhase = ((totalBeats % 4) + this.state.beatPhase) / 4.0;
+    this.state.phrase = Math.floor(totalBeats / 16);
   }
   
   getBeatPhase(): number {
