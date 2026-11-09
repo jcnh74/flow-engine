@@ -85,9 +85,13 @@ const P: any = {
   exportPreset: '4K UHD 3840×2160', orientation: 'landscape', width: 3840, height: 2160, dpi: 300, tiff: false, pdf: false, frameToExport: true,
 };
 const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias','stretch','life','decay','pointSize','gain','colorBySpeed','paletteOffset','exposure','bloom','bloomThreshold','zoom','driftX','driftY',
-  'fold','warp','layerSep','scale3d','gloss','spec','iridescence','rim','saturation','brightness','ao','evolution3d','orbitSpeed','camDist','fov','lightAngle','fog',
+  'fold','warp','layerSep','scale3d','gloss','spec','iridescence','rim','saturation','brightness','ao','evolution3d','orbitSpeed','camDist','fov','lightAngle','fog','detail','layers',
   'gStrength','gAz','gEl','mass','stiffness','damping','wind','windAz','floor','cohesion','gBlend','stream','pLife','vmax','pTurb','wellG','pWidth','streak','pGain','dof','fabricUnder','pColorBySpeed',
-  'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl'];
+  'gH','gW','gCurv','gDensity','gWind','gWindAz','gGustK','gGustSpeed','gcDist','gcHeight','gcFov','gDry','hueShift','cHueCycle',
+  'lsRadius','lsDrip','lsVisc','lsCoh',
+  'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos',
+  'fr2Zoom','fr2CenterX','fr2CenterY','fr2Rotation','fr2JuliaCX','fr2JuliaCY','fr2OrbitSpeed','fr2ZoomSpeed','fr2PaletteCycle','fr2MaxIter',
+  'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
 function easeParams() { for (const k of SMOOTH) { const d = P[k] - L[k]; L[k] = Math.abs(d) < 1e-6 ? P[k] : L[k] + d * Math.min(1, P.smoothing <= 0 ? 1 : P.smoothing * 2); } }
@@ -676,6 +680,18 @@ function renderFractal(T: Trails, vp: number[]) {
   gl.uniform1f(u.uMorphAmt, V.frMorph);
   gl.uniform1i(u.uSlicePlane, P.frSlicePlane ? 1 : 0);
   gl.uniform1f(u.uSlicePos, P.frSlicePos);
+  gl.uniform1f(u.uFoldRot, V.frFoldRot);
+  
+  // Julia C animation
+  let jc = [0.18, 0.88, 0.24, 0.16];
+  if (P.frJuliaOrbit) {
+    const angle = t * P.frJuliaSpeed;
+    jc[0] = Math.cos(angle) * 0.5;
+    jc[1] = Math.sin(angle) * 0.7;
+    jc[2] = Math.cos(angle * 1.3) * 0.4;
+    jc[3] = Math.sin(angle * 0.7) * 0.3;
+  }
+  gl.uniform4f(u.uJuliaC, jc[0], jc[1], jc[2], jc[3]);
   
   quad();
 }

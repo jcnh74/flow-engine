@@ -53,6 +53,8 @@ uniform float uRotSpeed;
 uniform float uMorphAmt;
 uniform bool uSlicePlane;
 uniform float uSlicePos;
+uniform float uFoldRot;
+uniform vec4 uJuliaC;
 
 const float PI = 3.14159265359;
 
@@ -110,6 +112,13 @@ float deMandelbox(vec3 pos) {
   
   for (int i = 0; i < 32; i++) {
     if (i >= uIterations) break;
+    
+    // Apply fold rotation
+    float foldAngle = uFoldRot * PI / 180.0;
+    float c = cos(foldAngle);
+    float s = sin(foldAngle);
+    mat2 rot = mat2(c, -s, s, c);
+    pos.xy *= rot;
     
     // Box fold
     pos = clamp(pos, -uFoldLimit, uFoldLimit) * 2.0 - pos;
@@ -214,7 +223,7 @@ vec4 qMul(vec4 q1, vec4 q2) {
 // Quaternion Julia distance estimator
 float deQuaternionJulia(vec3 p) {
   vec4 z = vec4(p, 0.0);
-  vec4 c = vec4(0.18, 0.88, 0.24, 0.16);
+  vec4 c = uJuliaC;
   vec4 dz = vec4(1.0, 0.0, 0.0, 0.0);
   
   for (int i = 0; i < 16; i++) {
