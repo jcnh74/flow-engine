@@ -3,6 +3,7 @@ import type { AudioState } from '../audio';
 import type ModulationSystem from '../modulation';
 import { BeatLinkPopup } from './BeatLinkPopup';
 import { COLOR_PRESETS, applyColorPreset, type ColorPreset } from './ColorPresets';
+import { LIGHTING_RIGS, applyLightingRig, type LightingRig } from './LightingPresets';
 
 interface ControlConfig {
   params: any;
@@ -178,6 +179,12 @@ export class MainControlPanel {
 
     // Unified Color section (always visible, mode-aware)
     html += this.buildColorSection(mode);
+
+    // Unified Lighting section (3D modes only)
+    const is3D = mode !== '2D flow';
+    if (is3D) {
+      html += this.buildLightingSection(mode);
+    }
 
     // Audio section (always visible)
     html += this.buildAudioSection();
@@ -361,6 +368,28 @@ export class MainControlPanel {
     return this.buildSection('Color', controls);
   }
 
+  private buildLightingSection(mode: string): string {
+    const rigOptions = Object.keys(LIGHTING_RIGS);
+    const controls: string[] = [];
+    
+    // Studio rig preset
+    controls.push(this.buildSelect('lightingRig', 'Studio Rig', rigOptions));
+    
+    // Key light controls
+    controls.push(this.buildSlider('envIntensity', 'Environment', 0, 3, 0.01, true));
+    controls.push(this.buildSlider('envRot', 'Env Rotation', -180, 180, 1, true));
+    
+    // Shadow and AO
+    controls.push(this.buildSlider('shadowSoft', 'Shadow Softness', 0, 1, 0.01, true));
+    controls.push(this.buildSlider('ao', 'Ambient Occlusion', 0, 2, 0.01, true));
+    
+    // Atmosphere
+    controls.push(this.buildSlider('fog', 'Fog', 0, 1, 0.01, true));
+    controls.push(this.buildSelect('toneMap', 'Tone Map', ['ACES', 'Filmic (AgX-style)', 'Exponential']));
+    
+    return this.buildSection('Lighting & Studio', controls);
+  }
+
   private buildColorPicker(param: string, label: string): string {
     const value = this.config.params[param] || '#ffffff';
     return `
@@ -421,6 +450,15 @@ export class MainControlPanel {
               applyColorPreset(preset, this.config.params, this.config.params.mode);
               this.syncDisplayedValues();
               return; // Preset applied, don't set individual param
+            }
+          }
+          // Handle lighting rig selection
+          if (param === 'lightingRig') {
+            const rig = LIGHTING_RIGS[value];
+            if (rig) {
+              applyLightingRig(rig, this.config.params);
+              this.syncDisplayedValues();
+              return; // Rig applied, don't set individual param
             }
           }
           // Only coerce fully numeric strings
