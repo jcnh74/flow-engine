@@ -5,6 +5,7 @@ import * as FS from './fractal_shaders';
 // 2D Fractal shaders removed
 import * as TRIPPY from './trippy_shaders';
 import * as TONEMAP from './tonemap_shaders';
+import * as POST from './post_shaders';
 import { PRESET_GALLERY, getRandomPreset } from './presets';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
@@ -105,6 +106,10 @@ const P: any = {
   fold: 0.55, warp: 0.6, layers: 2, layerSep: 0.45, detail: 2, meshRes: 512, scale3d: 0.6, gloss: 70, spec: 1.0, iridescence: 0.5, rim: 0.7, saturation: 1.3, brightness: 0.6, ao: 0.7, evolution3d: 0.08,
   orbitSpeed: 0.05, camDist: 4.2, fov: 40, lightAngle: 35, fog: 0.5,
   lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, tonemapMode: 'AgX', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
+  // Post FX (Phase 1)
+  bloomStrength: 0.15, bloomThreshold2: 0.8, caStrength: 0.0, distortion: 0.0,
+  lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.0, vibrance: 0.0,
+  vignetteStrength: 0.0, vignetteRadius: 1.2, grainStrength: 0.0,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
   exportPreset: '4K UHD 3840×2160', orientation: 'landscape', width: 3840, height: 2160, dpi: 300, tiff: false, pdf: false, frameToExport: true,
 };
@@ -171,6 +176,11 @@ const fractal = prog(FS.FRACTAL_VS, FS.FRACTAL_FS);
 // fractal2d shader removed
 const trippy = prog(TRIPPY.trippyVert, TRIPPY.trippyFrag);
 const tonemap = prog(TONEMAP.TONEMAP_VS, TONEMAP.TONEMAP_FS);
+const bloomDown = prog(POST.POST_VS, POST.BLOOM_DOWN_FS);
+const bloomUp = prog(POST.POST_VS, POST.BLOOM_UP_FS);
+const bloomComposite = prog(POST.POST_VS, POST.BLOOM_COMPOSITE_FS);
+const caDistort = prog(POST.POST_VS, POST.CA_DISTORT_FS);
+const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -248,14 +258,90 @@ function trailStep(T: Trails, c: number[], h: number[], pxScale: number) {
   gl.drawArrays(gl.POINTS, 0, P.particles); gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD);
   [T.a, T.b] = [T.b, T.a];
 }
-function bloomPass(T: Trails, pxScale: number) {
-  gl.disable(gl.BLEND); gl.useProgram(bright.p); gl.bindFramebuffer(gl.FRAMEBUFFER, T.b1.f); gl.viewport(0, 0, T.b1.w, T.b1.h);
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(bright.u.uT, 0); gl.uniform1f(bright.u.uExp, V.exposure); gl.uniform1f(bright.u.uThr, V.bloomThreshold); quad();
-  gl.useProgram(blur.p); gl.uniform1i(blur.u.uT, 0);
-  const pass = (src: FB, dst: FB, dx: number, dy: number) => { gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f); gl.viewport(0, 0, dst.w, dst.h); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform2f(blur.u.uDir, dx / src.w, dy / src.h); quad(); };
-  const k = Math.max(1, pxScale);
-  pass(T.b1, T.b1t, k, 0); pass(T.b1t, T.b1, 0, k);
-  pass(T.b1, T.b2t, 2 * k, 0); pass(T.b2t, T.b2, 0, k); pass(T.b2, T.b2t, k, 0); pass(T.b2t, T.b2, 0, k);
+// Bloom pyramid: 6 mip levels for physically based bloom
+type BloomPyramid = { down: FB[], up: FB[] };
+let bloomPyramid: BloomPyramid | null = null;
+
+function ensureBloomPyramid(baseW: number, baseH: number) {
+  if (bloomPyramid && bloomPyramid.down[0].w === baseW && bloomPyramid.down[0].h === baseH) return bloomPyramid;
+  
+  // Clean up old pyramid
+  if (bloomPyramid) {
+    bloomPyramid.down.forEach(fb => del(fb));
+    bloomPyramid.up.forEach(fb => del(fb));
+  }
+  
+  // Create 6-level mip pyramid
+  const down: FB[] = [];
+  const up: FB[] = [];
+  let w = Math.floor(baseW / 2), h = Math.floor(baseH / 2);
+  
+  for (let i = 0; i < 6; i++) {
+    down.push(hdrFB(w, h));
+    up.push(hdrFB(w, h));
+    w = Math.max(1, Math.floor(w / 2));
+    h = Math.max(1, Math.floor(h / 2));
+  }
+  
+  bloomPyramid = { down, up };
+  return bloomPyramid;
+}
+
+function bloomPass(T: Trails) {
+  const pyramid = ensureBloomPyramid(T.w, T.h);
+  gl.disable(gl.BLEND);
+  gl.useProgram(bloomDown.p);
+  
+  // Downsample chain with 13-tap + Karis average on level 0
+  gl.activeTexture(gl.TEXTURE0);
+  for (let i = 0; i < 6; i++) {
+    const src = i === 0 ? T.a.t : pyramid.down[i - 1].t;
+    const dst = pyramid.down[i];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f);
+    gl.viewport(0, 0, dst.w, dst.h);
+    gl.bindTexture(gl.TEXTURE_2D, src);
+    gl.uniform1i(bloomDown.u.uSrc, 0);
+    gl.uniform2f(bloomDown.u.uTexelSize, 1.0 / (i === 0 ? T.w : pyramid.down[i - 1].w), 1.0 / (i === 0 ? T.h : pyramid.down[i - 1].h));
+    gl.uniform1i(bloomDown.u.uLevel, i);
+    gl.uniform1f(bloomDown.u.uThreshold, P.bloomThreshold2);
+    quad();
+  }
+  
+  // Upsample chain with 3x3 tent filter and additive blending
+  gl.useProgram(bloomUp.p);
+  for (let i = 5; i >= 0; i--) {
+    const dst = pyramid.up[i];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f);
+    gl.viewport(0, 0, dst.w, dst.h);
+    
+    if (i === 5) {
+      // Top level: just copy from downsample
+      gl.bindTexture(gl.TEXTURE_2D, pyramid.down[5].t);
+    } else {
+      // Upsample from level above and blend with current down level
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.blendEquation(gl.FUNC_ADD);
+      
+      // First pass: upsample from above
+      gl.bindTexture(gl.TEXTURE_2D, pyramid.up[i + 1].t);
+      gl.uniform1i(bloomUp.u.uSrc, 0);
+      gl.uniform2f(bloomUp.u.uTexelSize, 1.0 / pyramid.up[i + 1].w, 1.0 / pyramid.up[i + 1].h);
+      quad();
+      
+      // Second pass: add current level
+      gl.bindTexture(gl.TEXTURE_2D, pyramid.down[i].t);
+      quad();
+      
+      gl.disable(gl.BLEND);
+    }
+    
+    if (i === 5) {
+      gl.uniform1i(bloomUp.u.uSrc, 0);
+      gl.uniform2f(bloomUp.u.uTexelSize, 1.0 / pyramid.down[5].w, 1.0 / pyramid.down[5].h);
+      quad();
+    }
+  }
 }
 // HDR composite buffer for tonemap pass
 let hdrComp: FB | null = null;
@@ -877,9 +963,64 @@ function tick(now: number) {
     tSim += DT * V.evolution; off2d = [off2d[0] + V.driftX * DT, off2d[1] + V.driftY * DT];
     simStep(frame, half, false, tSim, off2d); trailStep(T, [0, 0], [half[0] / V.zoom, half[1] / V.zoom], px); frame++;
   }
-  if (P.mode !== '3D Fractal') bloomPass(T, px);
-  // Composite to HDR, then tonemap to screen
-  composite(T, [-frameRect[0], -frameRect[1]], frameRect);
+  
+  // Phase 1 Post Stack: bloom → composite → CA/distort → color grade → tonemap
+  bloomPass(T); // Now works for all modes including 3D Fractal
+  
+  // Composite bloom into scene
+  gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp!.f);
+  gl.viewport(0, 0, hdrComp!.w, hdrComp!.h);
+  gl.useProgram(bloomComposite.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(bloomComposite.u.uSrc, 0);
+  for (let i = 0; i < 6; i++) {
+    gl.activeTexture(gl.TEXTURE1 + i);
+    gl.bindTexture(gl.TEXTURE_2D, bloomPyramid!.up[i].t);
+    gl.uniform1i(bloomComposite.u['uBloom' + i], 1 + i);
+  }
+  gl.uniform1f(bloomComposite.u.uBloomStrength, P.bloomStrength);
+  quad();
+  
+  // Chromatic aberration + barrel distortion (kick-driven CA)
+  const caStrength = P.caStrength * (1.0 + audioAnalyzer.state.kickEnv * 0.5);
+  if (caStrength > 0.001 || Math.abs(P.distortion) > 0.001) {
+    const tempCA = hdrFB(canvas.width, canvas.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, tempCA.f);
+    gl.viewport(0, 0, tempCA.w, tempCA.h);
+    gl.useProgram(caDistort.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp!.t); gl.uniform1i(caDistort.u.uSrc, 0);
+    gl.uniform1f(caDistort.u.uCAStrength, caStrength);
+    gl.uniform1f(caDistort.u.uDistortion, P.distortion);
+    quad();
+    const oldComp = hdrComp;
+    hdrComp = tempCA;
+    if (oldComp) del(oldComp);
+  }
+  
+  // Color grade + vignette + grain (snare-driven grain flash)
+  const grainStr = P.grainStrength * (1.0 + audioAnalyzer.state.snareEnv * 2.0);
+  const tempGrade = hdrFB(canvas.width, canvas.height);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, tempGrade.f);
+  gl.viewport(0, 0, tempGrade.w, tempGrade.h);
+  gl.useProgram(colorGrade.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp!.t); gl.uniform1i(colorGrade.u.uSrc, 0);
+  const lift = hex(P.lift).map(v => (v - 0.5) * 0.2);
+  const gamma = hex(P.gamma).map(v => 0.5 + v * 1.5);
+  const gain = hex(P.gainPost);
+  gl.uniform3f(colorGrade.u.uLift, lift[0], lift[1], lift[2]);
+  gl.uniform3f(colorGrade.u.uGamma, gamma[0], gamma[1], gamma[2]);
+  gl.uniform3f(colorGrade.u.uGain, gain[0], gain[1], gain[2]);
+  gl.uniform1f(colorGrade.u.uSaturation, P.saturationPost);
+  gl.uniform1f(colorGrade.u.uVibrance, P.vibrance);
+  gl.uniform1f(colorGrade.u.uVignetteStrength, P.vignetteStrength);
+  gl.uniform1f(colorGrade.u.uVignetteRadius, P.vignetteRadius);
+  gl.uniform1f(colorGrade.u.uGrainStrength, grainStr);
+  gl.uniform1f(colorGrade.u.uFrame, frame);
+  quad();
+  const oldComp2 = hdrComp;
+  hdrComp = tempGrade;
+  if (oldComp2) del(oldComp2);
+  
+  // Final tonemap to screen
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
   tonemapPass(frameRect);
   const what = P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
@@ -1028,7 +1169,7 @@ async function renderStill() {
         if (f % 16 == 0) { gl.flush(); status.text = `tile ${ty * cols + tx + 1}/${cols * rows} step ${f - N + K}/${K}`; await yieldUI(); }
       }
     }
-    bloomPass(T, pxScale);
+    bloomPass(T);
     gl.bindFramebuffer(gl.FRAMEBUFFER, out!.f); composite(T, [M, M], [0, 0, tw, th]);
     const px = new Uint8Array(tw * th * 4); gl.readPixels(0, 0, tw, th, gl.RGBA, gl.UNSIGNED_BYTE, px);
     const flip = new Uint8Array(px.length); const rb = tw * 4; for (let r = 0; r < th; r++) flip.set(px.subarray((th - 1 - r) * rb, (th - r) * rb), r * rb);
@@ -1058,7 +1199,7 @@ async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
     const f = warm + k; if (isP) pStep(f, aspect, f * DT * P.evolution3d); if (isS) sStep(f, aspect, f * DT * P.evolution3d);
     const tt = (f + 1) * DT * P.evolution3d, to = (f + 1) * DT * P.orbitSpeed; settleFrame = f + 1;
     if (isG) renderGrass(T, aspect, (f + 1) * DT, [0, 1, 0, 1], pxScale); else if (isS) render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale, 1, P.shadowResLive, sphereHooks); else if (isP) renderParticleScene(T, aspect, tt, to, [0, 1, 0, 1], pxScale); else render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale);
-    bloomPass(T, pxScale); gl.bindFramebuffer(gl.FRAMEBUFFER, out.f); composite(T, [0, 0], [0, 0, w, h]);
+    bloomPass(T); gl.bindFramebuffer(gl.FRAMEBUFFER, out.f); composite(T, [0, 0], [0, 0, w, h]);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     await fetch('/api/vframe', { method: 'POST', body: px }); status.text = `video frame ${k + 1}/${n}`;
   }
