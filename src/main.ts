@@ -1221,7 +1221,7 @@ function randomize() {
   stops = PALETTES[P.palette].map(s => [s[0], s[1]] as Stop); rebuildStops(); buildPalette(); gui.controllersRecursive().forEach(c => c.updateDisplay()); reset();
 }
 addEventListener('resize', layout);
-addEventListener('keydown', e => { if ((e.target as HTMLElement)?.tagName === 'INPUT') return; if (e.key === ' ') P.paused = !P.paused; if (e.key === 'r') randomize(); if (e.key === 'Escape') recover('Esc'); });
+addEventListener('keydown', (e: KeyboardEvent) => { if ((e.target as HTMLElement)?.tagName === 'INPUT') return; if (e.key === ' ') P.paused = !P.paused; if (e.key === 'r') randomize(); if (e.key === 'Escape') recover('Esc'); });
 
 // ---------- boot + automation via URL params ----------
 const q = new URLSearchParams(location.search);

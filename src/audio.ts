@@ -12,6 +12,7 @@ export interface AudioState {
   bpm: number;
   manualBpm: number;
   beatDetected: boolean;
+  beatPhase: number;  // 0-1 phase within beat cycle
   level: number;      // overall amplitude 0-1
   bass: number;       // low freq 0-1
   mid: number;        // mid freq 0-1
@@ -47,6 +48,7 @@ export class AudioAnalyzer {
     bpm: 120,
     manualBpm: 120,
     beatDetected: false,
+    beatPhase: 0,
     level: 0,
     bass: 0,
     mid: 0,
@@ -76,7 +78,8 @@ export class AudioAnalyzer {
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 2048;
       this.analyser.smoothingTimeConstant = 0.7;
-      this.analyser.connect(this.audioContext.destination);
+      // DO NOT connect analyser to destination here - it causes doubling
+      // File playback connects in loadFile, mic/system are analysis-only
       this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
       this.timeData = new Uint8Array(this.analyser.fftSize);
     }
@@ -102,6 +105,8 @@ export class AudioAnalyzer {
       
       this.source = this.audioContext!.createMediaElementSource(this.audioElement);
       this.source.connect(this.analyser!);
+      // Connect to destination so file playback is audible
+      this.analyser!.connect(this.audioContext!.destination);
       
       this.state.source = 'file';
       this.state.fileName = file.name;
@@ -217,6 +222,15 @@ export class AudioAnalyzer {
   }
   
   stop() {
+    // Disconnect analyser from destination to prevent audio playback
+    if (this.analyser && this.audioContext) {
+      try {
+        this.analyser.disconnect();
+      } catch (e) {
+        // Already disconnected, ignore
+      }
+    }
+    
     if (this.audioElement) {
       this.audioElement.pause();
       this.audioElement.currentTime = 0;
