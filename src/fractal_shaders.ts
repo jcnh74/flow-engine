@@ -146,9 +146,10 @@ float deMandelbox(vec3 pos) {
 // Menger Sponge distance estimator
 float deMenger(vec3 p) {
   vec3 z = p;
-  float scale = -uScale;
+  float d = 1e10;
+  float s = 1.0;
   
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 12; i++) {
     if (i >= uIterations) break;
     
     z = abs(z);
@@ -156,58 +157,75 @@ float deMenger(vec3 p) {
     if (z.x < z.z) z.xz = z.zx;
     if (z.y < z.z) z.yz = z.zy;
     
-    z = z * scale - vec3(1.0) * (scale - 1.0);
-    if (z.z < -0.5 * (scale - 1.0)) z.z += (scale - 1.0);
+    z = z * 3.0 - vec3(2.0);
+    s *= 3.0;
+    
+    if (z.z < -1.0) z.z += 2.0;
   }
   
-  return (length(z) - 2.0) * pow(scale, -float(uIterations));
+  // Box distance
+  vec3 a = abs(z) - vec3(1.0);
+  return (min(max(max(a.x, a.y), a.z), 0.0) + length(max(a, 0.0))) / s;
 }
 
 // Sierpinski Tetrahedron distance estimator
 float deSierpinski(vec3 p) {
   vec3 z = p;
   float scale = 2.0;
+  float s = 1.0;
   
   for (int i = 0; i < 16; i++) {
     if (i >= uIterations) break;
     
+    // Tetrahedral folding
     if (z.x + z.y < 0.0) z.xy = -z.yx;
     if (z.x + z.z < 0.0) z.xz = -z.zx;
     if (z.y + z.z < 0.0) z.yz = -z.zy;
     
-    z = z * scale - vec3(1.0) * (scale - 1.0);
+    // Scale and translate
+    z = z * scale - vec3(scale - 1.0);
+    s *= scale;
   }
   
-  return length(z) * pow(scale, -float(uIterations));
+  return (length(z) - 2.0) / s;
 }
 
 // Kaleidoscopic IFS distance estimator
 float deKaleidoscopic(vec3 p) {
   vec3 z = p;
-  float scale = abs(uScale);
-  float mr2 = uMinRadius * uMinRadius;
-  float fr2 = uFixedRadius * uFixedRadius;
+  float scale = 2.0;
+  float mr2 = 0.25;
+  float fr2 = 1.0;
+  float dr = 1.0;
   
   for (int i = 0; i < 16; i++) {
     if (i >= uIterations) break;
     
+    // Kaleidoscopic folding
     z = abs(z);
     float t;
     if (z.x - z.y < 0.0) { t = z.x; z.x = z.y; z.y = t; }
     if (z.x - z.z < 0.0) { t = z.x; z.x = z.z; z.z = t; }
     if (z.y - z.z < 0.0) { t = z.y; z.y = z.z; z.z = t; }
     
+    // Spherical folding
     float r2 = dot(z, z);
     if (r2 < mr2) {
-      z *= fr2 / mr2;
+      float temp = fr2 / mr2;
+      z *= temp;
+      dr *= temp;
     } else if (r2 < fr2) {
-      z *= fr2 / r2;
+      float temp = fr2 / r2;
+      z *= temp;
+      dr *= temp;
     }
     
-    z = z * scale + p;
+    // Scale and shift
+    z = z * scale - vec3(1.0, 1.0, 0.0);
+    dr = dr * abs(scale) + 1.0;
   }
   
-  return length(z) / scale;
+  return length(z) / abs(dr);
 }
 
 // Quaternion multiplication
@@ -223,25 +241,27 @@ vec4 qMul(vec4 q1, vec4 q2) {
 // Quaternion Julia distance estimator
 float deQuaternionJulia(vec3 p) {
   vec4 z = vec4(p, 0.0);
-  vec4 c = uJuliaC;
+  vec4 c = vec4(-0.2, 0.8, 0.0, 0.0);
   vec4 dz = vec4(1.0, 0.0, 0.0, 0.0);
   
   for (int i = 0; i < 16; i++) {
     if (i >= uIterations) break;
     
-    float r = length(z);
-    if (r > uBailout) break;
+    float r2 = dot(z, z);
+    if (r2 > 256.0) break;
     
+    // dz = 2 * z * dz
     dz = vec4(2.0 * (z.x * dz.x - z.y * dz.y - z.z * dz.z - z.w * dz.w),
               2.0 * (z.x * dz.y + z.y * dz.x + z.z * dz.w - z.w * dz.z),
               2.0 * (z.x * dz.z - z.y * dz.w + z.z * dz.x + z.w * dz.y),
               2.0 * (z.x * dz.w + z.y * dz.z - z.z * dz.y + z.w * dz.x));
     
+    // z = z^2 + c
     z = qMul(z, z) + c;
   }
   
   float r = length(z);
-  return 0.5 * r * log(r) / length(dz);
+  return 0.5 * r * log(r) / max(length(dz), 0.001);
 }
 
 // Main distance function

@@ -1212,7 +1212,32 @@ modF.add(modState, 'mappingCount').name('Active mappings').listen().disable();
 
 // Fractal folder
 const frF = gui.addFolder('3D Fractal');
-frF.add(P, 'frType', { 'Mandelbulb': 0, 'Mandelbox': 1 }).name('Fractal type');
+
+const fractalDefaults = (type: number) => {
+  if (type === 2) { // Menger Sponge
+    P.frIter = 5; P.frCamDist = 4;
+  } else if (type === 3) { // Sierpinski
+    P.frIter = 6; P.frCamDist = 3.5;
+  } else if (type === 4) { // Kaleidoscopic IFS
+    P.frIter = 8; P.frCamDist = 3;
+  } else if (type === 5) { // Quaternion Julia
+    P.frIter = 12; P.frCamDist = 2.5;
+  } else if (type === 1) { // Mandelbox
+    P.frIter = 12; P.frScale = -1.5; P.frCamDist = 3;
+  } else { // Mandelbulb
+    P.frIter = 12; P.frPower = 8; P.frCamDist = 2;
+  }
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+};
+
+frF.add(P, 'frType', { 
+  'Mandelbulb': 0, 
+  'Mandelbox': 1,
+  'Menger Sponge': 2,
+  'Sierpinski': 3,
+  'Kaleidoscopic IFS': 4,
+  'Quaternion Julia': 5
+}).name('Fractal type').onChange(fractalDefaults);
 frF.add(P, 'frPower', 2, 16, 0.1).name('Power (Mandelbulb)');
 frF.add(P, 'frIter', 4, 24, 1).name('Max iterations');
 frF.add(P, 'frBailout', 2, 10, 0.1).name('Bailout radius');
