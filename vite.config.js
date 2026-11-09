@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { isHelperAllowed } from './src/api-security.ts';
 let vid = null;
 const OUT = path.resolve('out');
 const jobs = new Map();
@@ -34,10 +35,7 @@ const helper = () => ({
       
       // Security: restrict helper APIs to loopback only
       const remoteAddr = req.socket?.remoteAddress || '';
-      const isLoopback = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
-      const restrictedPaths = ['/api/log', '/api/vstart', '/api/vframe', '/api/vend', '/api/tile', '/api/finish'];
-      
-      if (restrictedPaths.includes(u.pathname) && !isLoopback) {
+      if (!isHelperAllowed(u.pathname, remoteAddr)) {
         res.statusCode = 403;
         return res.end('Forbidden: this endpoint is only accessible from localhost');
       }
