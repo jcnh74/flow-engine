@@ -73,7 +73,11 @@ export class MainControlPanel {
     ]);
 
     // Mode-specific sections
-    if (false && mode === '2D Fractal') { // Removed
+    if (mode === 'Tunnel' || mode === 'Kaleido' || mode === 'Plasma' || mode === 'Morph') {
+      html += this.buildSection('Animation', [
+        this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
+      ]);
+    } else if (false && mode === '2D Fractal') { // Removed
       html += this.buildSection('Fractal Type', [
         this.buildSelect('fr2Type', 'Type', { 'Mandelbrot': 0, 'Julia': 1, 'Burning Ship': 2, 'Newton': 3, 'Phoenix': 4 }),
         this.buildSlider('fr2MaxIter', 'Iterations', 32, 512, 1, true),
@@ -515,6 +519,9 @@ export class MainControlPanel {
       controls.push(this.buildColorPicker('gTip', 'Tip Color'));
       controls.push(this.buildColorPicker('gDryC', 'Dry Color'));
       controls.push(this.buildSlider('gDry', 'Dry Amount', 0, 1, 0.01, true));
+    } else if (mode === 'Tunnel' || mode === 'Kaleido' || mode === 'Plasma' || mode === 'Morph') {
+      // Trippy modes: just hue shift (palettes are baked into modes)
+      controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
     } else {
       // Default for 3D fabric, Particle Fabric, Wall Studio, Liquid Spheres
       controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
@@ -529,6 +536,11 @@ export class MainControlPanel {
   }
 
   private buildLightingSection(mode: string): string {
+    // Simple modes don't need lighting controls
+    if (mode === 'Tunnel' || mode === 'Kaleido' || mode === 'Plasma' || mode === 'Morph') {
+      return ''; // No lighting section for simple trippy modes
+    }
+    
     const rigOptions = Object.keys(LIGHTING_RIGS);
     const controls: string[] = [];
     
