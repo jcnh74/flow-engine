@@ -55,6 +55,7 @@ const modulationSystem = new ModulationSystem();
 // ---------- params ----------
 const P: any = {
   mode: 'Wall Studio', seed: 1977, // Start on Wall Studio
+  performanceMode: false, // Performance mode: fullscreen, no UI, no cursor
   // Trippy mode params
   trippyMode: 0, trippySpeed: 1.0,
   
@@ -1433,11 +1434,69 @@ function randomize() {
   stops = PALETTES[P.palette].map(s => [s[0], s[1]] as Stop); rebuildStops(); buildPalette(); gui.controllersRecursive().forEach(c => c.updateDisplay()); reset();
 }
 addEventListener('resize', layout);
+// Performance mode functions
+function enterPerformanceMode() {
+  P.performanceMode = true;
+  
+  // Request fullscreen
+  if (document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+  
+  // Hide UI elements
+  panel.hide();
+  presetGallery.hide();
+  gui.domElement.style.display = 'none';
+  
+  // Hide cursor
+  document.body.style.cursor = 'none';
+  canvas.style.cursor = 'none';
+  
+  log('Performance mode: ON (press Esc to exit)');
+}
+
+function exitPerformanceMode() {
+  P.performanceMode = false;
+  
+  // Exit fullscreen
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+  
+  // Show UI elements (leave them in their previous state)
+  panel.show();
+  // presetGallery stays hidden unless user toggles it
+  
+  // Show cursor
+  document.body.style.cursor = '';
+  canvas.style.cursor = '';
+  
+  log('Performance mode: OFF');
+}
+
 addEventListener('keydown', (e: KeyboardEvent) => { 
   if ((e.target as HTMLElement)?.tagName === 'INPUT') return; 
+  
+  // Performance mode toggle (F key) or exit (Escape)
+  if (e.key === 'f' || e.key === 'F') {
+    if (!P.performanceMode) {
+      enterPerformanceMode();
+    }
+    return;
+  }
+  
+  if (e.key === 'Escape') {
+    if (P.performanceMode) {
+      exitPerformanceMode();
+    } else {
+      recover('Esc');
+    }
+    return;
+  }
+  
+  // All other shortcuts work in both modes
   if (e.key === ' ') P.paused = !P.paused; 
   if (e.key === 'r') randomize(); 
-  if (e.key === 'Escape') recover('Esc'); 
   if (e.key === 'g') gui.domElement.style.display = gui.domElement.style.display === 'none' ? '' : 'none';
   if (e.key === 'p') presetGallery.toggle();
 });

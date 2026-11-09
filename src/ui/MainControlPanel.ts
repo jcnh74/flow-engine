@@ -768,6 +768,18 @@ export class MainControlPanel {
     }
   }
 
+  show(): void {
+    this.container.classList.remove('hidden');
+  }
+
+  hide(): void {
+    this.container.classList.add('hidden');
+  }
+
+  toggle(): void {
+    this.container.classList.toggle('hidden');
+  }
+
   destroy(): void {
     this.container.remove();
   }
