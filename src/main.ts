@@ -60,6 +60,16 @@ const P: any = {
   performanceMode: false, // Performance mode: fullscreen, no UI, no cursor
   // Trippy mode params
   trippyMode: 0, trippySpeed: 1.0,
+  // Tunnel params
+  tunnelTwist: 1.0, tunnelRings: 8.0, tunnelFov: 1.0, tunnelWarp: 0.5,
+  // Kaleido params
+  kaleidoSegments: 6.0, kaleidoZoom: 1.0, kaleidoRotation: 0.2, kaleidoFeedback: 0.7,
+  // Plasma params
+  plasmaScale: 1.5, plasmaWarp: 0.8, plasmaFlow: 0.5, plasmaContrast: 1.2,
+  // Morph params
+  morphBlobs: 3.0, morphSmooth: 0.5, morphRate: 0.3, morphGlow: 0.8,
+  // Trippy palette
+  trippyPalette: 'Liquid Spectrum',
   
   // 2D Fractal params removed
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
@@ -96,6 +106,7 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'gH','gW','gCurv','gDensity','gWind','gWindAz','gGustK','gGustSpeed','gcDist','gcHeight','gcFov','gDry','hueShift','cHueCycle',
   'lsRadius','lsDrip','lsVisc','lsCoh',
   'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos',
+  'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
@@ -717,7 +728,7 @@ function renderTrippy(T: Trails, modeIndex: number) {
   gl.uniform2f(u.uResolution, T.w, T.h);
   gl.uniform1f(u.uKickStrength, audioAnalyzer.state.beatDetected ? 1.0 : 0.0);
   gl.uniform1f(u.uBassLevel, audioAnalyzer.state.bass);
-  gl.uniform1f(u.uSpeed, P.trippySpeed);
+  gl.uniform1f(u.uSpeed, L.trippySpeed);
   const c1 = hex(stops[0][1]);
   const c2 = hex(stops[Math.min(1, stops.length-1)][1]);
   const c3 = hex(stops[Math.min(2, stops.length-1)][1]);
@@ -725,6 +736,24 @@ function renderTrippy(T: Trails, modeIndex: number) {
   gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
   gl.uniform3f(u.uColor3, c3[0], c3[1], c3[2]);
   gl.uniform1f(u.uHueShift, (frame * 0.001) % 1.0);
+  
+  // VJ Controls
+  if (u.uTunnelTwist !== undefined) gl.uniform1f(u.uTunnelTwist, L.tunnelTwist);
+  if (u.uTunnelRings !== undefined) gl.uniform1f(u.uTunnelRings, L.tunnelRings);
+  if (u.uTunnelFov !== undefined) gl.uniform1f(u.uTunnelFov, L.tunnelFov);
+  if (u.uTunnelWarp !== undefined) gl.uniform1f(u.uTunnelWarp, L.tunnelWarp);
+  if (u.uKaleidoSegments !== undefined) gl.uniform1f(u.uKaleidoSegments, L.kaleidoSegments);
+  if (u.uKaleidoZoom !== undefined) gl.uniform1f(u.uKaleidoZoom, L.kaleidoZoom);
+  if (u.uKaleidoRotation !== undefined) gl.uniform1f(u.uKaleidoRotation, L.kaleidoRotation);
+  if (u.uKaleidoFeedback !== undefined) gl.uniform1f(u.uKaleidoFeedback, L.kaleidoFeedback);
+  if (u.uPlasmaScale !== undefined) gl.uniform1f(u.uPlasmaScale, L.plasmaScale);
+  if (u.uPlasmaWarp !== undefined) gl.uniform1f(u.uPlasmaWarp, L.plasmaWarp);
+  if (u.uPlasmaFlow !== undefined) gl.uniform1f(u.uPlasmaFlow, L.plasmaFlow);
+  if (u.uPlasmaContrast !== undefined) gl.uniform1f(u.uPlasmaContrast, L.plasmaContrast);
+  if (u.uMorphBlobs !== undefined) gl.uniform1f(u.uMorphBlobs, L.morphBlobs);
+  if (u.uMorphSmooth !== undefined) gl.uniform1f(u.uMorphSmooth, L.morphSmooth);
+  if (u.uMorphRate !== undefined) gl.uniform1f(u.uMorphRate, L.morphRate);
+  if (u.uMorphGlow !== undefined) gl.uniform1f(u.uMorphGlow, L.morphGlow);
   
   // Pass palette
   const pal = new Float32Array(8 * 3);
@@ -1431,7 +1460,7 @@ function loadPresetFromGallery(preset: any) {
     }
   }
   
-  if (isW()) wallDefaults();
+  // Don't call wallDefaults() - preset params must win
   reset();
   updateFolders();
   gui.controllersRecursive().forEach(c => c.updateDisplay());

@@ -1,5 +1,6 @@
 // Remote control WebSocket client
 // Syncs state with mobile remotes via relay server
+import QRCode from 'qrcode';
 
 export interface RemoteState {
   connected: boolean;
@@ -25,13 +26,61 @@ export class RemoteSync {
     this.onAction = onAction;
     this.onPreset = onPreset;
     
-    // Generate remote URL (use current host)
-    const host = location.hostname || 'localhost';
+    // Generate remote URL (use actual hostname, not localhost)
+    const host = location.hostname === 'localhost' || location.hostname === '127.0.0.1' 
+      ? this.getLocalNetworkIP() 
+      : location.hostname;
     const port = location.port ? `:${location.port}` : '';
     this.state.remoteUrl = `http://${host}${port}/remote.html`;
     
-    // Generate QR code URL (using a free QR code API)
-    this.state.qrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(this.state.remoteUrl)}`;
+    // Generate QR code locally (no external API call)
+    this.generateQRCode();
+  }
+
+  private getLocalNetworkIP(): string {
+    // Try to get local network IP via RTCPeerConnection
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      pc.createDataChannel('');
+      pc.createOffer().then(offer => pc.setLocalDescription(offer));
+      
+      pc.onicecandidate = (ice) => {
+        if (!ice || !ice.candidate || !ice.candidate.candidate) return;
+        const candidate = ice.candidate.candidate;
+        const ipRegex = /([0-9]{1,3}\.){3}[0-9]{1,3}/;
+        const match = ipRegex.exec(candidate);
+        if (match) {
+          const ip = match[0];
+          if (!ip.startsWith('127.') && !ip.startsWith('0.')) {
+            // Update URL and regenerate QR code with actual IP
+            const port = location.port ? `:${location.port}` : '';
+            this.state.remoteUrl = `http://${ip}${port}/remote.html`;
+            this.generateQRCode();
+          }
+        }
+        pc.onicecandidate = null;
+        pc.close();
+      };
+    } catch (e) {
+      console.warn('Could not determine local IP:', e);
+    }
+    return location.hostname;
+  }
+
+  private async generateQRCode() {
+    try {
+      this.state.qrCode = await QRCode.toDataURL(this.state.remoteUrl, {
+        width: 200,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+    } catch (err) {
+      console.error('Failed to generate QR code:', err);
+      this.state.qrCode = '';
+    }
   }
 
   connect() {

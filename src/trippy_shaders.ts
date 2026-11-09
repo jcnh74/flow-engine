@@ -1,11 +1,12 @@
 // Trippy visualizer shaders for DJ use
 
 export const trippyVert = `#version 300 es
-in vec2 position;
+const vec2 P[3] = vec2[3](vec2(-1,-1), vec2(3,-1), vec2(-1,3));
 out vec2 vUv;
 void main() {
-  vUv = position * 0.5 + 0.5;
-  gl_Position = vec4(position, 0.0, 1.0);
+  vec2 p = P[gl_VertexID];
+  vUv = p * 0.5 + 0.5;
+  gl_Position = vec4(p, 0.0, 1.0);
 }
 `;
 
@@ -28,6 +29,24 @@ uniform vec3 uColor3;
 uniform float uHueShift;
 uniform int uPaletteSize;
 uniform vec3 uPalette[8];
+
+// VJ Controls
+uniform float uTunnelTwist;
+uniform float uTunnelRings;
+uniform float uTunnelFov;
+uniform float uTunnelWarp;
+uniform float uKaleidoSegments;
+uniform float uKaleidoZoom;
+uniform float uKaleidoRotation;
+uniform float uKaleidoFeedback;
+uniform float uPlasmaScale;
+uniform float uPlasmaWarp;
+uniform float uPlasmaFlow;
+uniform float uPlasmaContrast;
+uniform float uMorphBlobs;
+uniform float uMorphSmooth;
+uniform float uMorphRate;
+uniform float uMorphGlow;
 
 // HSV to RGB
 vec3 hsv2rgb(vec3 c) {
@@ -52,6 +71,9 @@ vec3 renderTunnel(vec2 uv) {
   float aspect = uResolution.x / uResolution.y;
   p.x *= aspect;
   
+  // Apply FOV control
+  p /= uTunnelFov;
+  
   // Polar coordinates
   float r = length(p);
   float a = atan(p.y, p.x);
@@ -60,8 +82,14 @@ vec3 renderTunnel(vec2 uv) {
   float speed = uSpeed * (1.0 + uKickStrength * 2.0);
   float z = uTime * speed + r;
   
-  // Tunnel layers
-  float tunnel = mod(z * 2.0, 1.0);
+  // Apply twist
+  a += z * uTunnelTwist;
+  
+  // Domain warp
+  r += sin(z * 5.0) * uTunnelWarp * 0.1;
+  
+  // Tunnel layers with controllable rings
+  float tunnel = mod(z * uTunnelRings * 0.25, 1.0);
   float rings = smoothstep(0.3, 0.7, tunnel);
   
   // Rotating segments
@@ -86,21 +114,28 @@ vec3 renderKaleido(vec2 uv) {
   float aspect = uResolution.x / uResolution.y;
   p.x *= aspect;
   
+  // Apply zoom
+  p /= uKaleidoZoom;
+  
   // Polar coords
   float r = length(p);
   float a = atan(p.y, p.x);
   
-  // Kaleidoscope mirrors
-  float segments = 6.0 + floor(uBassLevel * 4.0);
+  // Apply rotation
+  a += uTime * uKaleidoRotation;
+  
+  // Kaleidoscope mirrors with controllable segments
+  float segments = uKaleidoSegments;
   a = mod(a, 3.14159 * 2.0 / segments);
   a = abs(a - 3.14159 / segments);
   
   // Reconstruct position
   vec2 kp = vec2(cos(a), sin(a)) * r;
   
-  // Animated pattern
-  float pattern = sin(kp.x * 10.0 + uTime) * sin(kp.y * 10.0 - uTime * 0.7);
-  pattern += sin(length(kp) * 8.0 - uTime * 2.0) * 0.5;
+  // Animated pattern with feedback
+  float fb = uKaleidoFeedback;
+  float pattern = sin(kp.x * 10.0 * fb + uTime) * sin(kp.y * 10.0 * fb - uTime * 0.7);
+  pattern += sin(length(kp) * 8.0 * fb - uTime * 2.0) * 0.5;
   pattern = pattern * 0.5 + 0.5;
   
   // Color
@@ -118,11 +153,14 @@ vec3 renderPlasma(vec2 uv) {
   float aspect = uResolution.x / uResolution.y;
   p.x *= aspect;
   
-  float t = uTime * uSpeed;
+  // Apply scale
+  p *= uPlasmaScale;
   
-  // Domain warping
-  p += vec2(sin(p.y * 2.0 + t), cos(p.x * 2.0 + t * 0.7)) * 0.3;
-  p += vec2(sin(p.x * 3.0 - t * 0.5), sin(p.y * 3.0 + t * 0.3)) * 0.2;
+  float t = uTime * uSpeed * uPlasmaFlow;
+  
+  // Domain warping with controllable strength
+  p += vec2(sin(p.y * 2.0 + t), cos(p.x * 2.0 + t * 0.7)) * uPlasmaWarp * 0.3;
+  p += vec2(sin(p.x * 3.0 - t * 0.5), sin(p.y * 3.0 + t * 0.3)) * uPlasmaWarp * 0.2;
   
   // Layered sine waves
   float plasma = 0.0;
@@ -132,6 +170,9 @@ vec3 renderPlasma(vec2 uv) {
   plasma += sin(length(p) * 5.0 - t * 2.0);
   plasma /= 4.0;
   plasma = plasma * 0.5 + 0.5;
+  
+  // Apply contrast
+  plasma = pow(plasma, 1.0 / uPlasmaContrast);
   
   // Bass modulation
   plasma += uBassLevel * 0.2;
@@ -148,29 +189,34 @@ vec3 renderMorph(vec2 uv) {
   float aspect = uResolution.x / uResolution.y;
   p.x *= aspect;
   
-  float t = uTime * uSpeed;
+  float t = uTime * uSpeed * uMorphRate;
   
-  // Animated blob centers
-  vec2 b1 = vec2(sin(t) * 1.5, cos(t * 0.7) * 1.2);
-  vec2 b2 = vec2(cos(t * 0.5) * 1.3, sin(t * 0.3) * 1.5);
-  vec2 b3 = vec2(sin(t * 0.3) * 1.0, cos(t * 0.5) * 1.0);
+  // Animated blob centers based on blob count
+  int blobCount = int(uMorphBlobs);
+  float field = 0.0;
   
-  // Metaball formula
-  float d1 = 1.0 / length(p - b1);
-  float d2 = 1.0 / length(p - b2);
-  float d3 = 1.0 / length(p - b3);
+  for (int i = 0; i < 6; i++) {
+    if (i >= blobCount) break;
+    float fi = float(i);
+    vec2 center = vec2(
+      sin(t * (0.5 + fi * 0.2)) * 1.5,
+      cos(t * (0.3 + fi * 0.15)) * 1.2
+    );
+    float dist = length(p - center);
+    field += 1.0 / max(dist, 0.1);
+  }
   
-  float field = d1 + d2 + d3;
   field *= 1.0 + uBassLevel * 0.5;
   
-  // Threshold for shape
-  float shape = smoothstep(2.0, 3.0, field);
-  float edge = smoothstep(2.5, 2.7, field);
+  // Smoothness control
+  float threshold = 2.0 + uMorphSmooth * 2.0;
+  float shape = smoothstep(threshold, threshold + 1.0, field);
+  float edge = smoothstep(threshold + 0.5, threshold + 0.7, field);
   
   // Color
   vec3 col = getPaletteColor(field * 0.1 + uTime * 0.05);
   col = mix(col * 0.2, col, shape);
-  col += edge * getPaletteColor(uTime * 0.1) * 2.0;
+  col += edge * getPaletteColor(uTime * 0.1) * uMorphGlow;
   
   // Kick pulse
   col *= 1.0 + uKickStrength * 0.3;

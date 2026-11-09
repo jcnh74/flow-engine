@@ -30,14 +30,16 @@ const skipSliderSweep = skipSweepIndex >= 0;
 mkdirSync(outDir, { recursive: true });
 
 const MODES = [
-  '2D Fractal',
   '3D Fractal',
   'Wall Studio',
-  'Grass Field',
   '3D fabric',
   'Liquid Spheres',
   'Particle Fabric',
-  '2D flow'
+  '2D flow',
+  'Tunnel',
+  'Kaleido',
+  'Plasma',
+  'Morph'
 ];
 
 const FRACTAL_TYPES_2D = [
@@ -337,6 +339,17 @@ async function run() {
       
       const stats = await analyzeImage(screenshot);
       modeResult.types.push({ type: 'default', filename, stats });
+      
+      // Special check for trippy modes (Tunnel, Kaleido, Plasma, Morph): ensure they're not pure black
+      if (['Tunnel', 'Kaleido', 'Plasma', 'Morph'].includes(mode)) {
+        if (stats.meanLum < 5 && stats.stdLum < 2) {
+          const failure = `${mode}: renders pure black (meanLum=${stats.meanLum.toFixed(2)}, stdLum=${stats.stdLum.toFixed(2)}) - likely no-VBO issue`;
+          results.failures.push(failure);
+          console.error(`  FAIL: ${failure}`);
+        } else {
+          console.log(`  PASS: ${mode} renders correctly (meanLum=${stats.meanLum.toFixed(2)}, stdLum=${stats.stdLum.toFixed(2)})`);
+        }
+      }
     }
     
     // Slider sweep: test that each visible slider has an effect

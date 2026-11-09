@@ -73,9 +73,49 @@ export class MainControlPanel {
     ]);
 
     // Mode-specific sections
-    if (mode === 'Tunnel' || mode === 'Kaleido' || mode === 'Plasma' || mode === 'Morph') {
-      html += this.buildSection('Animation', [
+    if (mode === 'Tunnel') {
+      html += this.buildSection('Tunnel', [
         this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
+        this.buildSlider('tunnelTwist', 'Twist', 0, 3, 0.1, true),
+        this.buildSlider('tunnelRings', 'Rings', 4, 16, 1, true),
+        this.buildSlider('tunnelFov', 'FOV', 0.5, 2, 0.1, true),
+        this.buildSlider('tunnelWarp', 'Warp', 0, 1.5, 0.1, true),
+      ]);
+      html += this.buildSection('Palette', [
+        this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
+      ]);
+    } else if (mode === 'Kaleido') {
+      html += this.buildSection('Kaleidoscope', [
+        this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
+        this.buildSlider('kaleidoSegments', 'Segments', 3, 12, 1, true),
+        this.buildSlider('kaleidoZoom', 'Zoom', 0.5, 2, 0.1, true),
+        this.buildSlider('kaleidoRotation', 'Rotation', -1, 1, 0.1, true),
+        this.buildSlider('kaleidoFeedback', 'Feedback', 0, 1, 0.05, true),
+      ]);
+      html += this.buildSection('Palette', [
+        this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
+      ]);
+    } else if (mode === 'Plasma') {
+      html += this.buildSection('Plasma', [
+        this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
+        this.buildSlider('plasmaScale', 'Scale', 0.5, 3, 0.1, true),
+        this.buildSlider('plasmaWarp', 'Warp', 0, 2, 0.1, true),
+        this.buildSlider('plasmaFlow', 'Flow', 0, 1.5, 0.1, true),
+        this.buildSlider('plasmaContrast', 'Contrast', 0.5, 2, 0.1, true),
+      ]);
+      html += this.buildSection('Palette', [
+        this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
+      ]);
+    } else if (mode === 'Morph') {
+      html += this.buildSection('Morphing', [
+        this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
+        this.buildSlider('morphBlobs', 'Blob Count', 1, 6, 1, true),
+        this.buildSlider('morphSmooth', 'Smoothness', 0, 1, 0.05, true),
+        this.buildSlider('morphRate', 'Morph Rate', 0, 1, 0.05, true),
+        this.buildSlider('morphGlow', 'Glow', 0, 2, 0.1, true),
+      ]);
+      html += this.buildSection('Palette', [
+        this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
       ]);
     } else if (false && mode === '2D Fractal') { // Removed
       html += this.buildSection('Fractal Type', [
