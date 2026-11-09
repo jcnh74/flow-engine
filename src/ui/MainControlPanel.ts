@@ -59,7 +59,7 @@ export class MainControlPanel {
 
     // Scene section (always visible)
     html += this.buildSection('Scene', [
-      this.buildSelect('mode', 'Mode', ['Wall Studio', '3D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
+      this.buildSelect('mode', 'Mode', ['Wall Studio', '3D Fractal', '2D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
       this.buildSlider('seed', 'Seed', 0, 999999, 1),
       this.buildButton('randomize', '🎲 Randomize', 'randomize'),
       this.buildButton('reset', '⛑ Reset', 'reset'),
@@ -67,7 +67,29 @@ export class MainControlPanel {
     ]);
 
     // Mode-specific sections
-    if (mode === '2D flow') {
+    if (mode === '2D Fractal') {
+      html += this.buildSection('Fractal Type', [
+        this.buildSelect('fr2Type', 'Type', { 'Mandelbrot': 0, 'Julia': 1, 'Burning Ship': 2, 'Newton': 3, 'Phoenix': 4 }),
+        this.buildSlider('fr2MaxIter', 'Iterations', 32, 512, 1, true),
+      ]);
+      html += this.buildSection('View', [
+        this.buildSlider('fr2Zoom', 'Zoom', 1, 1000, 1, true),
+        this.buildSlider('fr2CenterX', 'Center X', -2, 2, 0.001, true),
+        this.buildSlider('fr2CenterY', 'Center Y', -2, 2, 0.001, true),
+        this.buildSlider('fr2Rotation', 'Rotation', -180, 180, 1, true),
+      ]);
+      html += this.buildSection('Julia', [
+        this.buildSlider('fr2JuliaCX', 'Julia C Real', -2, 2, 0.001, true),
+        this.buildSlider('fr2JuliaCY', 'Julia C Imag', -2, 2, 0.001, true),
+        this.buildCheckbox('fr2JuliaOrbit', 'Orbit Animation'),
+        this.buildSlider('fr2OrbitSpeed', 'Orbit Speed', 0, 2, 0.01, true),
+      ]);
+      html += this.buildSection('Animation', [
+        this.buildCheckbox('fr2AutoZoom', 'Auto Zoom'),
+        this.buildSlider('fr2ZoomSpeed', 'Zoom Speed', 0, 2, 0.01, true),
+        this.buildSlider('fr2PaletteCycle', 'Palette Cycle', -10, 10, 0.1, true),
+      ]);
+    } else if (mode === '2D flow') {
       html += this.buildSection('Flow Field', [
         this.buildSlider('noiseScale', 'Noise Scale', 0.3, 5, 0.01, true),
         this.buildSlider('evolution', 'Evolution', 0, 1, 0.001, true),
@@ -181,8 +203,8 @@ export class MainControlPanel {
     html += this.buildColorSection(mode);
 
     // Unified Lighting section (3D modes only)
-    const is3D = mode !== '2D flow';
-    if (is3D) {
+    const is2D = mode === '2D flow' || mode === '2D Fractal';
+    if (!is2D) {
       html += this.buildLightingSection(mode);
     }
 

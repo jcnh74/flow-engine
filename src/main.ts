@@ -2,6 +2,7 @@ import GUI from 'lil-gui';
 import * as S from './shaders';
 import * as GS from './grass_shaders';
 import * as FS from './fractal_shaders';
+import * as FS2 from './fractal2d_shaders';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
 import { MainControlPanel } from './ui/MainControlPanel';
@@ -51,6 +52,10 @@ const modulationSystem = new ModulationSystem();
 // ---------- params ----------
 const P: any = {
   mode: 'Wall Studio', seed: 1977,
+  // 2D Fractal params
+  fr2Type: 0, fr2MaxIter: 256, fr2Zoom: 200, fr2CenterX: -0.5, fr2CenterY: 0,
+  fr2Rotation: 0, fr2JuliaCX: -0.4, fr2JuliaCY: 0.6, fr2JuliaOrbit: false,
+  fr2OrbitSpeed: 0.2, fr2AutoZoom: false, fr2ZoomSpeed: 0.1, fr2PaletteCycle: 0,
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
   wObj: false, wObjMat: 'glossy', cycA: '#d8d8d8', cycB: '#8e8e8e', cycOn: true, grain: 0.025,
   wcView: 'Front', wcYaw: 0, wcPitch: 0, wcDist: 5.0, wcFov: 40, wcPanX: 0, wcPanY: 0, wcAuto: false,
@@ -133,6 +138,7 @@ const hdrFB = (w: number, h: number) => fbo(w, h, gl.RGBA16F, gl.RGBA, gl.HALF_F
 const sim = prog(S.QUAD_VS, S.SIM_FS), draw = prog(S.DRAW_VS, S.DRAW_FS), fade = prog(S.QUAD_VS, S.FADE_FS),
   bright = prog(S.QUAD_VS, S.BRIGHT_FS), blur = prog(S.QUAD_VS, S.BLUR_FS), comp = prog(S.QUAD_VS, S.COMP_FS);
 const fractal = prog(FS.FRACTAL_VS, FS.FRACTAL_FS);
+const fractal2d = prog(FS2.vert, FS2.frag);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -664,6 +670,52 @@ function renderFractal(T: Trails, vp: number[]) {
   quad();
 }
 
+// ---------- 2D Fractal rendering ----------
+function render2DFractal(T: Trails) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f);
+  gl.viewport(0, 0, T.w, T.h);
+  gl.useProgram(fractal2d.p);
+  
+  // Update Julia orbit
+  if (P.fr2JuliaOrbit && !P.paused) {
+    const t = frame * 0.016 * P.fr2OrbitSpeed;
+    P.fr2JuliaCX = Math.cos(t) * 0.7;
+    P.fr2JuliaCY = Math.sin(t) * 0.7;
+  }
+  
+  // Auto zoom
+  if (P.fr2AutoZoom && !P.paused) {
+    const zoomTarget = 1e6; // Max safe zoom for float32
+    P.fr2Zoom = Math.min(zoomTarget, P.fr2Zoom * (1 + P.fr2ZoomSpeed * 0.01));
+  }
+  
+  // Palette cycling
+  const paletteOffset = (frame * P.fr2PaletteCycle * 0.001) % 1.0;
+  
+  // Build palette from current stops
+  const pal = new Float32Array(8 * 3);
+  const usedStops = stops.slice(0, 8);
+  for (let i = 0; i < usedStops.length; i++) {
+    const c = hex(usedStops[i][1]);
+    pal[i * 3] = c[0];
+    pal[i * 3 + 1] = c[1];
+    pal[i * 3 + 2] = c[2];
+  }
+  
+  gl.uniform1i(fractal2d.u.frType, P.fr2Type);
+  gl.uniform2f(fractal2d.u.center, P.fr2CenterX, P.fr2CenterY);
+  gl.uniform1f(fractal2d.u.zoom, P.fr2Zoom);
+  gl.uniform2f(fractal2d.u.juliaC, P.fr2JuliaCX, P.fr2JuliaCY);
+  gl.uniform1i(fractal2d.u.maxIter, Math.round(P.fr2MaxIter));
+  gl.uniform1f(fractal2d.u.time, frame * 0.016);
+  gl.uniform3fv(fractal2d.u['palette[0]'], pal);
+  gl.uniform1i(fractal2d.u.paletteSize, usedStops.length);
+  gl.uniform1f(fractal2d.u.paletteOffset, paletteOffset);
+  gl.uniform1f(fractal2d.u.rotation, P.fr2Rotation);
+  
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
 function tick(now: number) {
   requestAnimationFrame(tick); if (busy || gl.isContextLost()) return;
   const dt = now - last; last = now; fpsAcc += dt; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
@@ -683,6 +735,9 @@ function tick(now: number) {
   if (P.mode === '3D Fractal') {
     if (!P.paused) frame++;
     renderFractal(T, [0, 1, 0, 1]);
+  } else if (P.mode === '2D Fractal') {
+    if (!P.paused) frame++;
+    render2DFractal(T);
   } else if (P.mode === 'Grass Field') {
     if (!P.paused) frame++; renderGrass(T, previewAspect, frame * DT, [0, 1, 0, 1], px);
   } else if (P.mode === '3D fabric') {
