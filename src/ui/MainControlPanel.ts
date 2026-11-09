@@ -60,7 +60,91 @@ export class MainControlPanel {
     ]);
 
     // Mode-specific sections
-    if (mode === '3D Fractal') {
+    if (mode === '2D flow') {
+      html += this.buildSection('Flow Field', [
+        this.buildSlider('noiseScale', 'Noise Scale', 0.3, 5, 0.01, true),
+        this.buildSlider('evolution', 'Evolution', 0, 1, 0.001, true),
+        this.buildSlider('curl', 'Curl', 0, 3, 0.01, true),
+        this.buildSlider('turbulence', 'Turbulence', 0, 1.5, 0.01, true),
+        this.buildSlider('speed', 'Speed', 0, 3, 0.01, true),
+      ]);
+      html += this.buildSection('Particles', [
+        this.buildSlider('life', 'Life Rate', 0.03, 1, 0.01, true),
+        this.buildSlider('decay', 'Trail Decay', 0.85, 0.995, 0.001, true),
+        this.buildSlider('pointSize', 'Point Size', 0.5, 5, 0.05, true),
+        this.buildSlider('gain', 'Energy', 0.01, 0.3, 0.001, true),
+      ]);
+    } else if (mode === '3D fabric') {
+      html += this.buildSection('Fabric Shape', [
+        this.buildSlider('fold', 'Fold', 0, 1.5, 0.01, true),
+        this.buildSlider('warp', 'Warp', 0, 2, 0.01, true),
+        this.buildSlider('scale3d', 'Frequency', 0.2, 3, 0.01, true),
+        this.buildSlider('detail', 'Detail', 1, 5, 1, true),
+        this.buildSlider('layers', 'Layers', 1, 5, 1, true),
+        this.buildSlider('evolution3d', 'Flow Speed', 0, 0.5, 0.001, true),
+      ]);
+      html += this.buildSection('Material', [
+        this.buildSlider('gloss', 'Gloss', 4, 256, 1, true),
+        this.buildSlider('spec', 'Specular', 0, 3, 0.01, true),
+        this.buildSlider('iridescence', 'Iridescence', 0, 1, 0.01, true),
+        this.buildSlider('saturation', 'Saturation', 0.5, 2, 0.01, true),
+        this.buildSlider('brightness', 'Brightness', 0.3, 3, 0.01, true),
+      ]);
+      html += this.buildSection('Camera', [
+        this.buildSlider('camDist', 'Distance', 1.5, 6, 0.01, true),
+        this.buildSlider('fov', 'FOV', 20, 80, 0.1, true),
+        this.buildSlider('orbitSpeed', 'Orbit', 0, 0.5, 0.001, true),
+      ]);
+    } else if (mode === 'Particle Fabric') {
+      html += this.buildSection('Physics', [
+        this.buildSlider('mass', 'Mass', 0.2, 3, 0.01, true),
+        this.buildSlider('stiffness', 'Stiffness', 0.2, 3, 0.01, true),
+        this.buildSlider('damping', 'Damping', 0, 1, 0.01, true),
+        this.buildSlider('wind', 'Wind', 0, 1.5, 0.01, true),
+      ]);
+      html += this.buildSection('Particles', [
+        this.buildSlider('stream', 'Stream Speed', 0, 4, 0.01, true),
+        this.buildSlider('pLife', 'Respawn', 0.02, 1, 0.01, true),
+        this.buildSlider('vmax', 'Speed Limit', 0.5, 20, 0.1, true),
+        this.buildSlider('pWidth', 'Width', 0.5, 4, 0.01, true),
+        this.buildSlider('pGain', 'Glow', 0.005, 0.3, 0.001, true),
+      ]);
+    } else if (mode === 'Grass Field') {
+      html += this.buildSection('Grass', [
+        this.buildCheckbox('gOn', 'Grass On'),
+        this.buildSlider('gH', 'Height', 0.05, 1.2, 0.01, true),
+        this.buildSlider('gW', 'Width', 0.003, 0.04, 0.001, true),
+        this.buildSlider('gCurv', 'Curvature', 0, 1.5, 0.01, true),
+        this.buildSlider('gDensity', 'Density', 128, 768, 16, true),
+      ]);
+      html += this.buildSection('Wind', [
+        this.buildSlider('gWind', 'Strength', 0, 2, 0.01, true),
+        this.buildSlider('gWindAz', 'Direction', -180, 180, 1, true),
+        this.buildSlider('gGustK', 'Gust Size', 0.05, 2, 0.01, true),
+        this.buildSlider('gGustSpeed', 'Gust Speed', 0, 6, 0.01, true),
+      ]);
+      html += this.buildSection('Camera', [
+        this.buildSlider('gcDist', 'Distance', 0.3, 7, 0.01, true),
+        this.buildSlider('gcHeight', 'Height', 0, 3, 0.01, true),
+        this.buildSlider('gcFov', 'FOV', 15, 90, 0.5, true),
+      ]);
+    } else if (mode === 'Liquid Spheres' || mode === 'Wall Studio') {
+      html += this.buildSection('Fabric', [
+        this.buildSlider('fold', 'Fold', 0, 1.5, 0.01, true),
+        this.buildSlider('warp', 'Warp', 0, 2, 0.01, true),
+        this.buildSlider('scale3d', 'Frequency', 0.2, 3, 0.01, true),
+      ]);
+      html += this.buildSection('Spheres', [
+        this.buildSlider('lsRadius', 'Radius', 0.015, 0.1, 0.001, true),
+        this.buildSlider('lsDrip', 'Drip Rate', 30, 3000, 10, true),
+        this.buildSlider('lsVisc', 'Viscosity', 0, 0.5, 0.005, true),
+        this.buildSlider('lsCoh', 'Cohesion', 0, 1, 0.01, true),
+      ]);
+      html += this.buildSection('Camera', [
+        this.buildSlider('camDist', 'Distance', 1.5, 6, 0.01, true),
+        this.buildSlider('fov', 'FOV', 20, 80, 0.1, true),
+      ]);
+    } else if (mode === '3D Fractal') {
       html += this.buildSection('Fractal', [
         this.buildSelect('frType', 'Type', { 'Mandelbulb': 0, 'Mandelbox': 1 }),
         this.buildSlider('frPower', 'Power', 2, 16, 0.1, true),
