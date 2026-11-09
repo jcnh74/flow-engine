@@ -2,6 +2,7 @@
 import type { AudioState } from '../audio';
 import type ModulationSystem from '../modulation';
 import { BeatLinkPopup } from './BeatLinkPopup';
+import { COLOR_PRESETS, applyColorPreset, type ColorPreset } from './ColorPresets';
 
 interface ControlConfig {
   params: any;
@@ -175,12 +176,8 @@ export class MainControlPanel {
       ]);
     }
 
-    // Color section (always visible)
-    html += this.buildSection('Color', [
-      this.buildSlider('exposure', 'Exposure', 0.4, 4, 0.01, true),
-      this.buildSlider('bloom', 'Bloom', 0, 2, 0.01, true),
-      this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true),
-    ]);
+    // Unified Color section (always visible, mode-aware)
+    html += this.buildColorSection(mode);
 
     // Audio section (always visible)
     html += this.buildAudioSection();
@@ -326,6 +323,58 @@ export class MainControlPanel {
     `;
   }
 
+  private buildColorSection(mode: string): string {
+    const presetOptions = Object.keys(COLOR_PRESETS);
+    const controls: string[] = [];
+    
+    // Color preset selector
+    controls.push(this.buildSelect('colorPreset', 'Preset', presetOptions));
+    
+    // Universal controls
+    controls.push(this.buildSlider('exposure', 'Exposure', 0.4, 4, 0.01, true));
+    controls.push(this.buildSlider('bloom', 'Bloom', 0, 2, 0.01, true));
+    
+    // Mode-specific color controls
+    if (mode === '3D Fractal') {
+      controls.push(this.buildColorPicker('frColor1', 'Color 1'));
+      controls.push(this.buildColorPicker('frColor2', 'Color 2'));
+      controls.push(this.buildSlider('frColorMix', 'Color Mix', 0, 10, 0.1, true));
+    } else if (mode === '2D flow') {
+      controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
+      controls.push(this.buildSlider('colorBySpeed', 'Color by Speed', 0, 1, 0.01, true));
+      controls.push(this.buildColorPicker('background', 'Background'));
+    } else if (mode === 'Grass Field') {
+      controls.push(this.buildColorPicker('gBase', 'Base Color'));
+      controls.push(this.buildColorPicker('gTip', 'Tip Color'));
+      controls.push(this.buildColorPicker('gDryC', 'Dry Color'));
+      controls.push(this.buildSlider('gDry', 'Dry Amount', 0, 1, 0.01, true));
+    } else {
+      // Default for 3D fabric, Particle Fabric, Wall Studio, Liquid Spheres
+      controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
+      controls.push(this.buildSlider('saturation', 'Saturation', 0.5, 2, 0.01, true));
+      controls.push(this.buildColorPicker('background', 'Background'));
+    }
+    
+    // Color animation
+    controls.push(this.buildSlider('cHueCycle', 'Hue Cycle', -20, 20, 0.1, true));
+    
+    return this.buildSection('Color', controls);
+  }
+
+  private buildColorPicker(param: string, label: string): string {
+    const value = this.config.params[param] || '#ffffff';
+    return `
+      <div class="control" data-param="${param}">
+        <div class="control-row">
+          <label class="control-label">${label}</label>
+          <input type="color" class="control-color" 
+            data-param="${param}"
+            value="${value}" />
+        </div>
+      </div>
+    `;
+  }
+
   private buildKeyboardHints(): string {
     return `
       <div class="keyboard-hint">
@@ -361,7 +410,19 @@ export class MainControlPanel {
           }
         } else if (input.type === 'checkbox') {
           value = (input as HTMLInputElement).checked;
+        } else if (input.type === 'color') {
+          // Color inputs return hex strings
+          value = input.value;
         } else if (input.tagName === 'SELECT') {
+          // Handle color preset selection
+          if (param === 'colorPreset') {
+            const preset = COLOR_PRESETS[value];
+            if (preset) {
+              applyColorPreset(preset, this.config.params, this.config.params.mode);
+              this.syncDisplayedValues();
+              return; // Preset applied, don't set individual param
+            }
+          }
           // Only coerce fully numeric strings
           const num = Number(value);
           value = (value !== '' && !isNaN(num)) ? num : value;
@@ -529,6 +590,8 @@ export class MainControlPanel {
       
       if (input.type === 'checkbox') {
         (input as HTMLInputElement).checked = !!value;
+      } else if (input.type === 'color') {
+        input.value = String(value);
       } else if (input.type === 'range' || input.tagName === 'SELECT') {
         input.value = String(value);
       }

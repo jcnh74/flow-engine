@@ -649,3 +649,23 @@
   border-color: var(--beat);
   background: rgba(255, 51, 102, 0.1);
 }
+
+/* Color picker */
+.control-color {
+  width: 60px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-deep);
+  cursor: pointer;
+}
+
+.control-color::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.control-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
