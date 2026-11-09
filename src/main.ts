@@ -4,6 +4,9 @@ import * as GS from './grass_shaders';
 import * as FS from './fractal_shaders';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
+import { MainControlPanel } from './ui/MainControlPanel';
+import { BeatLinkPopup } from './ui/BeatLinkPopup';
+import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!; if (!new URLSearchParams(location.search).get('debug')) hud.style.display = 'none';
@@ -668,6 +671,9 @@ function tick(now: number) {
   // Update audio analysis
   audioAnalyzer.update();
   
+  // Update control panel (audio meters, beat pulse, modulation indicators)
+  panel.update();
+  
   // Apply modulation to eased parameters L before final copy to V
   easeParams();
   modulationSystem.update(audioAnalyzer.state, L);
@@ -1178,6 +1184,19 @@ function updateFolders() {
   audioF.show(true); modF.show(true); // Always show Audio and Modulation
   if (g || w) cf.close();
 }
+
+// Create the new MainControlPanel
+const panel = new MainControlPanel({
+  params: P,
+  audioState: audioAnalyzer.state,
+  modulationSystem,
+  onModeChange: () => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); },
+  onReset: () => recover('button'),
+  onRandomize: randomize,
+});
+
+// Hide the legacy GUI by default (toggle with 'G' key)
+gui.domElement.style.display = 'none';
 P.stillMeshMul = 2;
 ex.add(P, 'exportPreset', PRESETS.map(p => p.name)).name('preset').onChange((v: string) => { if (DEFAULT_ORIENT[v]) P.orientation = DEFAULT_ORIENT[v]; applyPreset(); ex.controllersRecursive().forEach(c => c.updateDisplay()); layout(); });
 ex.add(P, 'orientation', ['landscape', 'portrait']).name('orientation (boards)').onChange(() => { applyPreset(); ex.controllersRecursive().forEach(c => c.updateDisplay()); layout(); });
@@ -1221,7 +1240,13 @@ function randomize() {
   stops = PALETTES[P.palette].map(s => [s[0], s[1]] as Stop); rebuildStops(); buildPalette(); gui.controllersRecursive().forEach(c => c.updateDisplay()); reset();
 }
 addEventListener('resize', layout);
-addEventListener('keydown', (e: KeyboardEvent) => { if ((e.target as HTMLElement)?.tagName === 'INPUT') return; if (e.key === ' ') P.paused = !P.paused; if (e.key === 'r') randomize(); if (e.key === 'Escape') recover('Esc'); });
+addEventListener('keydown', (e: KeyboardEvent) => { 
+  if ((e.target as HTMLElement)?.tagName === 'INPUT') return; 
+  if (e.key === ' ') P.paused = !P.paused; 
+  if (e.key === 'r') randomize(); 
+  if (e.key === 'Escape') recover('Esc'); 
+  if (e.key === 'g') gui.domElement.style.display = gui.domElement.style.display === 'none' ? '' : 'none';
+});
 
 // ---------- boot + automation via URL params ----------
 const q = new URLSearchParams(location.search);
