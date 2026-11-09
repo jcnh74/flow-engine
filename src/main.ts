@@ -53,7 +53,7 @@ const modulationSystem = new ModulationSystem();
 const P: any = {
   mode: 'Wall Studio', seed: 1977,
   // 2D Fractal params
-  fr2Type: 0, fr2MaxIter: 256, fr2Zoom: 200, fr2CenterX: -0.5, fr2CenterY: 0,
+  fr2Type: 0, fr2MaxIter: 256, fr2Zoom: 1.5, fr2CenterX: -0.5, fr2CenterY: 0,
   fr2Rotation: 0, fr2JuliaCX: -0.4, fr2JuliaCY: 0.6, fr2JuliaOrbit: false,
   fr2OrbitSpeed: 0.2, fr2AutoZoom: false, fr2ZoomSpeed: 0.1, fr2PaletteCycle: 0,
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
@@ -731,16 +731,24 @@ function render2DFractal(T: Trails) {
     pal[i * 3 + 2] = c[2];
   }
   
-  gl.uniform1i(fractal2d.u.frType, P.fr2Type);
-  gl.uniform2f(fractal2d.u.center, P.fr2CenterX, P.fr2CenterY);
-  gl.uniform1f(fractal2d.u.zoom, P.fr2Zoom);
-  gl.uniform2f(fractal2d.u.juliaC, P.fr2JuliaCX, P.fr2JuliaCY);
-  gl.uniform1i(fractal2d.u.maxIter, Math.round(P.fr2MaxIter));
-  gl.uniform1f(fractal2d.u.time, frame * 0.016);
-  gl.uniform3fv(fractal2d.u['palette[0]'], pal);
-  gl.uniform1i(fractal2d.u.paletteSize, usedStops.length);
-  gl.uniform1f(fractal2d.u.paletteOffset, paletteOffset);
-  gl.uniform1f(fractal2d.u.rotation, P.fr2Rotation);
+  const u = fractal2d.u;
+  
+  gl.uniform1i(u.frType, P.fr2Type);
+  gl.uniform2f(u.center, P.fr2CenterX, P.fr2CenterY);
+  gl.uniform1f(u.zoom, P.fr2Zoom);
+  gl.uniform2f(u.juliaC, P.fr2JuliaCX, P.fr2JuliaCY);
+  gl.uniform1i(u.maxIter, Math.round(P.fr2MaxIter));
+  gl.uniform1f(u.time, frame * 0.016);
+  
+  // Set palette array uniform - try both possible location names
+  const palLoc = u['palette[0]'] || u.palette;
+  if (palLoc) {
+    gl.uniform3fv(palLoc, pal);
+  }
+  
+  gl.uniform1i(u.paletteSize, usedStops.length);
+  gl.uniform1f(u.paletteOffset, paletteOffset);
+  gl.uniform1f(u.rotation, P.fr2Rotation);
   
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
@@ -989,8 +997,13 @@ function probe() {
 const bgLum = () => hex(P.background).reduce((a, b) => a + b, 0) / 3 * 255;
 function recover(why: string) {
   const src = lastGood || { ...DEFAULTS, stops: DEFAULT_STOPS };
-  load(JSON.parse(JSON.stringify(src)), true); SMOOTH.forEach(k => L[k] = P[k]); reset(); badTicks = 0;
-  recoverMsg = `recovered (${why})`; setTimeout(() => recoverMsg = '', 4000); log('RECOVER ' + why);
+  const currentMode = P.mode; // Preserve user's selected mode
+  load(JSON.parse(JSON.stringify(src)), true); 
+  P.mode = currentMode; // Restore mode - never silently switch user's choice
+  SMOOTH.forEach(k => L[k] = P[k]); reset(); badTicks = 0;
+  recoverMsg = `⚠ recovered (${why})`; setTimeout(() => recoverMsg = '', 6000); 
+  log('RECOVER ' + why + ' mode=' + currentMode);
+  console.warn(`Flow Engine: Auto-recovered from ${why}, kept mode ${currentMode}`);
 }
 setInterval(() => {
   if (busy || P.paused || gl.isContextLost() || frame < 30) return;

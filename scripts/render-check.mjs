@@ -16,10 +16,16 @@ const args = process.argv.slice(2);
 const urlIndex = args.indexOf('--url');
 const channelIndex = args.indexOf('--channel');
 const outIndex = args.indexOf('--out');
+const gpuIndex = args.indexOf('--gpu');
+const modesIndex = args.indexOf('--modes');
+const skipSweepIndex = args.indexOf('--skip-sweep');
 
 const url = urlIndex >= 0 ? args[urlIndex + 1] : 'http://127.0.0.1:5191';
 const channel = channelIndex >= 0 ? args[channelIndex + 1] : 'chrome';
 const outDir = outIndex >= 0 ? args[outIndex + 1] : './render-check';
+const useGpu = gpuIndex >= 0; // Real GPU, no SwiftShader
+const filterModes = modesIndex >= 0 ? args[modesIndex + 1].split(',') : null;
+const skipSliderSweep = skipSweepIndex >= 0;
 
 mkdirSync(outDir, { recursive: true });
 
@@ -133,16 +139,21 @@ async function run() {
   console.log(`Launching browser: ${channel}`);
   console.log(`URL: ${url}`);
   console.log(`Output: ${outDir}`);
+  console.log(`GPU mode: ${useGpu ? 'real GPU' : 'SwiftShader'}`);
+  console.log(`Modes filter: ${filterModes || 'all'}`);
+  console.log(`Slider sweep: ${skipSliderSweep ? 'skipped' : 'enabled'}`);
+  
+  const launchArgs = useGpu ? [] : [
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--ignore-gpu-blocklist',
+    '--disable-gpu-driver-bug-workarounds'
+  ];
   
   const browser = await chromium.launch({
     channel,
     headless: false,
-    args: [
-      '--use-angle=swiftshader',
-      '--enable-unsafe-swiftshader',
-      '--ignore-gpu-blocklist',
-      '--disable-gpu-driver-bug-workarounds'
-    ]
+    args: launchArgs
   });
   
   const context = await browser.newContext();
@@ -175,7 +186,9 @@ async function run() {
     failures: []
   };
   
-  for (const mode of MODES) {
+  const modesToTest = filterModes ? MODES.filter(m => filterModes.includes(m)) : MODES;
+  
+  for (const mode of modesToTest) {
     console.log(`\nTesting mode: ${mode}`);
     
     // Select mode
@@ -184,8 +197,18 @@ async function run() {
     
     // Verify mode dropdown shows correct value
     const selectedMode = await page.$eval('select[data-param="mode"]', el => el.value);
+    
+    // Also verify window.engine.P.mode matches
+    const engineMode = await page.evaluate(() => (window as any).engine?.P?.mode);
+    
     if (selectedMode !== mode) {
       const failure = `Mode dropdown shows "${selectedMode}" but should show "${mode}"`;
+      results.failures.push(failure);
+      console.error(`FAIL: ${failure}`);
+    }
+    
+    if (engineMode !== mode) {
+      const failure = `window.engine.P.mode is "${engineMode}" but should be "${mode}" (mode did not stick)`;
       results.failures.push(failure);
       console.error(`FAIL: ${failure}`);
     }
@@ -317,8 +340,11 @@ async function run() {
     }
     
     // Slider sweep: test that each visible slider has an effect
-    console.log(`  Testing sliders...`);
-    const sliders = await page.$$('input[type="range"][data-param]');
+    if (skipSliderSweep) {
+      console.log(`  Skipping slider sweep`);
+    } else {
+      console.log(`  Testing sliders...`);
+      const sliders = await page.$$('input[type="range"][data-param]');
     
     for (const slider of sliders) {
       const param = await slider.getAttribute('data-param');
@@ -358,6 +384,7 @@ async function run() {
       }
       
       modeResult.sliders.push(sliderResult);
+    }
     }
     
     results.modes.push(modeResult);
