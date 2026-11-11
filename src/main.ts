@@ -195,6 +195,7 @@ const bloomComposite = prog(POST.POST_VS, POST.BLOOM_COMPOSITE_FS);
 const feedback = prog(POST.POST_VS, POST.FEEDBACK_FS);
 const caDistort = prog(POST.POST_VS, POST.CA_DISTORT_FS);
 const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
+const blit = prog(POST.POST_VS, POST.BLIT_FS);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -1031,9 +1032,6 @@ function tick(now: number) {
     simStep(frame, half, false, tSim, off2d); trailStep(T, [0, 0], [half[0] / V.zoom, half[1] / V.zoom], px); frame++;
   }
   
-  // Phase 1 Post Stack: bloom → composite → CA/distort → color grade → tonemap
-  bloomPass(T); // Now works for all modes including 3D Fractal
-  
   // Allocate HDR composite buffer (or resize if needed)
   if (!hdrComp || hdrComp.w !== canvas.width || hdrComp.h !== canvas.height) {
     if (hdrComp) del(hdrComp);
@@ -1041,11 +1039,102 @@ function tick(now: number) {
   }
   if (!hdrComp) throw new Error('Failed to allocate HDR composite buffer');
   
-  // Composite bloom into scene
-  gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
-  gl.viewport(0, 0, hdrComp.w, hdrComp.h);
+  // Phase 3: MilkDrop-style feedback layer (BEFORE bloom, so bloom isn't fed back)
+  if (P.feedbackEnabled && P.feedbackMix > 0.001 && feedbackA && feedbackB) {
+    // Debug: Log that feedback is active (first 5 frames only)
+    if (frame < 5) {
+      console.log(`FEEDBACK ACTIVE: frame=${frame}, mix=${P.feedbackMix.toFixed(3)}, decay=${P.feedbackDecay.toFixed(3)}`);
+    }
+    
+    const prevFB = feedbackCurrent === 0 ? feedbackA : feedbackB;
+    const nextFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
+    
+    // Debug: Sample feedback texture (center region, not corner)
+    if (frame === 10 || frame === 40 || frame === 70) {
+      const debugStage = (fb: FB, name: string) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb.f);
+        const x = Math.floor(fb.w / 2 - 50);
+        const y = Math.floor(fb.h / 2 - 50);
+        const samples = new Float32Array(100 * 100 * 4);
+        gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+        let sum = 0;
+        for (let i = 0; i < samples.length; i += 4) {
+          const luma = 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+          sum += luma;
+        }
+        const mean = sum / (samples.length / 4);
+        const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+        console.log(`${name} - Center: ${center.toFixed(3)}, Mean: ${mean.toFixed(3)}`);
+      };
+      
+      debugStage(prevFB, 'Feedback texture');
+    }
+    
+    // Feedback pass: composite raw scene + warped echo
+    gl.bindFramebuffer(gl.FRAMEBUFFER, nextFB.f);
+    gl.viewport(0, 0, nextFB.w, nextFB.h);
+    gl.useProgram(feedback.p);
+    
+    // Audio-driven modulation
+    const kickZoom = audioAnalyzer.state.kickEnv * 0.1;
+    const bassWarp = audioAnalyzer.state.bassEnv * 0.02;
+    const bassNoise = audioAnalyzer.state.bassEnv * 0.03;
+    const onsetHue = audioAnalyzer.state.onset * Math.PI;
+    
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, prevFB.t); gl.uniform1i(feedback.u.uPrev, 0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(feedback.u.uCurrent, 1);
+    gl.uniform1f(feedback.u.uDecay, P.feedbackDecay);
+    gl.uniform1f(feedback.u.uZoom, P.feedbackZoom + kickZoom);
+    gl.uniform1f(feedback.u.uRotate, P.feedbackRotate + bassWarp * Math.PI);
+    gl.uniform2f(feedback.u.uTranslate, P.feedbackTranslateX, P.feedbackTranslateY);
+    gl.uniform1f(feedback.u.uMix, P.feedbackMix);
+    gl.uniform1f(feedback.u.uTime, currentTime);
+    gl.uniform1f(feedback.u.uKaleido, P.feedbackKaleido);
+    gl.uniform1f(feedback.u.uNoiseAmt, P.feedbackNoise + bassNoise);
+    gl.uniform1f(feedback.u.uHueDrift, P.feedbackHueDrift + onsetHue);
+    quad();
+    
+    feedbackCurrent = 1 - feedbackCurrent;
+    
+    // Copy feedback result to hdrComp for bloom/post processing
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    gl.viewport(0, 0, hdrComp.w, hdrComp.h);
+    gl.useProgram(blit.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, nextFB.t); gl.uniform1i(blit.u.uSrc, 0);
+    quad();
+    
+    // Debug: Check after feedback composite
+    if (frame === 10 || frame === 40 || frame === 70) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+      const x = Math.floor(hdrComp.w / 2 - 50);
+      const y = Math.floor(hdrComp.h / 2 - 50);
+      const samples = new Float32Array(100 * 100 * 4);
+      gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+      let sum = 0;
+      for (let i = 0; i < samples.length; i += 4) {
+        sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+      }
+      const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+      console.log(`After feedback composite - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+    }
+  } else {
+    // No feedback: just copy scene to hdrComp
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    gl.viewport(0, 0, hdrComp.w, hdrComp.h);
+    gl.useProgram(blit.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(blit.u.uSrc, 0);
+    quad();
+  }
+  
+  // Phase 1 Post Stack: bloom → CA/distort → color grade → tonemap (bloom now after feedback)
+  bloomPass(hdrComp); // Apply bloom to feedback result
+  
+  // Composite bloom back into hdrComp
+  const tempBloom = hdrFB(canvas.width, canvas.height);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, tempBloom.f);
+  gl.viewport(0, 0, tempBloom.w, tempBloom.h);
   gl.useProgram(bloomComposite.p);
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(bloomComposite.u.uSrc, 0);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp.t); gl.uniform1i(bloomComposite.u.uSrc, 0);
   for (let i = 0; i < 6; i++) {
     gl.activeTexture(gl.TEXTURE1 + i);
     gl.bindTexture(gl.TEXTURE_2D, bloomPyramid!.up[i].t);
@@ -1055,6 +1144,11 @@ function tick(now: number) {
   const bloomStr = P.bloomStrength * (1.0 + audioAnalyzer.state.kickEnv * P.kickBloomAmount);
   gl.uniform1f(bloomComposite.u.uBloomStrength, bloomStr);
   quad();
+  
+  // Swap buffers
+  const oldHdr = hdrComp;
+  hdrComp = tempBloom;
+  del(oldHdr);
   
   // Debug: Check after bloom
   if (P.feedbackEnabled && frame % 30 === 0) {
@@ -1138,96 +1232,6 @@ function tick(now: number) {
     }
     const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
     console.log(`After color grade - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
-  }
-  
-  // Phase 3: MilkDrop-style feedback layer
-  if (P.feedbackEnabled && P.feedbackMix > 0.001 && feedbackA && feedbackB) {
-    // Debug: Log that feedback is active (first 5 frames only)
-    if (frame < 5) {
-      console.log(`FEEDBACK ACTIVE: frame=${frame}, mix=${P.feedbackMix.toFixed(3)}, decay=${P.feedbackDecay.toFixed(3)}`);
-    }
-    
-    const prevFB = feedbackCurrent === 0 ? feedbackA : feedbackB;
-    const nextFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
-    
-    // Debug: Sample feedback texture (center region, not corner)
-    if (frame === 10 || frame === 40 || frame === 70) {
-      const debugStage = (fb: FB, name: string) => {
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fb.f);
-        // Sample center 100x100, not corner
-        const x = Math.floor(fb.w / 2 - 50);
-        const y = Math.floor(fb.h / 2 - 50);
-        const samples = new Float32Array(100 * 100 * 4);
-        gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
-        let sum = 0;
-        for (let i = 0; i < samples.length; i += 4) {
-          const luma = 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
-          sum += luma;
-        }
-        const mean = sum / (samples.length / 4);
-        const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
-        console.log(`${name} - Center: ${center.toFixed(3)}, Mean: ${mean.toFixed(3)}`);
-      };
-      
-      debugStage(prevFB, 'Feedback texture');
-    }
-    
-    gl.bindFramebuffer(gl.FRAMEBUFFER, nextFB.f);
-    gl.viewport(0, 0, nextFB.w, nextFB.h);
-    gl.useProgram(feedback.p);
-    
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, prevFB.t);
-    gl.uniform1i(feedback.u.uPrev, 0);
-    
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, hdrComp.t);
-    gl.uniform1i(feedback.u.uCurrent, 1);
-    
-    // Audio-driven modulation (kick→zoom, bass→warp, onset→hue)
-    const kickZoom = audioAnalyzer.state.kickEnv * 0.1;
-    const bassWarp = audioAnalyzer.state.bassEnv * 0.02;
-    const bassNoise = audioAnalyzer.state.bassEnv * 0.03;
-    const onsetHue = audioAnalyzer.state.onset * Math.PI;
-    
-    gl.uniform1f(feedback.u.uDecay, P.feedbackDecay);
-    gl.uniform1f(feedback.u.uZoom, P.feedbackZoom + kickZoom);
-    gl.uniform1f(feedback.u.uRotate, P.feedbackRotate + bassWarp * Math.PI);
-    gl.uniform2f(feedback.u.uTranslate, P.feedbackTranslateX, P.feedbackTranslateY);
-    gl.uniform1f(feedback.u.uMix, P.feedbackMix);
-    gl.uniform1f(feedback.u.uTime, currentTime);
-    gl.uniform1f(feedback.u.uKaleido, P.feedbackKaleido);
-    gl.uniform1f(feedback.u.uNoiseAmt, P.feedbackNoise + bassNoise);
-    gl.uniform1f(feedback.u.uHueDrift, P.feedbackHueDrift + onsetHue);
-    
-    quad();
-    
-    // Swap buffers and replace hdrComp with feedback result
-    // Both are canvas-sized now, so no letterboxing
-    feedbackCurrent = 1 - feedbackCurrent;
-    const oldComp3 = hdrComp;
-    hdrComp = nextFB;
-    del(oldComp3);
-    
-    // Debug: Check hdrComp after feedback composite
-    if (import.meta.env.DEV && frame % 30 === 0) {
-      const debugStage = (fb: FB, name: string) => {
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fb.f);
-        const x = Math.floor(fb.w / 2 - 50);
-        const y = Math.floor(fb.h / 2 - 50);
-        const samples = new Float32Array(100 * 100 * 4);
-        gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
-        let sum = 0;
-        for (let i = 0; i < samples.length; i += 4) {
-          const luma = 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
-          sum += luma;
-        }
-        const mean = sum / (samples.length / 4);
-        const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
-        console.log(`${name} - Center: ${center.toFixed(3)}, Mean: ${mean.toFixed(3)}`);
-      };
-      debugStage(hdrComp, 'After feedback composite');
-    }
   }
   
   // Debug: Check before tonemap (final HDR buffer)

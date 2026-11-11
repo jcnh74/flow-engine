@@ -318,9 +318,10 @@ void main() {
   
   vec3 curr = texture(uCurrent, vUv).rgb;
   
-  // Additive composite: fresh scene on top, echo added underneath
-  // This keeps contrast and saturation like MilkDrop
-  vec3 result = curr + echo * uMix;
+  // Energy-conserving composite: mix between current and echo
+  // This prevents geometric gain from pushing everything into tonemap shoulder
+  // Steady-state: result = curr*(1-uMix) + echo*decay*uMix has gain < 1
+  vec3 result = curr * (1.0 - uMix) + echo * uMix;
   
   fragColor = vec4(result, 1.0);
 }
@@ -355,5 +356,18 @@ void main() {
   col += bloom * uBloomStrength;
   
   fragColor = vec4(col, 1.0);
+}
+`;
+
+// Simple passthrough/blit shader (for copying textures)
+export const BLIT_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uSrc;
+
+void main() {
+  fragColor = texture(uSrc, vUv);
 }
 `;
