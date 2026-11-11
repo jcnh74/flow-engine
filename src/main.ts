@@ -112,7 +112,7 @@ const P: any = {
   orbitSpeed: 0.05, camDist: 4.2, fov: 40, lightAngle: 35, fog: 0.5,
   lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, tonemapMode: 'AgX', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
   // Post FX (Phase 1)
-  bloomStrength: 0.15, bloomThreshold2: 0.8, kickBloomAmount: 0.3, caStrength: 0.0, distortion: 0.0,
+  bloomStrength: 0.12, bloomThreshold2: 1.5, kickBloomAmount: 0.3, caStrength: 0.0, distortion: 0.0,
   // Quality governor (Issue 8)
   resolutionScale: 1.0, autoQuality: true,
   // Phase 3: MilkDrop-style feedback layer

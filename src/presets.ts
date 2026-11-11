@@ -315,20 +315,22 @@ export const PRESET_GALLERY: Preset[] = [
   },
   
   // Phase 3: MilkDrop-style feedback presets (tuned for std > 10, MAD > 0.5)
+  // Lighten blend + sparse emissive layer + bloom accent
   {
     name: 'Feedback: Spiral Dreams',
     mode: 'Tunnel',
     description: 'Classic spiral feedback with rotation (homage to Rovastar)',
     params: {
-      trippySpeed: 1.2,
+      trippySpeed: 1.3,
       feedbackEnabled: true,
-      feedbackMix: 0.85,        // More echo blend
-      feedbackDecay: 0.96,      // More decay for shorter trails
-      feedbackZoom: 0.99,       // Stronger zoom out
-      feedbackRotate: 0.035,    // More rotation
-      feedbackHueDrift: 0.015,  // More color shift
-      exposure: 1.4,
-      bloomStrength: 0.2,
+      feedbackMix: 0.88,        // Strong echo presence with lighten blend
+      feedbackDecay: 0.97,      // Slower decay maintains trails longer
+      feedbackZoom: 0.985,      // More zoom out for energy
+      feedbackRotate: 0.045,    // Stronger rotation for spiral effect
+      feedbackHueDrift: 0.02,   // More color shift
+      exposure: 1.8,            // Higher to compensate for luma key
+      bloomStrength: 0.12,      // Reduced bloom (accent, not wash)
+      bloomThreshold2: 1.8,     // Higher threshold for sparse bloom
       stops: [[0, '#ff0080'], [0.5, '#8000ff'], [1, '#00ffff']]
     }
   },
@@ -337,16 +339,17 @@ export const PRESET_GALLERY: Preset[] = [
     mode: 'Kaleido',
     description: 'Kaleidoscopic feedback trails (homage to Geiss)',
     params: {
-      trippySpeed: 1.4,
+      trippySpeed: 1.5,
       feedbackEnabled: true,
-      feedbackMix: 0.75,        // Strong echo
-      feedbackDecay: 0.94,      // More decay for visibility
-      feedbackZoom: 1.005,      // Zoom in
-      feedbackKaleido: 8,       // More folds
-      feedbackNoise: 0.035,     // More displacement
-      feedbackRotate: 0.02,     // Add rotation
-      exposure: 1.5,
-      bloomStrength: 0.25,
+      feedbackMix: 0.82,        // Strong echo with lighten blend
+      feedbackDecay: 0.96,      // Slower decay for visibility
+      feedbackZoom: 1.008,      // More zoom in for kaleidoscope effect
+      feedbackKaleido: 6,       // Fewer folds (cleaner structure)
+      feedbackNoise: 0.028,     // Less displacement (preserve structure)
+      feedbackRotate: 0.025,    // Rotation for dynamics
+      exposure: 1.9,            // Higher exposure for luma key
+      bloomStrength: 0.15,      // Reduced bloom
+      bloomThreshold2: 1.6,     // Higher threshold
       stops: [[0, '#ffff00'], [0.33, '#ff00ff'], [0.66, '#00ffff'], [1, '#ffff00']]
     }
   },
@@ -355,16 +358,17 @@ export const PRESET_GALLERY: Preset[] = [
     mode: 'Plasma',
     description: 'Noise-displaced feedback (homage to Flexi)',
     params: {
-      trippySpeed: 1.5,
+      trippySpeed: 1.6,
       feedbackEnabled: true,
-      feedbackMix: 0.9,         // Very strong echo
-      feedbackDecay: 0.93,      // Faster decay
-      feedbackZoom: 0.995,      // Zoom out
-      feedbackNoise: 0.06,      // Strong noise displacement
-      feedbackHueDrift: 0.012,
-      feedbackRotate: 0.015,
-      exposure: 1.3,
-      bloomStrength: 0.2,
+      feedbackMix: 0.92,        // Very strong echo with lighten
+      feedbackDecay: 0.95,      // Moderate decay for trails
+      feedbackZoom: 0.992,      // Zoom out for energy
+      feedbackNoise: 0.055,     // Strong noise displacement
+      feedbackHueDrift: 0.018,  // More hue shift for psychedelia
+      feedbackRotate: 0.022,    // More rotation
+      exposure: 2.0,            // High exposure for bright plasma
+      bloomStrength: 0.14,      // Reduced bloom
+      bloomThreshold2: 1.7,     // Higher threshold
       stops: [[0, '#ff4400'], [0.5, '#ff00ff'], [1, '#4400ff']]
     }
   },
@@ -375,17 +379,18 @@ export const PRESET_GALLERY: Preset[] = [
     params: {
       frType: 0,
       frPower: 8,
-      frRotSpeed: 0.4,
+      frRotSpeed: 0.5,          // Faster rotation for dynamics
       frCamOrbit: true,
       feedbackEnabled: true,
-      feedbackMix: 0.8,         // Strong echo
-      feedbackDecay: 0.95,      // More decay
-      feedbackZoom: 1.003,      // Zoom in
-      feedbackRotate: 0.018,
-      feedbackKaleido: 6,       // More folds
-      feedbackNoise: 0.025,
-      exposure: 1.2,
-      bloomStrength: 0.18,
+      feedbackMix: 0.85,        // Strong echo with lighten
+      feedbackDecay: 0.97,      // Slower decay for persistent trails
+      feedbackZoom: 1.005,      // More zoom in for depth
+      feedbackRotate: 0.025,    // More rotation
+      feedbackKaleido: 4,       // Fewer folds (preserve fractal detail)
+      feedbackNoise: 0.018,     // Less noise (keep structure clean)
+      exposure: 1.7,            // Higher exposure
+      bloomStrength: 0.11,      // Reduced bloom
+      bloomThreshold2: 1.9,     // High threshold (only fractal peaks)
       stops: [[0, '#0033ff'], [0.5, '#ff00aa'], [1, '#ffaa00']]
     }
   }

@@ -1,9 +1,15 @@
 /**
  * Headless smoke test: detects black canvas and console errors
  * Fails fast if rendering is broken
+ * 
+ * Run with: npm run test:smoke (uses Playwright, not bun test)
+ * Port is configurable via SMOKE_TEST_PORT env var (default: 5194)
  */
 
 import { test, expect } from '@playwright/test';
+
+const TEST_PORT = process.env.SMOKE_TEST_PORT || '5194';
+const TEST_URL = `http://127.0.0.1:${TEST_PORT}`;
 
 test.describe('Headless Smoke Tests', () => {
   test('should render non-black frame without errors', async ({ page }) => {
@@ -23,7 +29,7 @@ test.describe('Headless Smoke Tests', () => {
     });
     
     // Load app with simple mode
-    await page.goto('http://127.0.0.1:5193/?mode=Tunnel', { 
+    await page.goto(`${TEST_URL}/?mode=Tunnel`, { 
       waitUntil: 'networkidle',
       timeout: 30000 
     });
@@ -94,7 +100,7 @@ test.describe('Headless Smoke Tests', () => {
     });
     
     // Load with feedback enabled
-    await page.goto('http://127.0.0.1:5193/?feedback=1&fbmix=0.85&fbdecay=0.96', {
+    await page.goto(`${TEST_URL}/?feedback=1&fbmix=0.85&fbdecay=0.96`, {
       waitUntil: 'networkidle',
       timeout: 30000
     });

@@ -302,13 +302,19 @@ void main() {
   vec3 echo = texture(uPrev, uv).rgb;
   
   // Apply decay to echo only (not to current frame)
+  // Decays toward black (0,0,0) preserving contrast
   echo *= uDecay;
   
-  // Gamma boost on echo for contrast, but only where there's content
-  // Threshold at 0.01 to avoid boosting noise floor to mid-gray
+  // MilkDrop-style gamma adjustment on echo to maintain contrast
+  // Counters bilinear blur averaging and prevents decay to mid-gray
+  // Only apply where there's content to avoid boosting black floor
   float echoLuma = dot(echo, vec3(0.2126, 0.7152, 0.0722));
   if (echoLuma > 0.01) {
-    echo = pow(echo, vec3(0.85));  // Gentler boost (was 0.8)
+    // Gamma < 1.0 boosts shadows, increases contrast
+    echo = pow(echo, vec3(0.8));
+    // Mild contrast boost
+    echo = (echo - 0.5) * 1.15 + 0.5;
+    echo = max(echo, vec3(0.0));
   }
   
   // Apply hue drift to echo
@@ -318,10 +324,19 @@ void main() {
   
   vec3 curr = texture(uCurrent, vUv).rgb;
   
-  // Energy-conserving composite: mix between current and echo
-  // This prevents geometric gain from pushing everything into tonemap shoulder
-  // Steady-state: result = curr*(1-uMix) + echo*decay*uMix has gain < 1
-  vec3 result = curr * (1.0 - uMix) + echo * uMix;
+  // Lighten blend: keep curr at full strength, echo added where brighter
+  // This prevents dimming sparse scenes while allowing bright trails
+  vec3 result = max(curr, echo * uMix);
+  
+  // Create sparse emissive layer: only feed back bright elements
+  // MilkDrop-style: sparse bright on dark background, not dense full-frame
+  // Apply luma key to result before storing as next feedback
+  float resultLuma = dot(result, vec3(0.2126, 0.7152, 0.0722));
+  
+  // Soft threshold: fade out below 0.3, preserve above 0.5
+  // This creates sparse bright trails on black, not dense gray
+  float key = smoothstep(0.25, 0.65, resultLuma);
+  result *= key;
   
   fragColor = vec4(result, 1.0);
 }
