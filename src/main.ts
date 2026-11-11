@@ -1911,10 +1911,22 @@ function updateFolders() {
 }
 
 // ---------- MIDI Manager (after P is defined) ----------
-const midiManager = new MidiManager(P, (param, value) => {
-  // MIDI param change callback
-  gui.controllersRecursive().forEach(c => c.updateDisplay());
-});
+const midiManager = new MidiManager(P, 
+  (param, value) => {
+    // MIDI param change callback
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+  },
+  (action) => {
+    // MIDI action callback
+    if (action === 'action:milkdrop-next') milkDropNext();
+    else if (action === 'action:milkdrop-prev') milkDropPrev();
+    else if (action === 'action:milkdrop-random') milkDropRandom();
+    else if (action === 'action:preset-next') presetGallery.nextPreset();
+    else if (action === 'action:preset-prev') presetGallery.prevPreset();
+    else if (action === 'action:preset-random') presetGallery.randomPreset();
+    else if (action === 'action:tap-tempo') audioAnalyzer.tapTempo();
+  }
+);
 
 // ---------- Remote Sync (declare early, connect later) ----------
 let remoteSync: RemoteSync;

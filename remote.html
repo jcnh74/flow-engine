@@ -232,7 +232,10 @@
     
     <!-- Presets -->
     <div class="section">
-      <div class="section-title">Presets</div>
+      <div class="section-title">
+        Presets
+        <span id="current-preset" style="color: #6b5fff; font-weight: 400; margin-left: 8px;"></span>
+      </div>
       <div class="preset-grid" id="presets"></div>
     </div>
     
@@ -357,6 +360,14 @@
       document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.classList.toggle('active', btn.textContent === state.mode);
       });
+      
+      // Update current preset name
+      const presetEl = document.getElementById('current-preset');
+      if (state.milkDropPreset) {
+        presetEl.textContent = `— ${state.milkDropPreset}`;
+      } else {
+        presetEl.textContent = '';
+      }
     }
     
     // Build UI

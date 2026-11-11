@@ -150,7 +150,9 @@ export class RemoteSync {
         feedbackRotate: this.params.feedbackRotate,
         feedbackKaleido: this.params.feedbackKaleido,
         feedbackNoise: this.params.feedbackNoise,
-        feedbackHueDrift: this.params.feedbackHueDrift
+        feedbackHueDrift: this.params.feedbackHueDrift,
+        // MilkDrop preset name
+        milkDropPreset: this.params.milkDropPreset || ''
       }
     });
   }

@@ -6,8 +6,9 @@ export interface MidiMapping {
   type: 'cc' | 'note';
   number: number;
   target: string;
-  min: number;
-  max: number;
+  isAction?: boolean; // True for triggers (no min/max), false for parameters
+  min?: number;
+  max?: number;
 }
 
 export interface MidiState {
@@ -34,10 +35,12 @@ export class MidiManager {
 
   private params: any;
   private onParamChange?: (param: string, value: any) => void;
+  private onAction?: (action: string) => void;
 
-  constructor(params: any, onParamChange?: (param: string, value: any) => void) {
+  constructor(params: any, onParamChange?: (param: string, value: any) => void, onAction?: (action: string) => void) {
     this.params = params;
     this.onParamChange = onParamChange;
+    this.onAction = onAction;
     this.loadMappings();
   }
 
@@ -133,55 +136,63 @@ export class MidiManager {
     // Remove existing mapping for this target
     this.state.mappings = this.state.mappings.filter(m => m.target !== target);
     
-    // Determine min/max based on param type
-    const currentValue = this.params[target];
-    let min = 0, max = 1;
+    // Check if this is an action (starts with action:)
+    const isAction = target.startsWith('action:');
     
-    if (typeof currentValue === 'number') {
-      // Try to infer range from current value
-      if (currentValue > 1) {
-        max = Math.max(currentValue * 2, 100);
+    if (isAction) {
+      // Add action mapping (no min/max)
+      this.state.mappings.push({
+        channel,
+        type,
+        number,
+        target,
+        isAction: true
+      });
+    } else {
+      // Determine min/max based on param type
+      const currentValue = this.params[target];
+      let min = 0, max = 1;
+      
+      if (typeof currentValue === 'number') {
+        // Try to infer range from current value
+        if (currentValue > 1) {
+          max = Math.max(currentValue * 2, 100);
+        }
+      } else if (typeof currentValue === 'boolean') {
+        min = 0;
+        max = 1;
       }
-    } else if (typeof currentValue === 'boolean') {
-      min = 0;
-      max = 1;
+      
+      // Add parameter mapping
+      this.state.mappings.push({
+        channel,
+        type,
+        number,
+        target,
+        isAction: false,
+        min,
+        max
+      });
     }
-    
-    // Add new mapping
-    this.state.mappings.push({
-      channel,
-      type,
-      number,
-      target,
-      min,
-      max
-    });
     
     this.saveMappings();
     this.stopLearning();
   }
 
   private applyMapping(mapping: MidiMapping, value: number) {
-    const normalized = value / 127;
-    const scaled = mapping.min + (mapping.max - mapping.min) * normalized;
+    // Handle action triggers (note on/off or CC > threshold)
+    if (mapping.isAction) {
+      // Trigger on note-on (value > 0) or CC > 64
+      const shouldTrigger = mapping.type === 'note' ? value > 0 : value > 64;
+      if (shouldTrigger && this.onAction) {
+        this.onAction(mapping.target);
+      }
+      return;
+    }
     
-    // Handle special action targets
-    if (mapping.target === 'preset:next') {
-      (window as any).presetGallery?.nextPreset();
-      return;
-    }
-    if (mapping.target === 'preset:prev') {
-      (window as any).presetGallery?.prevPreset();
-      return;
-    }
-    if (mapping.target === 'preset:random') {
-      (window as any).presetGallery?.randomPreset();
-      return;
-    }
-    if (mapping.target === 'tapTempo') {
-      (window as any).audioAnalyzer?.tapTempo();
-      return;
-    }
+    // Handle parameters with min/max
+    const normalized = value / 127;
+    const scaled = (mapping.min || 0) + ((mapping.max || 1) - (mapping.min || 0)) * normalized;
     
     // Apply to parameter
     const currentValue = this.params[mapping.target];
