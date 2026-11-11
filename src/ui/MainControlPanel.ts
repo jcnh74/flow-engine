@@ -253,7 +253,7 @@ export class MainControlPanel {
         this.buildSlider('frAOStrength', 'AO Strength', 0, 5, 0.1, true),
         this.buildSlider('frAORadius', 'AO Radius', 0.05, 0.5, 0.01, true),
         this.buildSlider('frFogDensity', 'Fog Density', 0, 0.5, 0.01, true),
-        this.buildSlider('frFogStart', 'Fog Start', 0, 10, 0.5, true),
+        this.buildSlider('frFogStart', 'Fog Start', 0, 5, 0.1, true),
       ]);
       html += this.buildSection('Motion', [
         this.buildSlider('frMorph', 'Morph Amount', 0, 1, 0.01, true),
