@@ -1126,8 +1126,9 @@ function tick(now: number) {
     quad();
   }
   
-  // Phase 1 Post Stack: bloom → CA/distort → color grade → tonemap (bloom now after feedback)
-  bloomPass(hdrComp); // Apply bloom to feedback result
+  // Phase 1 Post Stack: bloom → CA/distort → color grade → tonemap
+  // Bloom operates on original scene T, then composited after feedback
+  bloomPass(T);
   
   // Composite bloom back into hdrComp
   const tempBloom = hdrFB(canvas.width, canvas.height);

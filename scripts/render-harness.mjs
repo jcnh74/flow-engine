@@ -50,8 +50,8 @@ async function captureMode(page, modeName, params = {}) {
     // Wait for rendering to start
     await page.waitForTimeout(3000);
     
-    // Take screenshot
-    const filename = modeName.toLowerCase().replace(/\s+/g, '-');
+    // Take screenshot (use displayName for filename, not modeName which can be null)
+    const filename = displayName.toLowerCase().replace(/\s+/g, '-').replace(/:/g, '');
     const path = join(outDir, `${filename}.png`);
     await page.screenshot({ path, fullPage: false });
     
