@@ -5,8 +5,8 @@ import { join } from 'path';
 const mainSrc = readFileSync(join(import.meta.dir, '../src/main.ts'), 'utf-8');
 
 describe('Watchdog False Positive Fixes', () => {
-  test('probe should sample downscaled frame (16x16 to minimize GPU stall)', () => {
-    expect(mainSrc).toContain('const sampleW = 16, sampleH = 16');
+  test('probe should sample 64x64 for max-luma test (catches sparse content)', () => {
+    expect(mainSrc).toContain('const sampleW = 64, sampleH = 64');
     expect(mainSrc).toContain('new Uint8Array(sampleW * sampleH * 4)');
   });
 

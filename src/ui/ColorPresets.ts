@@ -143,6 +143,16 @@ export function applyColorPreset(preset: ColorPreset, params: any, mode: string)
     params.wColor = primary;
   }
   const engine = (typeof window !== 'undefined') ? (window as any).engine : null;
-  if (engine?.setStops) engine.setStops(newStops);
-  if (engine?.P) engine.P.palette = preset.name;
+  if (engine?.setStops) {
+    engine.setStops(newStops);
+    // Force palette name update so UI and engine state match
+    if (engine.P) {
+      engine.P.palette = preset.name;
+      // Force GUI to update displayed value
+      if (engine.gui) {
+        const palCtl = engine.gui.controllersRecursive().find((c: any) => c.property === 'palette');
+        if (palCtl) palCtl.updateDisplay();
+      }
+    }
+  }
 }

@@ -50,13 +50,13 @@ describe('Color Control Coverage', () => {
       expect(tunnelSection).toContain('getPaletteColor');
     });
 
-    test('applies uSat to palette colors', () => {
+    test('uses shared applyColorTransforms', () => {
       const tunnelSection = trippySrc.substring(
         trippySrc.indexOf('vec3 renderTunnel'),
         trippySrc.indexOf('vec3 renderKaleido')
       );
-      expect(tunnelSection).toContain('uSat');
-      expect(tunnelSection).toContain('mix(vec3(luma), paletteColor, uSat)');
+      // All modes now use shared finish step
+      expect(tunnelSection).toContain('applyColorTransforms');
     });
 
     test('getPaletteColor does NOT apply uHueShift (handled by rotateHue)', () => {
@@ -71,14 +71,14 @@ describe('Color Control Coverage', () => {
   });
 
   describe('Plasma Mode', () => {
-    test('samples palette and applies uSat', () => {
+    test('uses shared applyColorTransforms', () => {
       const plasmaSection = trippySrc.substring(
         trippySrc.indexOf('vec3 renderPlasma'),
         trippySrc.indexOf('vec3 renderMorph')
       );
       expect(plasmaSection).toContain('getPaletteColor');
-      expect(plasmaSection).toContain('uSat');
-      expect(plasmaSection).toContain('mix(vec3(luma), paletteColor, uSat)');
+      // All modes now use shared finish step
+      expect(plasmaSection).toContain('applyColorTransforms');
     });
   });
 
@@ -138,15 +138,14 @@ describe('Color Control Coverage', () => {
   });
 
   describe('Trippy Modes Final Pass', () => {
-    test('does not double-apply saturation', () => {
-      // Since each render function now applies uSat, the final pass should NOT
-      const mainFunc = trippySrc.substring(
-        trippySrc.indexOf('void main()'),
-        trippySrc.length
+    test('applies saturation exactly once via applyColorTransforms', () => {
+      // Each render function should call applyColorTransforms exactly once at the end
+      const tunnelFunc = trippySrc.substring(
+        trippySrc.indexOf('vec3 renderTunnel'),
+        trippySrc.indexOf('vec3 renderKaleido')
       );
-      // Check that final saturation pass is removed
-      const saturationLines = (mainFunc.match(/mix\(vec3\(luma\), col, uSat\)/g) || []).length;
-      expect(saturationLines).toBe(0); // Should be 0 since it's removed from final pass
+      const applyCount = (tunnelFunc.match(/applyColorTransforms/g) || []).length;
+      expect(applyCount).toBe(1); // Exactly one shared finish step per render function
     });
   });
 });

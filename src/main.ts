@@ -1762,8 +1762,9 @@ function probe() {
   // Throttled to ~1/sec to avoid stalling GPU pipeline (was dropping FPS from 60 to 52)
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   
-  // Sample tiny downscaled area (16x16) to minimize GPU stall
-  const sampleW = 16, sampleH = 16;
+  // Sample 64x64 for max-luma test (catches sparse bright content like default Kaleido)
+  // 16x16 was missing sparse pixels, causing false watchdog fires
+  const sampleW = 64, sampleH = 64;
   const px = new Uint8Array(sampleW * sampleH * 4);
   
   // Read from center of frame, scaled down
@@ -1806,26 +1807,14 @@ function probe() {
 const bgLum = () => hex(P.background).reduce((a, b) => a + b, 0) / 3 * 255;
 let blackStartTime = 0;
 function recover(why: string, clearFeedback: boolean = false) {
-  const src = lastGood || { ...DEFAULTS, stops: DEFAULT_STOPS };
-  const currentMode = P.mode; // Preserve user's selected mode
+  // DON'T reset user params - just clear buffers and reset seed
+  // User requirement: "don't reset user params on recover"
+  // Recovery should fix NaN/black/frozen, not change user's active settings
   
-  // Preserve user/preset params that should never be overwritten by recovery
-  const preserveParams = [
-    'exposure', 'feedbackMix', 'feedbackDecay', 'feedbackZoom', 'feedbackRotate',
-    'feedbackKaleido', 'feedbackNoise', 'feedbackHueDrift', 'bloomStrength', 'bloomThreshold2',
-    'trippySpeed', 'frType', 'frPower', 'frIter', 'frCamOrbit', 'frRotSpeed'
-  ];
-  const preserved: any = {};
-  for (const k of preserveParams) {
-    if (P[k] !== undefined) preserved[k] = P[k];
-  }
+  const currentMode = P.mode;
+  P.seed = Math.floor(Math.random() * 4e9); // New random seed to break frozen patterns
   
-  load(JSON.parse(JSON.stringify(src)), true); 
-  P.mode = currentMode; // Restore mode - never silently switch user's choice
-  
-  // Restore preserved params - recovery should fix NaN/black, not change user settings
-  Object.assign(P, preserved);
-  
+  // Smooth params should match P params
   SMOOTH.forEach(k => L[k] = P[k]);
   
   // Only clear feedback buffers if truly necessary (NaN or all zeros for >1s)
