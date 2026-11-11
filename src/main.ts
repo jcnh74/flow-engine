@@ -2076,6 +2076,15 @@ if (q.get('pcount')) P.pCount = +q.get('pcount')!;
 if (q.get('grav')) P.gStrength = +q.get('grav')!;
 if (q.get('under')) P.fabricUnder = +q.get('under')!;
 if (q.get('preset')) { P.exportPreset = PRESETS.find(p => p.name.startsWith(q.get('preset')!))?.name ?? P.exportPreset; if (DEFAULT_ORIENT[P.exportPreset]) P.orientation = DEFAULT_ORIENT[P.exportPreset]; }
+// Gallery preset selection via URL (use galleryPreset or gallery param)
+if (q.get('galleryPreset') || q.get('gallery')) {
+  const gpName = q.get('galleryPreset') || q.get('gallery');
+  const gp = PRESET_GALLERY.find(p => p.name.toLowerCase().includes(gpName!.toLowerCase()));
+  if (gp) {
+    loadPresetFromGallery(gp);
+    presetGallery.setCurrentPreset(gp.name);
+  }
+}
 if (q.get('orient')) P.orientation = q.get('orient');
 if (q.get('particles')) P.particles = +q.get('particles')!;
 if (q.get('seed')) P.seed = +q.get('seed')!;

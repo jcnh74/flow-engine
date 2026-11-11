@@ -1,0 +1,12 @@
+# Bun configuration
+# https://bun.sh/docs/runtime/bunfig
+
+[test]
+# Only run unit tests, not Playwright smoke tests
+# Smoke tests use *.spec.ts extension and are run via `npm run test:smoke`
+
+# Exclude Playwright smoke tests (*.spec.ts)
+exclude = [
+  "**/*.spec.ts",
+  "**/smoke-*.ts"
+]

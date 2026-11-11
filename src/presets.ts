@@ -347,7 +347,7 @@ export const PRESET_GALLERY: Preset[] = [
       feedbackKaleido: 8,       // More folds for structure
       feedbackNoise: 0.02,      // Minimal noise
       feedbackRotate: 0.035,    // Match Spiral's rotation
-      exposure: 1.8,            // Match Spiral
+      exposure: 1.0,            // Lower to create dark regions (was 1.8)
       bloomStrength: 0.12,      // Match Spiral
       bloomThreshold2: 1.8,     // Match Spiral
       stops: [[0, '#ffff00'], [0.33, '#ff00ff'], [0.66, '#00ffff'], [1, '#ffff00']]
@@ -366,7 +366,7 @@ export const PRESET_GALLERY: Preset[] = [
       feedbackNoise: 0.045,     // Moderate noise
       feedbackHueDrift: 0.02,   // Match Spiral
       feedbackRotate: 0.04,     // Slightly more rotation
-      exposure: 1.8,            // Match Spiral
+      exposure: 1.0,            // Lower to create dark regions (was 1.8)
       bloomStrength: 0.12,      // Match Spiral
       bloomThreshold2: 1.8,     // Match Spiral
       stops: [[0, '#ff4400'], [0.5, '#ff00ff'], [1, '#4400ff']]

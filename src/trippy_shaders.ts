@@ -138,17 +138,28 @@ vec3 renderKaleido(vec2 uv) {
   // Reconstruct position
   vec2 kp = vec2(cos(a), sin(a)) * r;
   
-  // Animated pattern with feedback (mid-driven modulation)
+  // Create SPARSE bright segments on BLACK before kaleido fold
+  // This gives the luma key dark regions to contrast against
   float fb = uKaleidoFeedback * (1.0 + uMidEnv * 0.3);
-  float pattern = sin(kp.x * 10.0 * fb + uTime) * sin(kp.y * 10.0 * fb - uTime * 0.7);
-  pattern += sin(length(kp) * 8.0 * fb - uTime * 2.0) * 0.5;
-  pattern = pattern * 0.5 + 0.5;
+  
+  // Radial lines (bright spokes)
+  float spokeAngle = mod(a * segments * 2.0, 6.28318);
+  float spokes = pow(1.0 - abs(sin(spokeAngle * 0.5)), 12.0);
+  
+  // Concentric rings (bright circles)
+  float rings = pow(1.0 - abs(sin(r * 8.0 * fb - uTime * 2.0)), 8.0);
+  
+  // Combine: sparse bright lines on black
+  float pattern = max(spokes * 0.7, rings * 0.5);
+  
+  // Animated modulation
+  pattern *= (0.5 + 0.5 * sin(kp.x * 5.0 * fb + uTime)) * (0.5 + 0.5 * sin(kp.y * 5.0 * fb - uTime * 0.7));
   
   // Color - linear HDR with emissive highlights
   vec3 col = getPaletteColor(pattern * 0.5 + uTime * 0.05 + r * 0.2);
   
-  // HDR pulse on kick (2-6 range for emissive)
-  col *= (1.5 + uKickEnv * 2.0 + uOnset * 4.5 + uHighEnv * 1.0);
+  // HDR boost (lower than before, exposure will be ~1.0 in preset)
+  col *= pattern * (1.0 + uKickEnv * 1.5 + uOnset * 3.0 + uHighEnv * 0.8);
   
   return col;
 }
@@ -168,26 +179,30 @@ vec3 renderPlasma(vec2 uv) {
   p += vec2(sin(p.y * 2.0 + t), cos(p.x * 2.0 + t * 0.7)) * uPlasmaWarp * 0.3;
   p += vec2(sin(p.x * 3.0 - t * 0.5), sin(p.y * 3.0 + t * 0.3)) * uPlasmaWarp * 0.2;
   
-  // Layered sine waves
+  // Key plasma bands into THIN BRIGHT RIDGES instead of full-field wash
+  // Creates dark regions for luma key contrast
   float plasma = 0.0;
   plasma += sin(p.x * 3.0 + t);
   plasma += sin(p.y * 4.0 - t * 0.7);
   plasma += sin((p.x + p.y) * 2.5 + t * 0.5);
   plasma += sin(length(p) * 5.0 - t * 2.0);
   plasma /= 4.0;
-  plasma = plasma * 0.5 + 0.5;
+  
+  // Sharpen into thin ridges: pow(1 - abs(sin(v)), 8)
+  // This creates sparse bright bands on black background
+  float ridges = pow(1.0 - abs(sin(plasma * 3.14159)), 8.0);
   
   // Apply contrast
-  plasma = pow(plasma, 1.0 / uPlasmaContrast);
+  ridges = pow(ridges, 1.0 / uPlasmaContrast);
   
   // Bass modulation using envelope
-  plasma += uBassEnv * 0.3;
+  ridges += uBassEnv * 0.2;
   
-  // Color from palette - linear HDR
-  vec3 col = getPaletteColor(plasma + uTime * 0.02);
+  // Color from palette - linear HDR (use original plasma for color variation)
+  vec3 col = getPaletteColor(plasma * 0.5 + 0.5 + uTime * 0.02);
   
-  // HDR boost (2-5 range, driven by mid/high)
-  col *= (1.8 + uMidEnv * 1.5 + uHighEnv * 1.7);
+  // HDR boost (lower, exposure will be ~1.0)
+  col *= ridges * (1.0 + uMidEnv * 1.0 + uHighEnv * 1.0);
   
   return col;
 }

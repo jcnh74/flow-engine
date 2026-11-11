@@ -237,14 +237,24 @@ vec4 qMul(vec4 q1, vec4 q2) {
 // Quaternion Julia distance estimator
 float deQuaternionJulia(vec3 p) {
   vec4 z = vec4(p, 0.0);
-  vec4 c = vec4(-0.2, 0.6, 0.2, 0.2); // Constant with visible structure
+  
+  // Animated constant using uScale and uFoldLimit for variation
+  // Different from static constant, creates distinct evolving structure
+  float t = uTime * 0.1;
+  vec4 c = vec4(
+    -0.2 + sin(t) * 0.15 * uScale,
+    0.6 + cos(t * 0.7) * 0.2 * uFoldLimit,
+    0.2 + sin(t * 1.3) * 0.15,
+    0.2 + cos(t * 0.5) * 0.1
+  );
+  
   vec4 dz = vec4(1.0, 0.0, 0.0, 0.0);
   
   for (int i = 0; i < 20; i++) {
     if (i >= uIterations) break;
     
     float r2 = dot(z, z);
-    if (r2 > 256.0) break;
+    if (r2 > uBailout * uBailout * 16.0) break;
     
     // dz = 2 * qMul(z, dz)
     dz = 2.0 * qMul(z, dz);

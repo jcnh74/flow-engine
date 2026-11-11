@@ -15,12 +15,15 @@ const TEST_PORT = process.env.SMOKE_TEST_PORT || '5194';
 const TEST_URL = `http://127.0.0.1:${TEST_PORT}`;
 
 // Configure browser to use chrome channel (not headless_shell)
-test.use({
-  channel: 'chrome',
-  launchOptions: {
-    args: ['--use-angle=swiftshader']
-  }
-});
+// Only configure if test.use is available (Playwright context, not bun)
+if (typeof test !== 'undefined' && test.use) {
+  test.use({
+    channel: 'chrome',
+    launchOptions: {
+      args: ['--use-angle=swiftshader']
+    }
+  });
+}
 
 test.describe('Headless Smoke Tests', () => {
   test('should render non-black frame without errors', async ({ page }) => {

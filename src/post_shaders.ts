@@ -305,14 +305,24 @@ void main() {
   // Decays toward black (0,0,0) preserving contrast
   echo *= uDecay;
   
-  // MilkDrop-style gamma adjustment on echo to maintain contrast
-  // Counters bilinear blur averaging and prevents decay to mid-gray
-  // Only apply where there's content to avoid boosting black floor
+  // MilkDrop-style contrast on echo to prevent blur/wash
+  // Apply on COMPRESSED value to prevent runaway above 1.0
+  // Compress: e/(1+e), apply contrast, expand: e/(1-e)
   float echoLuma = dot(echo, vec3(0.2126, 0.7152, 0.0722));
   if (echoLuma > 0.01) {
-    // Multiplicative contrast: pow(x, >1) darkens shadows, increases contrast
-    // This pivots around 0 (true black), not 0.5 (mid-gray)
-    echo = pow(echo, vec3(1.2));
+    // Compress to [0,1) range
+    vec3 compressed = echo / (vec3(1.0) + echo);
+    // Apply contrast in safe range (pow >1 darkens shadows)
+    compressed = pow(compressed, vec3(1.2));
+    // Expand back, with epsilon to prevent div-by-zero
+    echo = compressed / (vec3(1.0) - compressed + vec3(1e-4));
+    // Clamp to sane max to prevent runaway
+    echo = min(echo, vec3(4.0));
+  }
+  
+  // Sanitize NaN/Inf that can occur from extreme warps or math
+  if (any(isnan(echo)) || any(isinf(echo))) {
+    echo = vec3(0.0);
   }
   
   // Apply hue drift to echo
@@ -396,6 +406,15 @@ void main() {
   // This creates sparse bright trails on black, not dense gray
   float key = smoothstep(0.25, 0.65, luma);
   color *= key;
+  
+  // Clamp stored feedback to prevent runaway (mix 0.88 * decay 0.97 = 0.85 < 1 for bounded values)
+  // But need hard limit for safety
+  color = min(color, vec3(4.0));
+  
+  // Sanitize NaN/Inf
+  if (any(isnan(color)) || any(isinf(color))) {
+    color = vec3(0.0);
+  }
   
   fragColor = vec4(color, 1.0);
 }
