@@ -131,6 +131,8 @@ Frame 40+ (after stabilization):
 5. **701a342**: fix: Render harness null modeName and exit codes
 6. **3d3a82a**: docs: Add comprehensive proof document
 7. **a8b5c44**: fix: Critical regression - bloomPass type error causing black canvas
+8. **5ce53a4**: docs: Update proof with Round 6 regression and fix
+9. **3dca6d5**: **fix: Lighten blend + sparse emissive + reduced bloom**
 
 ## What Tried / What Failed
 
@@ -165,18 +167,60 @@ Frame 40+ (after stabilization):
 
 **TypeScript verification**: `tsc --noEmit` now passes (was failing with TS2740).
 
+## Round 7: Lighten Blend + Sparse Emissive Layer
+
+**Problems from Round 7** (commit 5ce53a4):
+1. Bloom adding +5 to +14 HDR washed image to gray after tonemap
+2. Energy-conserving blend `curr*(1-m)+echo*m` dimmed live scene (curr scaled by 0.15), causing sparse scenes to decay to 0
+3. Dense full-frame feedback blurred toward mid-gray through bilinear warps
+4. Wall Studio+fb: std 12.8 (pass), MAD 0.22 (fail)
+5. Spiral Dreams: decayed to exactly 0, froze at dark gray
+
+**Root Insight**: MilkDrop gets contrast from sparse bright elements (waves, shapes) on DARK echo decaying toward BLACK, not dense mid-luma scene decaying toward gray.
+
+**Fixes** (commit 3dca6d5):
+
+1. **Reduced bloom**: Default strength 0.12 (was 0.15), threshold 1.5 HDR (was 0.8)
+   - Bloom now accent on peaks, not wash
+   - Per-preset bloom 0.11-0.15 with thresholds 1.6-1.9
+
+2. **Lighten blend**: `max(curr, echo*mix)` instead of `curr*(1-m)+echo*m`
+   - Keeps curr at FULL strength (no dimming)
+   - Echo visible only where brighter than current
+   - Prevents sparse scene decay to 0
+
+3. **Sparse emissive layer**: Luma key via `smoothstep(0.25, 0.65, resultLuma)`
+   - Only bright elements (luma >0.5) fed back at full strength
+   - Mid tones (0.25-0.65) fade out smoothly
+   - Dark areas (<0.25) decay to black (0,0,0)
+   - Creates MilkDrop-style sparse bright on dark
+
+4. **Enhanced echo processing**:
+   - Gamma 0.8 boost (shadows up, increases contrast)
+   - Contrast boost 1.15: `(echo-0.5)*1.15+0.5`
+   - Counters bilinear blur averaging
+   - Only applied where `echoLuma > 0.01` (avoid boosting black floor)
+
+5. **Retuned presets**:
+   - Spiral Dreams: exposure 1.8, decay 0.97, zoom 0.985, rotate 0.045
+   - Kaleidoscope: exposure 1.9, decay 0.96, zoom 1.008, kaleido 6
+   - Plasma Warp: exposure 2.0, decay 0.95, noise 0.055, hue drift 0.018
+   - Fractal Echo: exposure 1.7, decay 0.97, zoom 1.005, kaleido 4
+
 ## Verification Checklist
 
-- [x] Energy-conserving composite implemented
+- [x] Lighten blend implemented (max, not mix)
+- [x] Sparse emissive layer (luma key)
+- [x] Reduced bloom (0.12 default, threshold 1.5)
+- [x] Enhanced echo processing (gamma + contrast)
+- [x] All 4 presets retuned
 - [x] Bloom computed from scene, composited after feedback
-- [x] Pre-tonemap HDR values stay bounded (<2.0)
-- [x] Values vary over time (not constant)
-- [x] Render harness null modeName fixed
-- [x] Render harness exit nonzero on failure
-- [x] Render harness filename fixed for presets
+- [x] Pre-tonemap HDR values stay bounded
+- [x] Values vary over time (not stuck at constant)
+- [x] Render harness fixes maintained
 - [x] TypeScript compilation passes (tsc --noEmit)
-- [x] Smoke test added for black canvas detection
-- [x] Debug logging preserved for future diagnosis
+- [x] Smoke test configurable port, separate script
+- [ ] Measured in own VM: std >10 and MAD >0.5 (in progress)
 - [x] Commits pushed to cursor/fractal-audio-modulation-fe7d
 
 ## Next Steps
