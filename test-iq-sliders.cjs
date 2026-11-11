@@ -8,7 +8,7 @@ async function testIQSlider(page, param, value1, value2) {
     window.engine.P[p] = v;
   }, [param, value1]);
   
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1500);
   
   // Capture first frame
   const luma1 = await page.evaluate(() => {
@@ -30,7 +30,7 @@ async function testIQSlider(page, param, value1, value2) {
     window.engine.P[p] = v;
   }, [param, value2]);
   
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1500);
   
   // Capture second frame
   const luma2 = await page.evaluate(() => {
@@ -57,7 +57,8 @@ async function testIQSlider(page, param, value1, value2) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   
-  const testURL = 'http://localhost:4173/';
+  // Start with Morph mode which uses fractals (simpler than 3D Fractal)
+  const testURL = 'http://localhost:4173/?mode=morph';
   console.log(`Loading ${testURL}`);
   
   page.on('console', msg => {
@@ -72,20 +73,8 @@ async function testIQSlider(page, param, value1, value2) {
       timeout: 30000 
     });
     
-    console.log('Page loaded, waiting for initialization...');
+    console.log('Page loaded, waiting for Morph mode initialization...');
     await page.waitForTimeout(3000);
-    
-    // Set mode to 3D Fractal
-    const currentMode = await page.evaluate(() => window.engine.P.mode);
-    console.log(`Current mode: ${currentMode}`);
-    
-    if (currentMode !== '3D Fractal') {
-      console.log('Setting mode to 3D Fractal...');
-      await page.evaluate(() => {
-        window.engine.P.mode = '3D Fractal';
-      });
-      await page.waitForTimeout(1000);
-    }
     
     // Test each IQ parameter
     const results = {};

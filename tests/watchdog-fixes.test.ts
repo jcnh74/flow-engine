@@ -12,7 +12,8 @@ describe('Watchdog False Positive Fixes', () => {
 
   test('probe should track allZero flag', () => {
     expect(mainSrc).toContain('allZero = true');
-    expect(mainSrc).toContain('if (pixelLum > 0.1) allZero = false');
+    expect(mainSrc).toContain('const BLACK_THRESHOLD = 2.0');
+    expect(mainSrc).toContain('if (pixelLum > BLACK_THRESHOLD) allZero = false');
     expect(mainSrc).toContain('allZero, nan:');
   });
 
@@ -25,7 +26,8 @@ describe('Watchdog False Positive Fixes', () => {
   test('watchdog should only clear FB after >1s of all zeros', () => {
     expect(mainSrc).toContain('if (black && p.allZero)');
     expect(mainSrc).toContain('now - blackStartTime > 1000');
-    expect(mainSrc).toContain("recover('black >1s', true)");
+    expect(mainSrc).toContain('shouldClearFeedback');
+    expect(mainSrc).toContain("recover('black >1s', shouldClearFeedback)");
   });
 
   test('recover should have clearFeedback parameter', () => {

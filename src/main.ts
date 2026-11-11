@@ -236,14 +236,6 @@ function setMode(newMode: string) {
   }
 }
 
-// Expose for testing and console debugging
-(window as any).__audioAnalyzer = audioAnalyzer;
-(window as any).__milkDropNext = milkDropNext;
-(window as any).__milkDropPrev = milkDropPrev;
-(window as any).__milkDropRandom = milkDropRandom;
-(window as any).P = P; // Expose params for VM testing
-(window as any).setMode = setMode; // Expose mode setter for testing
-
 // ---------- params ----------
 const P: any = {
   mode: 'Wall Studio', seed: 1977, // Start on Wall Studio
@@ -2499,6 +2491,14 @@ requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
 (window as any).engine = { P, renderStill, reset, recover, renderVideo };
+
+// Expose for testing and console debugging (after P is declared)
+(window as any).__audioAnalyzer = audioAnalyzer;
+(window as any).__milkDropNext = milkDropNext;
+(window as any).__milkDropPrev = milkDropPrev;
+(window as any).__milkDropRandom = milkDropRandom;
+(window as any).P = P; // Also expose at top level for convenience
+(window as any).setMode = setMode;
 
 // ---------- 2D Fractal mouse controls ----------
 let fr2Dragging = false;

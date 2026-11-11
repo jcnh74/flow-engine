@@ -339,8 +339,8 @@ float calcAO(vec3 p, vec3 n) {
   float ao = 0.0;
   float scale = 1.0;
   
-  // Adaptive sample count for performance
-  int samples = uMaxSteps > 96 ? 5 : 3;
+  // Adaptive sample count for performance (scale with quality)
+  int samples = uMaxSteps > 96 ? 5 : (uMaxSteps > 64 ? 3 : 2);
   
   for (int i = 0; i < 5; i++) {
     if (i >= samples) break;
@@ -362,8 +362,8 @@ float calcShadow(vec3 ro, vec3 rd, float mint, float maxt) {
   float t = mint;
   float ph = 1e10;
   
-  // Adaptive step count for performance
-  int maxShadowSteps = uMaxSteps > 96 ? 24 : 16;
+  // Adaptive step count for performance (scale with quality)
+  int maxShadowSteps = uMaxSteps > 96 ? 24 : (uMaxSteps > 64 ? 12 : 8);
   
   for (int i = 0; i < 32; i++) {
     if (i >= maxShadowSteps) break;

@@ -54,7 +54,7 @@ describe('IQ Lighting Enhancements', () => {
   test('calcAO should use adaptive sample count', () => {
     const aoFunc = FRACTAL_FS.match(/float calcAO\(.*?\n(?:.*?\n){0,30}\}/s)?.[0];
     expect(aoFunc).toBeDefined();
-    expect(aoFunc).toContain('int samples = uMaxSteps > 96 ? 5 : 3');
+    expect(aoFunc).toContain('int samples = uMaxSteps > 96 ? 5 : (uMaxSteps > 64 ? 3 : 2)');
     expect(aoFunc).toContain('if (i >= samples) break');
   });
 
@@ -70,15 +70,15 @@ describe('IQ Lighting Enhancements', () => {
 
 describe('Performance Optimizations', () => {
   test('should use adaptive quality for AO', () => {
-    // AO samples: 5 for high quality (maxSteps > 96), 3 for auto mode
+    // AO samples: 5 for high (>96), 3 for medium (>64), 2 for low
     const aoFunc = FRACTAL_FS.match(/float calcAO\(.*?\n(?:.*?\n){0,30}\}/s)?.[0];
-    expect(aoFunc).toContain('uMaxSteps > 96 ? 5 : 3');
+    expect(aoFunc).toContain('uMaxSteps > 96 ? 5 : (uMaxSteps > 64 ? 3 : 2)');
   });
 
   test('should use adaptive quality for shadows', () => {
-    // Shadow steps: 24 for high quality, 16 for auto mode
+    // Shadow steps: 24 for high (>96), 12 for medium (>64), 8 for low
     const shadowFunc = FRACTAL_FS.match(/float calcShadow\(.*?\n(?:.*?\n){0,40}\}/s)?.[0];
-    expect(shadowFunc).toContain('uMaxSteps > 96 ? 24 : 16');
+    expect(shadowFunc).toContain('uMaxSteps > 96 ? 24 : (uMaxSteps > 64 ? 12 : 8)');
   });
 
   test('should reduce iterations when quality is reduced', () => {
