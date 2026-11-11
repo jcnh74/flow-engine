@@ -94,22 +94,30 @@ vec3 renderTunnel(vec2 uv) {
   // Domain warp (bass-driven)
   r += sin(z * 5.0) * uTunnelWarp * 0.1 * (1.0 + uBassEnv * 0.3);
   
-  // Tunnel layers with controllable rings
-  float tunnel = mod(z * uTunnelRings * 0.25, 1.0);
-  float rings = smoothstep(0.3, 0.7, tunnel);
+  // Create SPARSE bright arms/rings on BLACK (like Kaleido/Plasma)
+  // This gives luma key dark regions to contrast against
   
-  // Rotating segments
+  // Thin bright rings: pow(1 - abs(sin(z)), 8)
+  float ringPhase = z * uTunnelRings * 0.25;
+  float rings = pow(1.0 - abs(sin(ringPhase * 3.14159)), 8.0);
+  
+  // Thin bright spiral arms: pow(1 - abs(sin(a * segments + z)), 8)
   float segments = 8.0;
-  float seg = mod(a / (3.14159 * 2.0) * segments + z * 0.5, 1.0);
-  float pattern = smoothstep(0.4, 0.6, seg);
+  float armPhase = a / (3.14159 * 2.0) * segments + z * 0.5;
+  float arms = pow(1.0 - abs(sin(armPhase * 3.14159)), 8.0);
   
-  // Color from palette - linear HDR base
+  // Combine: sparse bright structure on black
+  float structure = max(rings * 0.7, arms * 0.6);
+  
+  // Color from palette
   vec3 col = getPaletteColor(z * 0.1 + r * 0.3);
-  col *= (0.8 + rings * 1.2 + pattern * 0.8);
   
-  // HDR glow at center (2.0-8.0 emissive range)
-  float glow = 1.0 / (1.0 + r * r * 2.0);
-  col += glow * getPaletteColor(uTime * 0.1) * (2.0 + uOnset * 6.0 + uKickEnv * 3.0);
+  // Apply structure mask (creates black background with bright arms/rings)
+  col *= structure * (1.0 + uKickEnv * 1.5 + uOnset * 2.5);
+  
+  // Smaller center glow (not dominant)
+  float glow = 1.0 / (1.0 + r * r * 4.0);
+  col += glow * getPaletteColor(uTime * 0.1) * structure * (0.5 + uOnset * 1.0);
   
   return col;
 }

@@ -1906,6 +1906,12 @@ function loadPresetFromGallery(preset: any) {
   // Don't call wallDefaults() - preset params must win
   reset();
   updateFolders();
+  
+  // Re-apply preset params after reset/updateFolders to ensure they win
+  // Fixes Round 10 issue: Kaleido showed exposure 1.8, feedbackKaleido 0
+  // but preset defined exposure 1.0, feedbackKaleido 8
+  Object.assign(P, preset.params);
+  
   gui.controllersRecursive().forEach(c => c.updateDisplay());
   panel.update();
   

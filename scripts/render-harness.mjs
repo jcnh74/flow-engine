@@ -25,6 +25,13 @@ async function captureMode(page, modeName, params = {}) {
   if (modeName) {
     urlParamsObj.mode = modeName;
   }
+  
+  // Use galleryPreset for gallery preset loading (not preset which is export size)
+  if (urlParamsObj.preset && !modeName) {
+    urlParamsObj.galleryPreset = urlParamsObj.preset;
+    delete urlParamsObj.preset;
+  }
+  
   const urlParams = new URLSearchParams(urlParamsObj);
   const fullUrl = `${url}?${urlParams}`;
   

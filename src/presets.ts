@@ -328,7 +328,7 @@ export const PRESET_GALLERY: Preset[] = [
       feedbackZoom: 0.985,      // More zoom out for energy
       feedbackRotate: 0.045,    // Stronger rotation for spiral effect
       feedbackHueDrift: 0.02,   // More color shift
-      exposure: 1.8,            // Higher to compensate for luma key
+      exposure: 1.0,            // Lower to preserve black regions (was 1.8)
       bloomStrength: 0.12,      // Reduced bloom (accent, not wash)
       bloomThreshold2: 1.8,     // Higher threshold for sparse bloom
       stops: [[0, '#ff0080'], [0.5, '#8000ff'], [1, '#00ffff']]
