@@ -48,6 +48,10 @@ export class AudioAnalyzer {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private source: MediaElementAudioSourceNode | MediaStreamAudioSourceNode | null = null;
+  
+  // Public getters for external integrations (e.g. Butterchurn)
+  get context(): AudioContext | null { return this.audioContext; }
+  get analyserNode(): AnalyserNode | null { return this.analyser; }
   private audioElement: HTMLAudioElement | null = null;
   private micStream: MediaStream | null = null;
   private systemStream: MediaStream | null = null;

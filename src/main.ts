@@ -15,6 +15,7 @@ import { MainControlPanel } from './ui/MainControlPanel';
 import { BeatLinkPopup } from './ui/BeatLinkPopup';
 import { PresetGallery } from './ui/PresetGallery';
 import { hexToLinear, srgbToLinear } from './render-graph';
+import { ButterchurnRenderer } from './butterchurn-integration';
 import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -61,11 +62,76 @@ function cmykSafe(c: number[]) {
 
 // ---------- Audio, Modulation ----------
 const audioAnalyzer = new AudioAnalyzer();
+
+// MilkDrop / Butterchurn integration
+let milkDropCanvas: HTMLCanvasElement | null = null;
+let milkDropRenderer: ButterchurnRenderer | null = null;
+let milkDropTexture: WebGLTexture | null = null;
 const modulationSystem = new ModulationSystem();
+
+// MilkDrop initialization and control
+function initMilkDrop() {
+  if (!milkDropCanvas) {
+    // Create offscreen canvas for Butterchurn
+    milkDropCanvas = document.createElement('canvas');
+    milkDropCanvas.width = canvas.width;
+    milkDropCanvas.height = canvas.height;
+    
+    // Initialize Butterchurn renderer
+    if (audioAnalyzer.context) {
+      milkDropRenderer = new ButterchurnRenderer(milkDropCanvas, audioAnalyzer.context);
+      
+      // Connect audio
+      if (audioAnalyzer.analyserNode) {
+        milkDropRenderer.connectAudio(audioAnalyzer.analyserNode);
+      }
+      
+      // Load a default preset
+      const presets = milkDropRenderer.getPresetList();
+      if (presets.length > 0) {
+        const defaultPreset = presets.find(p => p.name.includes('Flexi')) || presets[0];
+        milkDropRenderer.loadPreset(defaultPreset.name);
+        P.milkDropPreset = defaultPreset.name;
+      }
+    }
+    
+    // Create WebGL texture for Butterchurn output
+    milkDropTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  }
+}
+
+function milkDropNext() {
+  if (milkDropRenderer) {
+    const name = milkDropRenderer.nextPreset();
+    if (name) P.milkDropPreset = name;
+  }
+}
+
+function milkDropPrev() {
+  if (milkDropRenderer) {
+    const name = milkDropRenderer.prevPreset();
+    if (name) P.milkDropPreset = name;
+  }
+}
+
+function milkDropRandom() {
+  if (milkDropRenderer) {
+    const name = milkDropRenderer.randomPreset();
+    if (name) P.milkDropPreset = name;
+  }
+}
 
 // Expose audio analyzer for testing in dev builds
 if (import.meta.env.DEV) {
   (window as any).__audioAnalyzer = audioAnalyzer;
+  (window as any).__milkDropNext = milkDropNext;
+  (window as any).__milkDropPrev = milkDropPrev;
+  (window as any).__milkDropRandom = milkDropRandom;
 }
 
 // ---------- params ----------
@@ -84,6 +150,8 @@ const P: any = {
   morphBlobs: 3.0, morphSmooth: 0.5, morphRate: 0.3, morphGlow: 0.8,
   // Trippy palette
   trippyPalette: 'Liquid Spectrum',
+  // MilkDrop params
+  milkDropPreset: '', milkDropAutoCycle: false, milkDropCycleBars: 8,
   
   // 2D Fractal params removed
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
@@ -762,6 +830,7 @@ const sphereHooks = {
 let startTime = 0, currentTime = 0, dt = 0, lastFrameTime = 0;
 let frame = 0; // Frame counter (for compatibility, but timing uses currentTime)
 let trails: Trails | undefined, frameRect = [0, 0, 1, 1], previewAspect = 16 / 9;
+let lastCycleBar = -1; // For MilkDrop auto-cycle
 let feedbackA: FB | null = null, feedbackB: FB | null = null, feedbackCurrent = 0;
 let tSim = 0, off2d = [0, 0], t3 = 0, tOrbit = 0;
 // Auto quality governor state
@@ -1020,6 +1089,34 @@ function tick(now: number) {
   } else if (P.mode === '3D Fractal') {
     if (!P.paused) frame++;
     renderFractal(T, [0, 1, 0, 1]);
+  } else if (P.mode === 'MilkDrop') {
+    if (!P.paused) {
+      // Render Butterchurn
+      if (milkDropRenderer) {
+        milkDropRenderer.render();
+        
+        // Copy Butterchurn canvas to our texture
+        if (milkDropCanvas && milkDropTexture) {
+          gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, milkDropCanvas);
+          
+          // Blit texture to trails framebuffer
+          gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f);
+          gl.viewport(0, 0, T.w, T.h);
+          gl.useProgram(blit.p);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+          gl.uniform1i(blit.u.uSrc, 0);
+          quad();
+        }
+      }
+      
+      // Auto-cycle on bars if enabled
+      if (P.milkDropAutoCycle && audioAnalyzer.state.bar % P.milkDropCycleBars === 0 && audioAnalyzer.state.bar !== lastCycleBar) {
+        lastCycleBar = audioAnalyzer.state.bar;
+        milkDropRandom();
+      }
+    }
   } else if (P.mode === '3D fabric') {
     if (!P.paused) { t3 += DT * V.evolution3d; tOrbit += DT * V.orbitSpeed; frame++; }
     settleFrame = frame; render3D(T, previewAspect, t3, tOrbit, [0, 1, 0, 1], px);
@@ -1502,7 +1599,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
+gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); if (P.mode === 'MilkDrop') initMilkDrop(); reset(); updateFolders(); wsU(); });
 gui.add({ r() { recover('button'); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -1889,9 +1986,18 @@ const panel = new MainControlPanel({
 remoteSync = new RemoteSync(P, 
   (action) => {
     // Handle actions from remote
-    if (action === 'next') presetGallery.nextPreset();
-    else if (action === 'prev') presetGallery.prevPreset();
-    else if (action === 'random') presetGallery.randomPreset();
+    if (action === 'next') {
+      if (P.mode === 'MilkDrop') milkDropNext();
+      else presetGallery.nextPreset();
+    }
+    else if (action === 'prev') {
+      if (P.mode === 'MilkDrop') milkDropPrev();
+      else presetGallery.prevPreset();
+    }
+    else if (action === 'random') {
+      if (P.mode === 'MilkDrop') milkDropRandom();
+      else presetGallery.randomPreset();
+    }
     else if (action === 'tap') audioAnalyzer.tapTempo();
     else if (action === 'pause') P.paused = !P.paused;
     else if (action === 'reset') recover('remote');
