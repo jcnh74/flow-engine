@@ -48,7 +48,7 @@ async function captureMode(page, modeName, params = {}) {
     const path = join(outDir, `${filename}.png`);
     await page.screenshot({ path, fullPage: false });
     
-    // Measure MAD if requested
+    // Measure MAD and spatial std if requested
     let mad = null;
     if (params.measureMAD) {
       mad = await page.evaluate(() => {
@@ -62,12 +62,14 @@ async function captureMode(page, modeName, params = {}) {
           
           let prevPixels = null;
           const mads = [];
+          const stds = [];
           let frameCount = 0;
           
           function measure() {
             if (frameCount >= 30) {
               const avgMad = mads.reduce((a, b) => a + b, 0) / mads.length;
-              resolve({ avgMad, frames: mads.length });
+              const avgStd = stds.reduce((a, b) => a + b, 0) / stds.length;
+              resolve({ avgMad, avgStd, frames: mads.length });
               return;
             }
             
@@ -77,6 +79,7 @@ async function captureMode(page, modeName, params = {}) {
               const pixels = new Uint8Array(w * h * 4);
               gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
               
+              // Calculate MAD
               if (prevPixels) {
                 let sum = 0;
                 for (let i = 0; i < pixels.length; i++) {
@@ -84,6 +87,16 @@ async function captureMode(page, modeName, params = {}) {
                 }
                 mads.push(sum / pixels.length);
               }
+              
+              // Calculate spatial std (luminance)
+              const lumas = [];
+              for (let i = 0; i < pixels.length; i += 4) {
+                const luma = 0.299 * pixels[i] + 0.587 * pixels[i+1] + 0.114 * pixels[i+2];
+                lumas.push(luma);
+              }
+              const meanLuma = lumas.reduce((a, b) => a + b, 0) / lumas.length;
+              const variance = lumas.reduce((a, b) => a + Math.pow(b - meanLuma, 2), 0) / lumas.length;
+              stds.push(Math.sqrt(variance));
               
               prevPixels = new Uint8Array(pixels);
               frameCount++;
@@ -98,15 +111,20 @@ async function captureMode(page, modeName, params = {}) {
     
     console.log(`   ✅ Screenshot: ${path}`);
     if (mad && !mad.error) {
-      console.log(`   📊 MAD: ${mad.avgMad.toFixed(2)} (${mad.frames} frames)`);
+      console.log(`   📊 MAD: ${mad.avgMad.toFixed(2)}, Spatial std: ${mad.avgStd.toFixed(2)} (${mad.frames} frames)`);
       
-      // Regression check: fail if frame is near-uniform (MAD < 0.5)
+      // Regression check: fail if frame is near-uniform
       if (mad.avgMad < 0.5) {
-        console.log(`   ❌ REGRESSION: Near-uniform frame (MAD ${mad.avgMad.toFixed(2)} < 0.5)`);
-        return { path, mad: mad.avgMad, error: 'Near-uniform frame', regression: true };
+        console.log(`   ❌ REGRESSION: Near-uniform temporal (MAD ${mad.avgMad.toFixed(2)} < 0.5)`);
+        return { path, mad: mad.avgMad, std: mad.avgStd, error: 'Near-uniform temporal', regression: true };
       }
       
-      return { path, mad: mad.avgMad };
+      if (mad.avgStd < 5.0) {
+        console.log(`   ❌ REGRESSION: Near-uniform spatial (std ${mad.avgStd.toFixed(2)} < 5.0)`);
+        return { path, mad: mad.avgMad, std: mad.avgStd, error: 'Near-uniform spatial', regression: true };
+      }
+      
+      return { path, mad: mad.avgMad, std: mad.avgStd };
     }
     
     return { path, mad: null };
@@ -169,6 +187,21 @@ async function run() {
     preset: 'Mandel Vortex',
     measureMAD: true 
   }));
+  
+  // Feedback presets with MAD and spatial std measurement
+  const feedbackPresets = [
+    'Feedback: Spiral Dreams',
+    'Feedback: Kaleidoscope Echo',
+    'Feedback: Plasma Warp',
+    'Feedback: Fractal Echo'
+  ];
+  
+  for (const preset of feedbackPresets) {
+    results.push(await captureMode(page, null, { 
+      preset,
+      measureMAD: true 
+    }));
+  }
   
   await browser.close();
   

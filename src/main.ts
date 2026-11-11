@@ -95,9 +95,9 @@ const P: any = {
   gLight: 'Golden hour', gSunAz: 235, gSunEl: 11, gSunI: 1, gSkyI: 1, gHaze: 1, gShSoft: 1.5, gTrans: 1, gSpec: 0.35, gAO: 0.25, gExposure: 1.1, gShRes: 2048,
   // Fractal mode
   frType: 0, frPower: 8, frIter: 12, frBailout: 4, frScale: -1.5, frFold: 1.0, frMinR: 0.5, frFixedR: 1.0, frCamDist: 3, frCamFov: 50,
-  frRotSpeed: 0.05, frMorph: 0, frColor1: '#ff0080', frColor2: '#00e5ff', frColorMix: 2, frAmbient: 0.15, frDiffuse: 0.7, frGlow: 0.3,
+  frRotSpeed: 0.25, frMorph: 0.3, frColor1: '#ff0080', frColor2: '#00e5ff', frColorMix: 2, frAmbient: 0.15, frDiffuse: 0.7, frGlow: 0.3,
   frShadow: 0.6, frMaxSteps: 128, frMaxDist: 20, frSurfDist: 0.6, frLightAz: 45, frLightEl: 35,
-  frJuliaOrbit: false, frJuliaSpeed: 0.2, frFoldRot: 0, frCamOrbit: false, frCamOrbitSpeed: 0.2,
+  frJuliaOrbit: false, frJuliaSpeed: 0.2, frFoldRot: 0, frCamOrbit: true, frCamOrbitSpeed: 0.3,
   frSlicePlane: false, frSlicePos: 0,
   gcView: 'Eye level', gcYaw: 0, gcPitch: 10, gcDist: 4.5, gcHeight: 0.9, gcFov: 45, gcPanX: 0, gcPanZ: 0, gcAuto: false, gcAutoSpd: 3,
   lsCam: 0.85, lsPrim: 'sphere', lsRotRand: 1, lsSizeRand: 0.15, lsFlow: false, lsDetach: false, lsFlowU: 0.03, lsFlowV: -0.04, lsSSS: 1, cL0Pal: '(main)', cL1Pal: '(main)', cOPal: 'Liquid Spectrum', cL0H: 0, cL0S: 1, cL0C: 1, cL1H: 0.08, cL1S: 1, cL1C: 1, cOH: 0, cOS: 1.3, cOC: 1.05, cMix1: 'normal', cMixA1: 1, cMixO: 'normal', cMixAO: 0, cHueCycle: 0, cGrad: 'folds', beadMode: 'patchwork', pShape: 'voronoi', pScale: 4, pSoft: 0.15, pSeed: 3, pJit: 0.35, pDrift: 0, pFab: 0, pOff: 0, beadSolid: '#ffd27a', lsDripLen: 0.35, lsDripAmt: 0.25, lsStyle: 'Beads', lsCount: 32768, lsRadius: 0.0375, lsRand: 0.1, lsVisc: 0.08, lsCoh: 0.25, lsCohR: 0.3, lsBounce: 0.25, lsFric: 0.7, lsDamp: 0.4, lsDrip: 300, lsTurn: 0, lsFloor: -1.25, lsBoxX: 4, lsBoxZ: 2.5, lsTank: false, lsSlide: 0.15, lsSub: 2,
@@ -782,10 +782,11 @@ function layout() {
   freeTrails(trails); trails = makeTrails(w, h);
   
   // Allocate feedback ping-pong buffers (RGBA16F for Phase 3)
+  // Always canvas-sized to match hdrComp and avoid blit/tonemap issues
   if (feedbackA) del(feedbackA);
   if (feedbackB) del(feedbackB);
-  feedbackA = hdrFB(w, h);
-  feedbackB = hdrFB(w, h);
+  feedbackA = hdrFB(cw, ch);
+  feedbackB = hdrFB(cw, ch);
   feedbackCurrent = 0;
 }
 function reset() { allocState(); allocP3(); layout(); frame = 0; tSim = 0; off2d = [0, 0]; t3 = 0; tOrbit = 0; simStep(0, worldHalf(previewAspect), true); settleFrame = 0; pStep(0, previewAspect, 0, true); allocS(); sStep(0, previewAspect, 0, true); }
@@ -825,7 +826,12 @@ function renderFractal(T: Trails, vp: number[]) {
   
   gl.uniform1i(u.uFractalType, P.frType);
   gl.uniform1f(u.uPower, V.frPower);
-  gl.uniform1i(u.uIterations, Math.max(1, Math.min(32, P.frIter)));
+  
+  // Reduce quality for Auto mode to hit 60fps
+  const qualityScale = P.autoQuality ? Math.max(0.7, P.resolutionScale) : 1.0;
+  const iterations = Math.max(1, Math.min(32, Math.floor(P.frIter * qualityScale)));
+  gl.uniform1i(u.uIterations, iterations);
+  
   gl.uniform1f(u.uBailout, P.frBailout);
   gl.uniform1f(u.uScale, V.frScale);
   gl.uniform1f(u.uFoldLimit, V.frFold);
@@ -849,7 +855,10 @@ function renderFractal(T: Trails, vp: number[]) {
   gl.uniform3fv(u.uLightDir, lightDir);
   gl.uniform1f(u.uGlow, V.frGlow);
   gl.uniform1f(u.uShadowStr, V.frShadow);
-  gl.uniform1i(u.uMaxSteps, P.frMaxSteps);
+  
+  // Reduce max steps for Auto mode
+  const maxSteps = P.autoQuality ? Math.max(32, Math.floor(P.frMaxSteps * qualityScale)) : P.frMaxSteps;
+  gl.uniform1i(u.uMaxSteps, maxSteps);
   gl.uniform1f(u.uMaxDist, P.frMaxDist);
   gl.uniform1f(u.uSurfDist, V.frSurfDist);
   gl.uniform1f(u.uRotSpeed, V.frRotSpeed);
@@ -1119,25 +1128,17 @@ function tick(now: number) {
     
     quad();
     
-    // Swap buffers
+    // Swap buffers and replace hdrComp with feedback result
+    // Both are canvas-sized now, so no letterboxing
     feedbackCurrent = 1 - feedbackCurrent;
-    
-    // Blit feedback result back to full-canvas hdrComp (don't replace it to avoid letterboxing)
-    // This ensures scaled renders still fill the canvas
-    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
-    gl.viewport(0, 0, hdrComp.w, hdrComp.h);
-    gl.useProgram(tonemap.p); // Reuse tonemap for simple blit
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, nextFB.t);
-    gl.uniform1i(tonemap.u.uSrc, 0);
-    gl.uniform1f(tonemap.u.uExposure, 1.0);
-    gl.uniform1i(tonemap.u.uMode, 0); // AgX
-    quad();
+    const oldComp3 = hdrComp;
+    hdrComp = nextFB;
+    del(oldComp3);
   }
   
-  // Final tonemap to screen
+  // Final tonemap to screen (upscale to fill canvas, not letterbox)
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
-  tonemapPass(frameRect);
+  tonemapPass([0, 0, canvas.width, canvas.height]);
   const what = P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
   const frameTime = dt * 1000; // ms
   hud.textContent = `${fps.toFixed(1)} fps (${frameTime.toFixed(1)}ms)  ·  ${what}  ·  time ${currentTime.toFixed(1)}s  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
