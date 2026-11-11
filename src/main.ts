@@ -1584,6 +1584,17 @@ function tick(now: number) {
     console.log(`Before tonemap (final HDR) - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
   }
   
+  // Final tonemap to screen (upscale to fill canvas, not letterbox)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
+  tonemapPass([0, 0, canvas.width, canvas.height]);
+  
+  // Probe RIGHT AFTER final blit, but throttle to ~1/sec to avoid stalling GPU pipeline
+  // Synchronous readPixels every frame dropped FPS from 60 to 52
+  const nowProbe = performance.now();
+  if (frame >= 30 && nowProbe - lastProbeTime > 1000) { // Throttle to ~1/sec
+    lastProbeResult = probe();
+    // Note: lastProbeTime is updated in the watchdog interval when it checks, not here
+  }
   
   // Debug: Check final screen output
   if (P.feedbackEnabled && frame % 30 === 0) {
@@ -1753,13 +1764,10 @@ const DEFAULTS = JSON.parse(JSON.stringify(P)); const DEFAULT_STOPS = JSON.parse
 let lastGood: any = null, badTicks = 0, recoverMsg = '', lastGoodAt = 0;
 let lastProbeResult: any = null; // Cache probe result from render loop for watchdog interval
 function probe() {
-  // Read from HDR composite target BEFORE tonemap, not default framebuffer
-  // Default framebuffer has preserveDrawingBuffer=false, so browser clears it after present
-  // This was causing all-zero readPixels and false watchdog fires
-  // Throttled to ~1/sec to avoid stalling GPU pipeline
-  
-  // Bind the HDR composite target we just rendered into (fallback to default FB if not available)
-  gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp ? hdrComp.f : null);
+  // This is called in the render loop RIGHT AFTER final tonemap blit to screen
+  // so it reads the actual displayed pixels (in the same frame, before compositor clears)
+  // Throttled to ~1/sec to avoid stalling GPU pipeline (was dropping FPS from 60 to 52)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   
   // Sample 64x64 for max-luma test (catches sparse bright content like default Kaleido)
   const sampleW = 64, sampleH = 64;
@@ -2612,12 +2620,12 @@ if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const i
   loadPresetFromGallery,
   gui,
   PALETTES,
-  // Expose readPixelsFromHDR for e2e tests (reads from HDR target before tonemap)
-  readPixelsFromHDR: (x: number, y: number, w: number, h: number) => {
-    if (!hdrComp) return null;
+  // Expose readPixelsLDR for e2e tests (reads from default FB after tonemap, same frame)
+  // Note: Must be called in the same frame after render, before browser presents
+  readPixelsLDR: (x: number, y: number, w: number, h: number) => {
     const pixels = new Uint8Array(w * h * 4);
     const prevFB = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     gl.bindFramebuffer(gl.FRAMEBUFFER, prevFB);
     return pixels;

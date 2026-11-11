@@ -19,8 +19,10 @@ describe('Color Control Coverage', () => {
         trippySrc.indexOf('vec3 renderKaleido'),
         trippySrc.indexOf('vec3 renderPlasma')
       );
-      expect(kaleidoSection).toContain('uSat');
-      expect(kaleidoSection).toContain('mix(vec3(luma), paletteColor, uSat)');
+      // Saturation is now applied in applyColorTransforms, not inline
+      expect(kaleidoSection).toContain('applyColorTransforms');
+      // Verify we removed the duplicate saturation that was squaring the effect
+      expect(kaleidoSection).toContain('DO NOT apply saturation here');
     });
 
     test('colorizes pattern before feedback', () => {
@@ -83,15 +85,15 @@ describe('Color Control Coverage', () => {
   });
 
   describe('Morph Mode', () => {
-    test('samples palette and applies uSat', () => {
-      const morphSection = trippySrc.substring(
-        trippySrc.indexOf('vec3 renderMorph'),
-        trippySrc.indexOf('void main()')
-      );
-      expect(morphSection).toContain('getPaletteColor');
-      expect(morphSection).toContain('uSat');
-      expect(morphSection).toContain('mix(vec3(luma), paletteColor, uSat)');
-    });
+  test('samples palette and applies uSat', () => {
+    const morphSection = trippySrc.substring(
+      trippySrc.indexOf('vec3 renderMorph'),
+      trippySrc.indexOf('void main()')
+    );
+    expect(morphSection).toContain('getPaletteColor');
+    // Saturation is now applied in applyColorTransforms shared finish
+    expect(morphSection).toContain('applyColorTransforms');
+  });
   });
 
   describe('3D Fractal Mode', () => {

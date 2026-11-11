@@ -250,16 +250,16 @@ async function capturePixelStats(page: any): Promise<PixelStats> {
     const canvas = document.getElementById('c') as HTMLCanvasElement;
     const engine = (window as any).engine;
     
-    // Use engine.readPixelsFromHDR to read from HDR target before tonemap
-    // This avoids the preserveDrawingBuffer=false issue where default FB is cleared after present
+    // Use engine.readPixelsLDR to read from default FB after tonemap (same frame)
+    // Must be called in the same animation frame to read before compositor clears
     const w = Math.min(canvas.width, 256);
     const h = Math.min(canvas.height, 256);
     let pixels: Uint8Array;
     
-    if (engine && engine.readPixelsFromHDR) {
-      pixels = engine.readPixelsFromHDR(0, 0, w, h);
+    if (engine && engine.readPixelsLDR) {
+      pixels = engine.readPixelsLDR(0, 0, w, h);
       if (!pixels) {
-        // Fallback to default FB if HDR target not available
+        // Fallback to default FB if function not available
         const gl = canvas.getContext('webgl2');
         if (!gl) throw new Error('No WebGL2 context');
         pixels = new Uint8Array(w * h * 4);
