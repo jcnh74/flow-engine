@@ -48,6 +48,10 @@ uniform int uMaxSteps;
 uniform float uMaxDist;
 uniform float uSurfDist;
 
+// Color transforms (like trippy mode)
+uniform float uHueShift;
+uniform float uSat;
+
 // IQ lighting enhancements
 uniform float uFogDensity;
 uniform float uFogStart;
@@ -498,9 +502,15 @@ void main() {
   // Raymarch
   vec4 col = raymarch(ro, rd);
   
-  // Apply hue rotation to final color (moves dominant hue bin)
-  // Need to pass hueShift via uniform - for now, this is a placeholder
-  // The actual hueShift will need to be added as a uniform to this shader
+  // Apply color transforms (saturation and hue shift)
+  if (col.a > 0.001) {
+    // Apply saturation
+    float luma = dot(col.rgb, vec3(0.2126, 0.7152, 0.0722));
+    col.rgb = max(mix(vec3(luma), col.rgb, uSat), vec3(0.0));
+    
+    // Apply hue shift
+    col.rgb = rotateHue(col.rgb, uHueShift * 360.0);
+  }
   
   // Output linear HDR (no gamma - tonemap handles it in Phase 1)
   fragColor = col;

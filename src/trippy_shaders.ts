@@ -88,20 +88,68 @@ vec3 rotateHue(vec3 col, float degrees) {
   return max(result, vec3(0.0)); // Clamp negative values
 }
 
+// OKLab RGB-to-Lab conversion for perceptual saturation scaling
+vec3 rgbToOklab(vec3 rgb) {
+  // Linear RGB to LMS
+  float l = 0.4122214708 * rgb.r + 0.5363325363 * rgb.g + 0.0514459929 * rgb.b;
+  float m = 0.2119034982 * rgb.r + 0.6806995451 * rgb.g + 0.1073969566 * rgb.b;
+  float s = 0.0883024619 * rgb.r + 0.2817188376 * rgb.g + 0.6299787005 * rgb.b;
+  
+  // Nonlinear transform
+  l = pow(l, 1.0 / 3.0);
+  m = pow(m, 1.0 / 3.0);
+  s = pow(s, 1.0 / 3.0);
+  
+  // LMS to Lab
+  return vec3(
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+  );
+}
+
+vec3 oklabToRgb(vec3 lab) {
+  // Lab to LMS
+  float l = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;
+  float m = lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z;
+  float s = lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z;
+  
+  // Nonlinear inverse
+  l = l * l * l;
+  m = m * m * m;
+  s = s * s * s;
+  
+  // LMS to RGB
+  return vec3(
+    +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+  );
+}
+
 // SHARED COLOR FINISH: Apply saturation and hue rotation to ANY color
 // This ensures ALL code paths (Tunnel/Kaleido/Plasma/Morph) get transforms
 // No early returns allowed - all branches must flow through this
 vec3 applyColorTransforms(vec3 col) {
-  // Apply scene saturation (desaturate or oversaturate)
-  float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-  col = max(mix(vec3(luma), col, uSat), vec3(0.0));
+  // Apply scene saturation using OKLab chroma scaling for uSat > 1.0
+  // This gives perceptually strong saturation without RGB clamping artifacts
+  if (uSat > 1.01) {
+    vec3 lab = rgbToOklab(max(col, vec3(0.0)));
+    float chroma = sqrt(lab.y * lab.y + lab.z * lab.z);
+    if (chroma > 0.001) {
+      float newChroma = chroma * uSat;
+      lab.y *= newChroma / chroma;
+      lab.z *= newChroma / chroma;
+    }
+    col = max(oklabToRgb(lab), vec3(0.0));
+  } else {
+    // Linear saturation for uSat <= 1.0 (desaturation or neutral)
+    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = max(mix(vec3(luma), col, uSat), vec3(0.0));
+  }
   
   // Apply hue rotation (moves dominant hue bin)
   col = rotateHue(col, uHueShift * 360.0);
-  
-  // DIAGNOSTIC: Red tint to verify this path is used for displayed pixels
-  // If Kaleido doesn't turn red on GPU, this is the wrong path
-  col = vec3(1.0, 0.0, 0.0);
   
   return col;
 }
@@ -216,18 +264,19 @@ vec3 renderKaleido(vec2 uv) {
   float paletteCoord = fract(a / 6.28318 + r * 0.3 + uTime * 0.05);
   vec3 paletteColor = getPaletteColor(paletteCoord);
   
-  // Apply scene saturation to palette color (previously ignored uSat)
-  float luma = dot(paletteColor, vec3(0.2126, 0.7152, 0.0722));
-  paletteColor = max(mix(vec3(luma), paletteColor, uSat), 0.0);
+  // DO NOT apply saturation here - applyColorTransforms does it at the end
+  // Applying it twice would square the effect (uSat=2 becomes uSat=4)
   
   // Multiply pattern mask by colored palette (lines are now colored, not white)
   vec3 col = paletteColor * pattern;
   
-  // HDR boost (lower than before, exposure will be ~1.0 in preset)
-  col *= (1.0 + uKickEnv * 1.5 + uOnset * 3.0 + uHighEnv * 0.8);
+  // MUCH LOWER HDR boost to prevent tonemap saturation collapse
+  // GPU measured S=0.38 due to near-white values; bring to 0.2-1.5 range for palette colors
+  // Reduced from (1.0 + kick*1.5 + onset*3.0 + high*0.8) which hit 8.0 clamp
+  col *= (0.5 + uKickEnv * 0.5 + uOnset * 0.8 + uHighEnv * 0.3);
   
-  // Clamp to avoid clipping to white before tonemap
-  col = min(col, vec3(8.0));
+  // Lower clamp since we're not boosting as hard
+  col = min(col, vec3(2.0));
   
   // RED TINT REMOVED after GPU verification confirmed renderKaleido is live path
   

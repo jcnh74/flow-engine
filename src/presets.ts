@@ -382,13 +382,13 @@ export const PRESET_GALLERY: Preset[] = [
       frRotSpeed: 0.6,          // Fast rotation for dynamics
       frCamOrbit: true,
       feedbackEnabled: true,
-      feedbackMix: 0.88,        // Match Spiral
+      feedbackMix: 0.92,        // Increased from 0.88 to raise luma from ~18 toward ~38
       feedbackDecay: 0.97,      // Match Spiral
       feedbackZoom: 0.985,      // Match Spiral (zoom out, not in)
       feedbackRotate: 0.045,    // Match Spiral
       feedbackKaleido: 0,       // No kaleido (preserve fractal structure)
       feedbackNoise: 0.01,      // Minimal noise
-      exposure: 1.8,            // Match Spiral
+      exposure: 2.1,            // Increased from 1.8 to boost luma (target ~38 vs measured 18)
       bloomStrength: 0.12,      // Match Spiral
       bloomThreshold2: 1.8,     // Match Spiral
       stops: [[0, '#0033ff'], [0.5, '#ff00aa'], [1, '#ffaa00']]

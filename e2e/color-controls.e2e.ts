@@ -36,11 +36,11 @@ test.describe('Color Control Verification', () => {
     for (const mode of modes) {
       console.log(`\n=== Testing ${mode} ===`);
       
-      // Set mode
+      // Set mode (use window.setMode which is already exposed)
       await page.evaluate((m) => {
-        const engine = (window as any).engine;
-        if (engine && engine.setMode) {
-          engine.setMode(m);
+        const setMode = (window as any).setMode;
+        if (setMode) {
+          setMode(m);
         }
       }, mode);
       

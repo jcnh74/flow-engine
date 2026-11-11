@@ -1124,6 +1124,13 @@ function renderFractal(T: Trails, vp: number[]) {
   }
   gl.uniform4f(u.uJuliaC, jc[0], jc[1], jc[2], jc[3]);
   
+  // Color transforms (hue shift and saturation)
+  if (u.uHueShift !== undefined && u.uSat !== undefined) {
+    const hueTurns = P.hueShift;
+    gl.uniform1f(u.uHueShift, ((hueTurns % 1) + 1) % 1);
+    gl.uniform1f(u.uSat, V.saturation);
+  }
+  
   quad();
 }
 
@@ -1577,17 +1584,6 @@ function tick(now: number) {
     console.log(`Before tonemap (final HDR) - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
   }
   
-  // Final tonemap to screen (upscale to fill canvas, not letterbox)
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
-  tonemapPass([0, 0, canvas.width, canvas.height]);
-  
-  // Probe RIGHT AFTER final blit, but throttle to ~1/sec to avoid stalling GPU pipeline
-  // Synchronous readPixels every frame dropped FPS from 60 to 52
-  const nowProbe = performance.now();
-  if (frame >= 30 && nowProbe - lastProbeTime > 1000) { // Throttle to ~1/sec
-    lastProbeResult = probe();
-    // Note: lastProbeTime is updated in the watchdog interval when it checks, not here
-  }
   
   // Debug: Check final screen output
   if (P.feedbackEnabled && frame % 30 === 0) {
@@ -1757,13 +1753,15 @@ const DEFAULTS = JSON.parse(JSON.stringify(P)); const DEFAULT_STOPS = JSON.parse
 let lastGood: any = null, badTicks = 0, recoverMsg = '', lastGoodAt = 0;
 let lastProbeResult: any = null; // Cache probe result from render loop for watchdog interval
 function probe() {
-  // This is now called in the render loop RIGHT AFTER final tonemap blit to screen
-  // so it reads the actual displayed pixels, not a cleared/intermediate buffer
-  // Throttled to ~1/sec to avoid stalling GPU pipeline (was dropping FPS from 60 to 52)
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  // Read from HDR composite target BEFORE tonemap, not default framebuffer
+  // Default framebuffer has preserveDrawingBuffer=false, so browser clears it after present
+  // This was causing all-zero readPixels and false watchdog fires
+  // Throttled to ~1/sec to avoid stalling GPU pipeline
+  
+  // Bind the HDR composite target we just rendered into (fallback to default FB if not available)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp ? hdrComp.f : null);
   
   // Sample 64x64 for max-luma test (catches sparse bright content like default Kaleido)
-  // 16x16 was missing sparse pixels, causing false watchdog fires
   const sampleW = 64, sampleH = 64;
   const px = new Uint8Array(sampleW * sampleH * 4);
   
@@ -2601,8 +2599,19 @@ if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const i
 (window as any).engine = { P, renderStill, reset, recover, renderVideo,
   buildPalette,
   getStops: () => stops,
-  setStops: (s: Stop[]) => { stops = s; buildPalette(); },
+  setStops: (s: Stop[], paletteName?: string) => { 
+    stops = s; 
+    // buildPalette() uploads texture and rebuilds layers (like UI select path)
+    buildPalette(); 
+    // Update P.palette if name provided (for UI consistency)
+    if (paletteName) {
+      P.palette = paletteName;
+    }
+  },
+  setMode,  // Expose for e2e tests
   loadPresetFromGallery,
+  gui,
+  PALETTES,
 };
 (window as any).__PRESET_GALLERY = PRESET_GALLERY;
 
