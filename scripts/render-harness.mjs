@@ -168,8 +168,13 @@ async function run() {
   
   // Log console messages
   page.on('console', msg => {
+    const text = msg.text();
     if (msg.type() === 'error') {
-      console.log(`   🔴 Console: ${msg.text()}`);
+      console.log(`   🔴 Console: ${text}`);
+    }
+    // Log debug stage messages
+    if (text.includes('After') || text.includes('Before') || text.includes('Feedback texture')) {
+      console.log(`   🔍 ${text}`);
     }
   });
   

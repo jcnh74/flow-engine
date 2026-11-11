@@ -949,7 +949,10 @@ function tick(now: number) {
   requestAnimationFrame(tick); if (busy || gl.isContextLost()) return;
   
   // Initialize start time on first frame
-  if (startTime === 0) startTime = now;
+  if (startTime === 0) {
+    startTime = now;
+    console.log(`FIRST FRAME: feedbackEnabled=${P.feedbackEnabled}, feedbackMix=${P.feedbackMix}`);
+  }
   
   // Update timing (real seconds, not frame*0.016)
   const deltaNow = now - last;
@@ -1054,7 +1057,7 @@ function tick(now: number) {
   quad();
   
   // Debug: Check after bloom
-  if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+  if (P.feedbackEnabled && frame % 30 === 0) {
     const x = Math.floor(hdrComp.w / 2 - 50);
     const y = Math.floor(hdrComp.h / 2 - 50);
     const samples = new Float32Array(100 * 100 * 4);
@@ -1083,7 +1086,7 @@ function tick(now: number) {
     if (oldComp) del(oldComp);
     
     // Debug: Check after CA
-    if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+    if (P.feedbackEnabled && frame % 30 === 0) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
       const x = Math.floor(hdrComp.w / 2 - 50);
       const y = Math.floor(hdrComp.h / 2 - 50);
@@ -1123,7 +1126,7 @@ function tick(now: number) {
   if (oldComp2) del(oldComp2);
   
   // Debug: Check after color grade
-  if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+  if (P.feedbackEnabled && frame % 30 === 0) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
     const x = Math.floor(hdrComp.w / 2 - 50);
     const y = Math.floor(hdrComp.h / 2 - 50);
@@ -1139,11 +1142,16 @@ function tick(now: number) {
   
   // Phase 3: MilkDrop-style feedback layer
   if (P.feedbackEnabled && P.feedbackMix > 0.001 && feedbackA && feedbackB) {
+    // Debug: Log that feedback is active (first 5 frames only)
+    if (frame < 5) {
+      console.log(`FEEDBACK ACTIVE: frame=${frame}, mix=${P.feedbackMix.toFixed(3)}, decay=${P.feedbackDecay.toFixed(3)}`);
+    }
+    
     const prevFB = feedbackCurrent === 0 ? feedbackA : feedbackB;
     const nextFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
     
     // Debug: Sample feedback texture (center region, not corner)
-    if (import.meta.env.DEV && frame % 30 === 0) {
+    if (frame === 10 || frame === 40 || frame === 70) {
       const debugStage = (fb: FB, name: string) => {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb.f);
         // Sample center 100x100, not corner
@@ -1223,7 +1231,7 @@ function tick(now: number) {
   }
   
   // Debug: Check before tonemap (final HDR buffer)
-  if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+  if (P.feedbackEnabled && frame % 30 === 0) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
     const x = Math.floor(hdrComp.w / 2 - 50);
     const y = Math.floor(hdrComp.h / 2 - 50);
@@ -1242,7 +1250,7 @@ function tick(now: number) {
   tonemapPass([0, 0, canvas.width, canvas.height]);
   
   // Debug: Check final screen output
-  if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+  if (P.feedbackEnabled && frame % 30 === 0) {
     const x = Math.floor(canvas.width / 2 - 50);
     const y = Math.floor(canvas.height / 2 - 50);
     const samples = new Uint8Array(100 * 100 * 4);
