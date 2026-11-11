@@ -1140,6 +1140,18 @@ function renderTrippy(T: Trails, modeIndex: number) {
   gl.uniform1f(u.uTime, currentTime);
   gl.uniform1i(u.uMode, modeIndex);
   gl.uniform2f(u.uResolution, T.w, T.h);
+  
+  // DEBUG: Log Kaleido uniforms once per second when mode is Kaleido (modeIndex=1)
+  if (modeIndex === 1 && frame % 60 === 0) {
+    console.log('Kaleido uniforms:', {
+      uSat: gl.getUniform(trippy.p, u.uSat),
+      uHueShift: gl.getUniform(trippy.p, u.uHueShift),
+      uPaletteSize: gl.getUniform(trippy.p, u.uPaletteSize),
+      'V.saturation': V.saturation,
+      'P.hueShift': P.hueShift,
+      'stops.length': stops.length
+    });
+  }
   // Smoothed audio envelopes
   if (u.uKickEnv !== undefined) gl.uniform1f(u.uKickEnv, audioAnalyzer.state.kickEnv);
   if (u.uSnareEnv !== undefined) gl.uniform1f(u.uSnareEnv, audioAnalyzer.state.snareEnv);

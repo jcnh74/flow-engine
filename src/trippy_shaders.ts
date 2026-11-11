@@ -89,9 +89,10 @@ vec3 rotateHue(vec3 col, float degrees) {
 }
 
 // Palette lookup with cycling
+// Note: uHueShift is now applied via YIQ rotation at the end, not here
 vec3 getPaletteColor(float t) {
   if (uPaletteSize < 1) return vec3(0.5);
-  t = fract(t + uHueShift);
+  t = fract(t); // No hueShift offset - rotateHue() handles that at the end
   float idx = t * float(uPaletteSize - 1);
   int i0 = int(floor(idx));
   int i1 = (i0 + 1) % uPaletteSize;

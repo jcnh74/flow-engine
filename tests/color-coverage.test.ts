@@ -59,12 +59,14 @@ describe('Color Control Coverage', () => {
       expect(tunnelSection).toContain('mix(vec3(luma), paletteColor, uSat)');
     });
 
-    test('getPaletteColor applies uHueShift internally', () => {
+    test('getPaletteColor does NOT apply uHueShift (handled by rotateHue)', () => {
       const getPaletteColorFunc = trippySrc.substring(
         trippySrc.indexOf('vec3 getPaletteColor'),
         trippySrc.indexOf('vec3 renderTunnel')
       );
-      expect(getPaletteColorFunc).toContain('fract(t + uHueShift)');
+      // uHueShift is now applied via YIQ rotation at the end, not in palette lookup
+      expect(getPaletteColorFunc).toContain('t = fract(t)');
+      expect(getPaletteColorFunc).toContain('rotateHue() handles that at the end');
     });
   });
 

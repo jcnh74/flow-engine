@@ -21,7 +21,21 @@ test('MilkDrop loads and renders', async ({ page }) => {
   await page.waitForSelector('#c', { timeout: 10000 });
   
   // Wait for MilkDrop to initialize and render at least one frame
-  await page.waitForTimeout(4000); // Increased from 3s to 4s for reliable rendering
+  // Use requestAnimationFrame to wait for actual rendered frame
+  await page.evaluate(() => {
+    return new Promise<void>((resolve) => {
+      let framesRendered = 0;
+      const checkFrame = () => {
+        framesRendered++;
+        if (framesRendered >= 60) { // Wait for 60 frames (~1 second at 60fps)
+          resolve();
+        } else {
+          requestAnimationFrame(checkFrame);
+        }
+      };
+      requestAnimationFrame(checkFrame);
+    });
+  });
   
   // Check for errors
   if (errors.length > 0) {

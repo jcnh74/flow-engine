@@ -334,9 +334,10 @@ void main() {
   
   // Lighten blend: compare by luma but carry full RGB of winner
   // This preserves chroma (hue/saturation) instead of per-channel max that desaturates
-  // Boost echo by 2.5x to restore trail brightness (r17: 38.8, r19: 16.0, r20: 19.5 -> target ~38)
+  // NO global boost - causes blowout in other presets (Spiral Dreams 100% clipped)
+  // Fractal Echo brightness restored in preset config (decay/uMix/exposure)
   float currLuma = dot(curr, vec3(0.2126, 0.7152, 0.0722));
-  vec3 echoScaled = echo * uMix * 2.5;
+  vec3 echoScaled = echo * uMix;
   float echoLumaScaled = dot(echoScaled, vec3(0.2126, 0.7152, 0.0722));
   vec3 result = echoLumaScaled > currLuma ? echoScaled : curr;
   
