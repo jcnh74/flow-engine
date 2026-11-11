@@ -115,6 +115,9 @@ const P: any = {
   bloomStrength: 0.15, bloomThreshold2: 0.8, kickBloomAmount: 0.3, caStrength: 0.0, distortion: 0.0,
   // Quality governor (Issue 8)
   resolutionScale: 1.0, autoQuality: false,
+  // Phase 3: MilkDrop-style feedback layer
+  feedbackEnabled: false, feedbackDecay: 0.95, feedbackZoom: 1.0, feedbackRotate: 0.0,
+  feedbackTranslateX: 0.0, feedbackTranslateY: 0.0, feedbackMix: 0.5,
   lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.0, vibrance: 0.0,
   vignetteStrength: 0.0, vignetteRadius: 1.2, grainStrength: 0.0,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
@@ -125,6 +128,7 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'gStrength','gAz','gEl','mass','stiffness','damping','wind','windAz','floor','cohesion','gBlend','stream','pLife','vmax','pTurb','wellG','pWidth','streak','pGain','dof','fabricUnder','pColorBySpeed',
   'gH','gW','gCurv','gDensity','gWind','gWindAz','gGustK','gGustSpeed','gcDist','gcHeight','gcFov','gDry','hueShift','cHueCycle',
   'lsRadius','lsDrip','lsVisc','lsCoh',
+  'feedbackMix','feedbackDecay','feedbackZoom','feedbackRotate','feedbackTranslateX','feedbackTranslateY',
   'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos',
   'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
@@ -187,6 +191,7 @@ const tonemap = prog(TONEMAP.TONEMAP_VS, TONEMAP.TONEMAP_FS);
 const bloomDown = prog(POST.POST_VS, POST.BLOOM_DOWN_FS);
 const bloomUp = prog(POST.POST_VS, POST.BLOOM_UP_FS);
 const bloomComposite = prog(POST.POST_VS, POST.BLOOM_COMPOSITE_FS);
+const feedback = prog(POST.POST_VS, POST.FEEDBACK_FS);
 const caDistort = prog(POST.POST_VS, POST.CA_DISTORT_FS);
 const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -754,6 +759,7 @@ const sphereHooks = {
 let startTime = 0, currentTime = 0, dt = 0, lastFrameTime = 0;
 let frame = 0; // Frame counter (for compatibility, but timing uses currentTime)
 let trails: Trails | undefined, frameRect = [0, 0, 1, 1], previewAspect = 16 / 9;
+let feedbackA: FB | null = null, feedbackB: FB | null = null, feedbackCurrent = 0;
 let tSim = 0, off2d = [0, 0], t3 = 0, tOrbit = 0;
 function layout() {
   const dpr = Math.min(2, devicePixelRatio || 1);
@@ -770,6 +776,13 @@ function layout() {
   w = Math.max(64, w); h = Math.max(64, h);
   frameRect = [Math.floor((cw - w) / 2), Math.floor((ch - h) / 2), w, h];
   freeTrails(trails); trails = makeTrails(w, h);
+  
+  // Allocate feedback ping-pong buffers (RGBA16F for Phase 3)
+  if (feedbackA) del(feedbackA);
+  if (feedbackB) del(feedbackB);
+  feedbackA = hdrFB(w, h);
+  feedbackB = hdrFB(w, h);
+  feedbackCurrent = 0;
 }
 function reset() { allocState(); allocP3(); layout(); frame = 0; tSim = 0; off2d = [0, 0]; t3 = 0; tOrbit = 0; simStep(0, worldHalf(previewAspect), true); settleFrame = 0; pStep(0, previewAspect, 0, true); allocS(); sStep(0, previewAspect, 0, true); }
 let fpsAcc = 0, fpsN = 0, fps = 0, last = performance.now(), busy = false;
@@ -1040,6 +1053,45 @@ function tick(now: number) {
   const oldComp2 = hdrComp;
   hdrComp = tempGrade;
   if (oldComp2) del(oldComp2);
+  
+  // Phase 3: MilkDrop-style feedback layer
+  if (P.feedbackEnabled && P.feedbackMix > 0.001 && feedbackA && feedbackB) {
+    const prevFB = feedbackCurrent === 0 ? feedbackA : feedbackB;
+    const nextFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
+    
+    gl.bindFramebuffer(gl.FRAMEBUFFER, nextFB.f);
+    gl.viewport(0, 0, nextFB.w, nextFB.h);
+    gl.useProgram(feedback.p);
+    
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, prevFB.t);
+    gl.uniform1i(feedback.u.uPrev, 0);
+    
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, hdrComp.t);
+    gl.uniform1i(feedback.u.uCurrent, 1);
+    
+    // Audio-driven modulation
+    const kickZoom = audioAnalyzer.state.kickEnv * 0.1;
+    const bassWarp = audioAnalyzer.state.bassEnv * 0.02;
+    
+    gl.uniform1f(feedback.u.uDecay, P.feedbackDecay);
+    gl.uniform1f(feedback.u.uZoom, P.feedbackZoom + kickZoom);
+    gl.uniform1f(feedback.u.uRotate, P.feedbackRotate + bassWarp * Math.PI);
+    gl.uniform2f(feedback.u.uTranslate, P.feedbackTranslateX, P.feedbackTranslateY);
+    gl.uniform1f(feedback.u.uMix, P.feedbackMix);
+    gl.uniform1f(feedback.u.uTime, currentTime);
+    
+    quad();
+    
+    // Swap buffers
+    feedbackCurrent = 1 - feedbackCurrent;
+    
+    // Replace hdrComp with feedback result
+    const oldComp3 = hdrComp;
+    hdrComp = nextFB;
+    // Don't delete oldComp3 - it's tempGrade which we need to keep
+  }
   
   // Final tonemap to screen
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);

@@ -86,6 +86,8 @@ export class MainControlPanel {
         this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
       ]);
       html += this.buildPostSection();
+      html += this.buildFeedbackSection();
+      html += this.buildFeedbackSection();
     } else if (mode === 'Kaleido') {
       html += this.buildSection('Kaleidoscope', [
         this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
@@ -98,6 +100,7 @@ export class MainControlPanel {
         this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
       ]);
       html += this.buildPostSection();
+      html += this.buildFeedbackSection();
     } else if (mode === 'Plasma') {
       html += this.buildSection('Plasma', [
         this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
@@ -110,6 +113,7 @@ export class MainControlPanel {
         this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
       ]);
       html += this.buildPostSection();
+      html += this.buildFeedbackSection();
     } else if (mode === 'Morph') {
       html += this.buildSection('Morphing', [
         this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
@@ -122,6 +126,7 @@ export class MainControlPanel {
         this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
       ]);
       html += this.buildPostSection();
+      html += this.buildFeedbackSection();
     } else if (false && mode === '2D Fractal') { // Removed
       html += this.buildSection('Fractal Type', [
         this.buildSelect('fr2Type', 'Type', { 'Mandelbrot': 0, 'Julia': 1, 'Burning Ship': 2, 'Newton': 3, 'Phoenix': 4 }),
@@ -306,6 +311,18 @@ export class MainControlPanel {
       this.buildSlider('vibrance', 'Vibrance', -0.5, 0.5, 0.01, true),
       this.buildSlider('vignetteStrength', 'Vignette', 0, 1, 0.01, true),
       this.buildSlider('grainStrength', 'Film Grain', 0, 0.15, 0.001, true),
+    ]);
+  }
+
+  private buildFeedbackSection(): string {
+    return this.buildSection('Feedback Layer (Phase 3)', [
+      this.buildCheckbox('feedbackEnabled', 'Enable Feedback'),
+      this.buildSlider('feedbackMix', 'Mix', 0, 1, 0.01, true),
+      this.buildSlider('feedbackDecay', 'Decay', 0.8, 1.0, 0.001, true),
+      this.buildSlider('feedbackZoom', 'Zoom', 0.95, 1.05, 0.001, true),
+      this.buildSlider('feedbackRotate', 'Rotate', -0.1, 0.1, 0.001, true),
+      this.buildSlider('feedbackTranslateX', 'Shift X', -0.05, 0.05, 0.001, true),
+      this.buildSlider('feedbackTranslateY', 'Shift Y', -0.05, 0.05, 0.001, true),
     ]);
   }
 

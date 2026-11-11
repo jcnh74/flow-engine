@@ -207,6 +207,49 @@ void main() {
 `;
 
 // Composite bloom layers
+// MilkDrop-style feedback/warp shader (inspired by Butterchurn MIT licensed)
+// Per-pixel UV warp with decay, zoom, rotation, and audio modulation
+export const FEEDBACK_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uPrev;    // Previous feedback frame
+uniform sampler2D uCurrent; // Current rendered frame
+uniform float uDecay;
+uniform float uZoom;
+uniform float uRotate;
+uniform vec2 uTranslate;
+uniform float uMix;
+uniform float uTime;
+
+void main() {
+  vec2 uv = vUv - 0.5;
+  
+  // Apply zoom
+  uv /= uZoom;
+  
+  // Apply rotation
+  float c = cos(uRotate);
+  float s = sin(uRotate);
+  uv = mat2(c, -s, s, c) * uv;
+  
+  // Apply translation
+  uv += uTranslate;
+  
+  uv += 0.5;
+  
+  // Sample previous frame with warp and apply decay
+  vec3 prev = texture(uPrev, uv).rgb * uDecay;
+  vec3 curr = texture(uCurrent, vUv).rgb;
+  
+  // Mix feedback with current frame
+  vec3 result = mix(curr, curr + prev, uMix);
+  
+  fragColor = vec4(result, 1.0);
+}
+`;
+
 export const BLOOM_COMPOSITE_FS = `#version 300 es
 precision highp float;
 in vec2 vUv;
