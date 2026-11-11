@@ -117,11 +117,10 @@ test.describe('Headless Smoke Tests', () => {
     // Check canvas is not black
     expect(canvasData).not.toHaveProperty('error');
     if ('avgR' in canvasData) {
-      const avgLuma = 0.2126 * canvasData.avgR + 0.7152 * canvasData.avgG + 0.0722 * canvasData.avgB;
-      
-      // Fail if canvas is uniform black (luma < 10 and range < 5)
-      expect(avgLuma).toBeGreaterThan(10);
-      expect(canvasData.lumaRange).toBeGreaterThan(5);
+      // For sparse-on-black scenes (Spiral Dreams, Tunnel), avgLuma can be low
+      // Check maxLuma instead - if ANY pixel is bright, scene is rendering
+      expect(canvasData.maxLuma).toBeGreaterThan(50);
+      expect(canvasData.lumaRange).toBeGreaterThan(30);
     }
   });
   
@@ -162,16 +161,18 @@ test.describe('Headless Smoke Tests', () => {
           }
           
           ctx.drawImage(img, 0, 0);
-          const centerX = Math.floor(img.width / 2);
-          const centerY = Math.floor(img.height / 2);
-          const pixel = ctx.getImageData(centerX, centerY, 1, 1).data;
           
-          resolve({
-            r: pixel[0],
-            g: pixel[1],
-            b: pixel[2],
-            luma: 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
-          });
+          // Check max luma over whole canvas (not just center)
+          // Sparse-on-black scenes have low center luma but high max
+          const imageData = ctx.getImageData(0, 0, img.width, img.height);
+          const data = imageData.data;
+          let maxLuma = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const luma = 0.2126 * data[i] + 0.7152 * data[i+1] + 0.0722 * data[i+2];
+            maxLuma = Math.max(maxLuma, luma);
+          }
+          
+          resolve({ maxLuma });
         };
         img.src = dataUrl;
       });
@@ -179,7 +180,8 @@ test.describe('Headless Smoke Tests', () => {
     
     expect(canvasData).not.toBeNull();
     if (canvasData) {
-      expect(canvasData.luma).toBeGreaterThan(10);
+      // Max luma should be >50 if ANY pixel is rendering (sparse or dense)
+      expect(canvasData.maxLuma).toBeGreaterThan(50);
     }
   });
 });

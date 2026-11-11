@@ -1443,25 +1443,46 @@ async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
 const DEFAULTS = JSON.parse(JSON.stringify(P)); const DEFAULT_STOPS = JSON.parse(JSON.stringify(stops));
 let lastGood: any = null, badTicks = 0, recoverMsg = '', lastGoodAt = 0;
 function probe() {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); let s = 0, n = 0;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); let s = 0, n = 0, maxLum = 0;
   for (const [fx, fy] of [[.5, .5], [.25, .25], [.75, .25], [.25, .75], [.75, .75]]) {
     const w = 16, px = new Uint8Array(w * w * 4);
     gl.readPixels(Math.floor(frameRect[0] + frameRect[2] * fx) - 8, Math.floor(frameRect[1] + frameRect[3] * fy) - 8, w, w, gl.RGBA, gl.UNSIGNED_BYTE, px);
-    for (let i = 0; i < px.length; i += 4) { s += px[i] + px[i + 1] + px[i + 2]; n += 3; }
+    for (let i = 0; i < px.length; i += 4) { 
+      s += px[i] + px[i + 1] + px[i + 2]; 
+      n += 3; 
+      const pixelLum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+      maxLum = Math.max(maxLum, pixelLum);
+    }
   }
   const lum = s / n; let nan = false;
   if (isLS()) { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, ss[0].f); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
   else if (P.mode === 'Particle Fabric') { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, ps[0].f); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
   else if (P.mode !== '3D fabric') { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, st[0].f); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
   const bad = SMOOTH.some(k => !Number.isFinite(L[k]));
-  return { lum: +lum.toFixed(1), nan: nan || bad, lost: gl.isContextLost() };
+  return { lum: +lum.toFixed(1), maxLum: +maxLum.toFixed(1), nan: nan || bad, lost: gl.isContextLost() };
 }
 const bgLum = () => hex(P.background).reduce((a, b) => a + b, 0) / 3 * 255;
 function recover(why: string) {
   const src = lastGood || { ...DEFAULTS, stops: DEFAULT_STOPS };
   const currentMode = P.mode; // Preserve user's selected mode
+  
+  // Preserve user/preset params that should never be overwritten by recovery
+  const preserveParams = [
+    'exposure', 'feedbackMix', 'feedbackDecay', 'feedbackZoom', 'feedbackRotate',
+    'feedbackKaleido', 'feedbackNoise', 'feedbackHueDrift', 'bloomStrength', 'bloomThreshold2',
+    'trippySpeed', 'frType', 'frPower', 'frIter', 'frCamOrbit', 'frRotSpeed'
+  ];
+  const preserved: any = {};
+  for (const k of preserveParams) {
+    if (P[k] !== undefined) preserved[k] = P[k];
+  }
+  
   load(JSON.parse(JSON.stringify(src)), true); 
   P.mode = currentMode; // Restore mode - never silently switch user's choice
+  
+  // Restore preserved params - recovery should fix NaN/black, not change user settings
+  Object.assign(P, preserved);
+  
   SMOOTH.forEach(k => L[k] = P[k]); reset(); badTicks = 0;
   recoverMsg = `⚠ recovered (${why})`; setTimeout(() => recoverMsg = '', 6000); 
   log('RECOVER ' + why + ' mode=' + currentMode);
@@ -1469,9 +1490,12 @@ function recover(why: string) {
 }
 setInterval(() => {
   if (busy || P.paused || gl.isContextLost() || frame < 30) return;
-  const p = probe(); const black = p.lum <= bgLum() + 1.2;
+  const p = probe();
+  // Use maxLum (not mean lum) to avoid false positives on sparse-on-black scenes
+  // Sparse scenes like Spiral Dreams have low mean but high max
+  const black = p.maxLum <= bgLum() + 5;
   if (black || p.nan) { if (++badTicks >= 3) recover(p.nan ? 'NaN' : 'black frame'); }
-  else { badTicks = 0; if (p.lum > bgLum() + 6 && performance.now() - lastGoodAt > 2000) { lastGood = snapshot(); lastGoodAt = performance.now(); } }
+  else { badTicks = 0; if (p.maxLum > bgLum() + 10 && performance.now() - lastGoodAt > 2000) { lastGood = snapshot(); lastGoodAt = performance.now(); } }
 }, 400);
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); sessionStorage.setItem('flow-recover', JSON.stringify(lastGood || snapshot())); log('CONTEXT LOST'); });
 canvas.addEventListener('webglcontextrestored', () => location.reload());
@@ -2107,7 +2131,8 @@ applyPreset(); SMOOTH.forEach(k => L[k] = P[k]); rebuildStops(); buildPalette();
 updateFolders();
 
 // Load startup preset if no URL params override
-if (!q.get('mode') && !rec) {
+// Skip if galleryPreset was already loaded via URL param
+if (!q.get('mode') && !q.get('galleryPreset') && !q.get('gallery') && !rec) {
   const startupPreset = PRESET_GALLERY.find(p => p.name === 'Deep House Wall') || PRESET_GALLERY[0];
   loadPresetFromGallery(startupPreset);
   presetGallery.setCurrentPreset(startupPreset.name);

@@ -11,7 +11,8 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test:smoke": "playwright test e2e/smoke-headless.spec.ts"
+    "test": "bun test tests/",
+    "test:smoke": "playwright test e2e/smoke-headless.e2e.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",

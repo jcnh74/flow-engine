@@ -239,13 +239,14 @@ float deQuaternionJulia(vec3 p) {
   vec4 z = vec4(p, 0.0);
   
   // Animated constant using uScale and uFoldLimit for variation
-  // DISTINCT from Mandelbulb/Mandelbox - different structure entirely
-  float t = uTime * 0.15;
+  // DISTINCT from Mandelbulb/Mandelbox - quaternion Julia set structure
+  // Use completely different base values to ensure visual distinctness
+  float t = uTime * 0.2;
   vec4 c = vec4(
-    -0.4 + sin(t) * 0.3 * abs(uScale),
-    0.8 + cos(t * 0.7) * 0.3 * abs(uFoldLimit),
-    0.3 + sin(t * 1.3) * 0.2,
-    0.1 + cos(t * 0.5) * 0.15
+    0.18 + sin(t) * 0.4 * abs(uScale),
+    0.6 + cos(t * 0.8) * 0.35 * abs(uFoldLimit),
+    0.35 + sin(t * 1.5) * 0.25,
+    -0.15 + cos(t * 0.6) * 0.2
   );
   
   vec4 dz = vec4(1.0, 0.0, 0.0, 0.0);
