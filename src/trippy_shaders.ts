@@ -110,15 +110,22 @@ vec3 renderTunnel(vec2 uv) {
   // Combine: sparse bright structure on black
   float structure = max(rings * 0.7, arms * 0.6);
   
-  // Color from palette
-  vec3 col = getPaletteColor(z * 0.1 + r * 0.3);
+  // Sample palette by depth and radius (hueShift already applied in getPaletteColor)
+  vec3 paletteColor = getPaletteColor(z * 0.1 + r * 0.3);
+  
+  // Apply scene saturation to palette color before multiplying by structure
+  float luma = dot(paletteColor, vec3(0.2126, 0.7152, 0.0722));
+  paletteColor = max(mix(vec3(luma), paletteColor, uSat), 0.0);
   
   // Apply structure mask (creates black background with bright arms/rings)
-  col *= structure * (1.0 + uKickEnv * 1.5 + uOnset * 2.5);
+  vec3 col = paletteColor * structure * (1.0 + uKickEnv * 1.5 + uOnset * 2.5);
   
   // Smaller center glow (not dominant)
   float glow = 1.0 / (1.0 + r * r * 4.0);
-  col += glow * getPaletteColor(uTime * 0.1) * structure * (0.5 + uOnset * 1.0);
+  vec3 glowColor = getPaletteColor(uTime * 0.1);
+  luma = dot(glowColor, vec3(0.2126, 0.7152, 0.0722));
+  glowColor = max(mix(vec3(luma), glowColor, uSat), 0.0);
+  col += glow * glowColor * structure * (0.5 + uOnset * 1.0);
   
   return col;
 }
@@ -164,11 +171,23 @@ vec3 renderKaleido(vec2 uv) {
   // Animated modulation
   pattern *= (0.5 + 0.5 * sin(kp.x * 5.0 * fb + uTime)) * (0.5 + 0.5 * sin(kp.y * 5.0 * fb - uTime * 0.7));
   
-  // Color - linear HDR with emissive highlights
-  vec3 col = getPaletteColor(pattern * 0.5 + uTime * 0.05 + r * 0.2);
+  // Sample palette by angle and radius (with hueShift applied)
+  // This colors the lines BEFORE feedback so they aren't white
+  float paletteCoord = fract(a / 6.28318 + r * 0.3 + uTime * 0.05);
+  vec3 paletteColor = getPaletteColor(paletteCoord);
+  
+  // Apply scene saturation to palette color (previously ignored uSat)
+  float luma = dot(paletteColor, vec3(0.2126, 0.7152, 0.0722));
+  paletteColor = max(mix(vec3(luma), paletteColor, uSat), 0.0);
+  
+  // Multiply pattern mask by colored palette (lines are now colored, not white)
+  vec3 col = paletteColor * pattern;
   
   // HDR boost (lower than before, exposure will be ~1.0 in preset)
-  col *= pattern * (1.0 + uKickEnv * 1.5 + uOnset * 3.0 + uHighEnv * 0.8);
+  col *= (1.0 + uKickEnv * 1.5 + uOnset * 3.0 + uHighEnv * 0.8);
+  
+  // Clamp to avoid clipping to white before tonemap
+  col = min(col, vec3(8.0));
   
   return col;
 }
@@ -207,11 +226,15 @@ vec3 renderPlasma(vec2 uv) {
   // Bass modulation using envelope
   ridges += uBassEnv * 0.2;
   
-  // Color from palette - linear HDR (use original plasma for color variation)
-  vec3 col = getPaletteColor(plasma * 0.5 + 0.5 + uTime * 0.02);
+  // Sample palette (hueShift already applied in getPaletteColor)
+  vec3 paletteColor = getPaletteColor(plasma * 0.5 + 0.5 + uTime * 0.02);
+  
+  // Apply scene saturation to palette color
+  float luma = dot(paletteColor, vec3(0.2126, 0.7152, 0.0722));
+  paletteColor = max(mix(vec3(luma), paletteColor, uSat), 0.0);
   
   // HDR boost (lower, exposure will be ~1.0)
-  col *= ridges * (1.0 + uMidEnv * 1.0 + uHighEnv * 1.0);
+  vec3 col = paletteColor * ridges * (1.0 + uMidEnv * 1.0 + uHighEnv * 1.0);
   
   return col;
 }
@@ -246,12 +269,21 @@ vec3 renderMorph(vec2 uv) {
   float shape = smoothstep(threshold, threshold + 1.0, field);
   float edge = smoothstep(threshold + 0.5, threshold + 0.7, field);
   
-  // Color - linear HDR
-  vec3 col = getPaletteColor(field * 0.1 + uTime * 0.05);
-  col = mix(col * 0.3, col * 1.5, shape);
+  // Sample palette (hueShift already applied in getPaletteColor)
+  vec3 paletteColor = getPaletteColor(field * 0.1 + uTime * 0.05);
   
-  // HDR edge glow (emissive 2-8 range)
-  col += edge * getPaletteColor(uTime * 0.1) * uMorphGlow * (2.0 + uOnset * 6.0);
+  // Apply scene saturation to palette color
+  float luma = dot(paletteColor, vec3(0.2126, 0.7152, 0.0722));
+  paletteColor = max(mix(vec3(luma), paletteColor, uSat), 0.0);
+  
+  // Color - linear HDR
+  vec3 col = mix(paletteColor * 0.3, paletteColor * 1.5, shape);
+  
+  // HDR edge glow (emissive 2-8 range) with saturated color
+  vec3 glowColor = getPaletteColor(uTime * 0.1);
+  luma = dot(glowColor, vec3(0.2126, 0.7152, 0.0722));
+  glowColor = max(mix(vec3(luma), glowColor, uSat), 0.0);
+  col += edge * glowColor * uMorphGlow * (2.0 + uOnset * 6.0);
   
   // Kick pulse (HDR boost)
   col *= (1.2 + uKickEnv * 1.5 + uSnareEnv * 0.8);
@@ -272,9 +304,8 @@ void main() {
     col = renderMorph(vUv);
   }
   
-  // Apply scene saturation (trippy modes previously ignored the Color slider)
-  float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-  col = max(mix(vec3(luma), col, uSat), 0.0);
+  // Saturation now applied inside each render function to palette colors
+  // (removed redundant final pass that was double-applying)
   fragColor = vec4(col, 1.0);
 }
 `;

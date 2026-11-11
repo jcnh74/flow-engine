@@ -332,9 +332,12 @@ void main() {
   
   vec3 curr = texture(uCurrent, vUv).rgb;
   
-  // Lighten blend: keep curr at full strength, echo added where brighter
-  // This prevents dimming sparse scenes while allowing bright trails
-  vec3 result = max(curr, echo * uMix);
+  // Lighten blend: compare by luma but carry full RGB of winner
+  // This preserves chroma (hue/saturation) instead of per-channel max that desaturates
+  float currLuma = dot(curr, vec3(0.2126, 0.7152, 0.0722));
+  vec3 echoScaled = echo * uMix;
+  float echoLumaScaled = dot(echoScaled, vec3(0.2126, 0.7152, 0.0722));
+  vec3 result = echoLumaScaled > currLuma ? echoScaled : curr;
   
   // Output DISPLAY version (unkeyed) - luma key applied separately to feedback buffer
   // This prevents erasing dark scenes like Fractal Echo and Wall Studio

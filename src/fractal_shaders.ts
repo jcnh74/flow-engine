@@ -420,8 +420,9 @@ vec4 raymarch(vec3 ro, vec3 rd) {
         uCosinePaletteD
       );
       // Mix in the Color 1 / Color 2 pickers (previously uploaded and unused)
+      // Increased blend weight from 0.65 to 0.85 so Color 1/2 pickers dominate
       vec3 colStops = mix(uColor1, uColor2, fract(trap + uPaletteOffset));
-      col = mix(col, colStops, 0.65);
+      col = mix(col, colStops, 0.85);
       
       // Combine lighting
       float light = uAmbient + diffuse * shadow;
