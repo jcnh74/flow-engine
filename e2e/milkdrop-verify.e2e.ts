@@ -54,27 +54,38 @@ test('MilkDrop loads and renders', async ({ page }) => {
   const canvas = await page.$('#c');
   expect(canvas, 'Canvas should exist').toBeTruthy();
   
-  // Get pixel data from canvas
+  // Get pixel data from WebGL canvas via readPixels
   const pixelData = await page.evaluate(() => {
     const canvas = document.getElementById('c') as HTMLCanvasElement;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
+    const gl = canvas.getContext('webgl2');
+    if (!gl) return null;
     
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const w = Math.min(canvas.width, 256);
+    const h = Math.min(canvas.height, 256);
+    const pixels = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    
     let maxLuma = 0;
     let nonZeroPixels = 0;
+    let sumLuma = 0;
     
-    for (let i = 0; i < imageData.data.length; i += 4) {
-      const r = imageData.data[i];
-      const g = imageData.data[i + 1];
-      const b = imageData.data[i + 2];
-      const luma = (r + g + b) / 3;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const r = pixels[i];
+      const g = pixels[i + 1];
+      const b = pixels[i + 2];
+      const luma = r * 0.299 + g * 0.587 + b * 0.114;
       
       if (luma > 0) nonZeroPixels++;
       maxLuma = Math.max(maxLuma, luma);
+      sumLuma += luma;
     }
     
-    return { maxLuma, nonZeroPixels, totalPixels: imageData.data.length / 4 };
+    return { 
+      maxLuma, 
+      avgLuma: sumLuma / (w * h),
+      nonZeroPixels, 
+      totalPixels: w * h 
+    };
   });
   
   console.log('=== PIXEL DATA ===');

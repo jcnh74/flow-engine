@@ -113,10 +113,12 @@ async function initMilkDrop(): Promise<void> {
     }
     
     if (!milkDropCanvas) {
-      // Create offscreen canvas for Butterchurn
+      // Create offscreen canvas for Butterchurn (match actual display size)
       milkDropCanvas = document.createElement('canvas');
-      milkDropCanvas.width = canvas.width;
-      milkDropCanvas.height = canvas.height;
+      const displayW = canvas.width || window.innerWidth;
+      const displayH = canvas.height || window.innerHeight;
+      milkDropCanvas.width = displayW;
+      milkDropCanvas.height = displayH;
       console.log('  Created milkDropCanvas:', milkDropCanvas.width, 'x', milkDropCanvas.height);
       
       // Initialize Butterchurn renderer (lazy-loads modules)
@@ -206,9 +208,13 @@ function updateMilkDropPresetDisplay(name: string) {
   }
 }
 
+// Track active mode separately from P.mode to detect actual changes
+let activeMode: string = 'Wall Studio';
+
 // Centralized mode switching - handles init/dispose and UI rebuild
 function setMode(newMode: string) {
-  const oldMode = P.mode;
+  const oldMode = activeMode;
+  activeMode = newMode;
   P.mode = newMode;
   console.log(`setMode: ${oldMode} -> ${newMode}`);
   
@@ -943,6 +949,11 @@ function layout() {
   const dpr = Math.min(2, devicePixelRatio || 1);
   canvas.width = Math.floor(innerWidth * dpr); canvas.height = Math.floor(innerHeight * dpr);
   const cw = canvas.width, ch = canvas.height;
+  
+  // Update MilkDrop renderer size if active
+  if (milkDropRenderer && P.mode === 'MilkDrop') {
+    milkDropRenderer.setRendererSize(cw, ch);
+  }
   previewAspect = Math.min(8, Math.max(1 / 8, P.frameToExport && P.width > 0 && P.height > 0 ? P.width / P.height : cw / ch));
   let w = cw, h = Math.round(cw / previewAspect); if (h > ch) { h = ch; w = Math.round(ch * previewAspect); }
   
@@ -1745,6 +1756,9 @@ let lastProbeTime = 0;
 setInterval(() => {
   if (busy || P.paused || gl.isContextLost() || frame < 30) return;
   
+  // Skip watchdog for MilkDrop mode (it renders into offscreen canvas)
+  if (P.mode === 'MilkDrop') return;
+  
   // Throttle probe to ~2/sec
   const now = performance.now();
   if (now - lastProbeTime < 500) return;
@@ -1769,6 +1783,7 @@ setInterval(() => {
     } else if (now - blackStartTime > 1000) {
       // All zeros for >1s - but NEVER clear feedback if std > 1 (sparse bright content exists)
       const shouldClearFeedback = p.std <= 1.0;
+      console.warn(`Watchdog fire: mode=${P.mode} lum=${p.lum} maxLum=${p.maxLum} std=${p.std} allZero=${p.allZero} black=${black} clearFB=${shouldClearFeedback}`);
       recover('black >1s', shouldClearFeedback);
       return;
     }

@@ -237,20 +237,22 @@ export class ButterchurnRenderer {
   }
   
   /**
+   * Update renderer size to match canvas
+   */
+  setRendererSize(width: number, height: number): void {
+    this.canvas.width = width;
+    this.canvas.height = height;
+    if (this.isReady && this.visualizer && this.visualizer.setRendererSize) {
+      this.visualizer.setRendererSize(width, height);
+    }
+  }
+  
+  /**
    * Render frame
    */
   render(): void {
     if (this.isReady && this.visualizer) {
       this.visualizer.render();
-    }
-  }
-  
-  /**
-   * Resize canvas
-   */
-  setRendererSize(width: number, height: number): void {
-    if (this.isReady && this.visualizer) {
-      this.visualizer.setRendererSize(width, height);
     }
   }
 }

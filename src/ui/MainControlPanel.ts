@@ -249,10 +249,10 @@ export class MainControlPanel {
         this.buildSlider('frDiffuse', 'Diffuse', 0, 2, 0.1, true),
         this.buildSlider('frGlow', 'Glow', 0, 2, 0.1, true),
         this.buildSlider('frShadow', 'Shadow Strength', 0, 1, 0.01, true),
-        this.buildSlider('frShadowSharpness', 'Shadow Sharpness', 1, 16, 0.5, true),
-        this.buildSlider('frAOStrength', 'AO Strength', 0, 5, 0.1, true),
-        this.buildSlider('frAORadius', 'AO Radius', 0.05, 0.5, 0.01, true),
-        this.buildSlider('frFogDensity', 'Fog Density', 0, 0.5, 0.01, true),
+        this.buildSlider('frShadowSharpness', 'Shadow Sharpness', 0.5, 32, 0.5, true),
+        this.buildSlider('frAOStrength', 'AO Strength', 0, 10, 0.2, true),
+        this.buildSlider('frAORadius', 'AO Radius', 0.01, 1.0, 0.02, true),
+        this.buildSlider('frFogDensity', 'Fog Density', 0, 1.5, 0.05, true),
         this.buildSlider('frFogStart', 'Fog Start', 0, 5, 0.1, true),
       ]);
       html += this.buildSection('Motion', [
@@ -397,7 +397,7 @@ export class MainControlPanel {
   private buildButton(action: string, label: string, callback: string): string {
     return `
       <div class="control">
-        <button class="control-button" data-action="${callback}">${label}</button>
+        <button class="control-button" data-action="${callback}" data-midi-action="${callback}">${label}</button>
       </div>
     `;
   }

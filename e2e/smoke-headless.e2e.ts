@@ -53,64 +53,46 @@ test.describe('Headless Smoke Tests', () => {
     // Check for page errors (should be none)
     expect(pageErrors.length).toBe(0);
     
-    // Sample canvas center pixel via toDataURL (works with WebGL canvas)
+    // Sample canvas via gl.readPixels (WebGL canvas)
     const canvasData = await page.evaluate(() => {
       const canvas = document.querySelector('canvas') as HTMLCanvasElement;
       if (!canvas) return { error: 'Canvas not found' };
       
-      // Convert canvas to data URL and sample center region
-      const dataUrl = canvas.toDataURL();
-      const img = new Image();
+      const gl = canvas.getContext('webgl2');
+      if (!gl) return { error: 'No WebGL2 context' };
       
-      return new Promise((resolve) => {
-        img.onload = () => {
-          // Create temp canvas for pixel reading
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = img.width;
-          tempCanvas.height = img.height;
-          const ctx = tempCanvas.getContext('2d');
-          if (!ctx) {
-            resolve({ error: 'Cannot get temp context' });
-            return;
-          }
-          
-          ctx.drawImage(img, 0, 0);
-          
-          const centerX = Math.floor(img.width / 2);
-          const centerY = Math.floor(img.height / 2);
-          
-          // Sample 10x10 region around center
-          const imageData = ctx.getImageData(centerX - 5, centerY - 5, 10, 10);
-          const data = imageData.data;
-          
-          let sumR = 0, sumG = 0, sumB = 0;
-          let minLuma = 255, maxLuma = 0;
-          
-          for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            sumR += r;
-            sumG += g;
-            sumB += b;
-            
-            const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            minLuma = Math.min(minLuma, luma);
-            maxLuma = Math.max(maxLuma, luma);
-          }
-          
-          const pixels = data.length / 4;
-          resolve({
-            avgR: sumR / pixels,
-            avgG: sumG / pixels,
-            avgB: sumB / pixels,
-            minLuma,
-            maxLuma,
-            lumaRange: maxLuma - minLuma
-          });
-        };
-        img.src = dataUrl;
-      });
+      // Sample 64x64 region from center
+      const w = 64, h = 64;
+      const centerX = Math.floor(canvas.width / 2) - w / 2;
+      const centerY = Math.floor(canvas.height / 2) - h / 2;
+      const pixels = new Uint8Array(w * h * 4);
+      gl.readPixels(centerX, centerY, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      
+      let sumR = 0, sumG = 0, sumB = 0;
+      let minLuma = 255, maxLuma = 0;
+      
+      for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i];
+        const g = pixels[i + 1];
+        const b = pixels[i + 2];
+        sumR += r;
+        sumG += g;
+        sumB += b;
+        
+        const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        minLuma = Math.min(minLuma, luma);
+        maxLuma = Math.max(maxLuma, luma);
+      }
+      
+      const totalPixels = w * h;
+      return {
+        avgR: sumR / totalPixels,
+        avgG: sumG / totalPixels,
+        avgB: sumB / totalPixels,
+        minLuma,
+        maxLuma,
+        lumaRange: maxLuma - minLuma
+      };
     });
     
     // Check canvas is not black
@@ -140,41 +122,27 @@ test.describe('Headless Smoke Tests', () => {
     // Should not throw errors
     expect(pageErrors.length).toBe(0);
     
-    // Canvas should not be black (use toDataURL for WebGL canvas)
+    // Canvas should not be black (use gl.readPixels for WebGL canvas)
     const canvasData = await page.evaluate(() => {
       const canvas = document.querySelector('canvas') as HTMLCanvasElement;
       if (!canvas) return null;
       
-      const dataUrl = canvas.toDataURL();
-      const img = new Image();
+      const gl = canvas.getContext('webgl2');
+      if (!gl) return null;
       
-      return new Promise<any>((resolve) => {
-        img.onload = () => {
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = img.width;
-          tempCanvas.height = img.height;
-          const ctx = tempCanvas.getContext('2d');
-          if (!ctx) {
-            resolve(null);
-            return;
-          }
-          
-          ctx.drawImage(img, 0, 0);
-          
-          // Check max luma over whole canvas (not just center)
-          // Sparse-on-black scenes have low center luma but high max
-          const imageData = ctx.getImageData(0, 0, img.width, img.height);
-          const data = imageData.data;
-          let maxLuma = 0;
-          for (let i = 0; i < data.length; i += 4) {
-            const luma = 0.2126 * data[i] + 0.7152 * data[i+1] + 0.0722 * data[i+2];
-            maxLuma = Math.max(maxLuma, luma);
-          }
-          
-          resolve({ maxLuma });
-        };
-        img.src = dataUrl;
-      });
+      // Sample downscaled to avoid huge reads
+      const w = Math.min(canvas.width, 256);
+      const h = Math.min(canvas.height, 256);
+      const pixels = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      
+      let maxLuma = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const luma = 0.2126 * pixels[i] + 0.7152 * pixels[i+1] + 0.0722 * pixels[i+2];
+        maxLuma = Math.max(maxLuma, luma);
+      }
+      
+      return { maxLuma };
     });
     
     expect(canvasData).not.toBeNull();
