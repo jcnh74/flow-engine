@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head><title>WebGL Extensions Test</title></head>
+<body style="background:#000;color:#fff;font-family:monospace;padding:20px">
+<h1>WebGL2 Extension Test</h1>
+<pre id="log"></pre>
+<script>
+const log = document.getElementById('log');
+
+function out(msg) {
+  log.textContent += msg + '\n';
+  console.log(msg);
+}
+
+out('Testing WebGL2 context...\n');
+
+const canvas = document.createElement('canvas');
+canvas.width = 800;
+canvas.height = 600;
+
+// Try different context options
+const contexts = [
+  { label: 'WebGL2 default', params: {} },
+  { label: 'WebGL2 antialias:false', params: { antialias: false } },
+  { label: 'WebGL2 preserveDrawingBuffer:true', params: { preserveDrawingBuffer: true } },
+  { label: 'WebGL2 powerPreference:high-performance', params: { powerPreference: 'high-performance' } },
+];
+
+for (const ctx of contexts) {
+  out(`\n--- ${ctx.label} ---`);
+  const gl = canvas.getContext('webgl2', ctx.params);
+  
+  if (!gl) {
+    out('ERROR: Context creation failed');
+    continue;
+  }
+  
+  out('✓ Context created');
+  out(`Renderer: ${gl.getParameter(gl.RENDERER)}`);
+  out(`Vendor: ${gl.getParameter(gl.VENDOR)}`);
+  out(`Version: ${gl.getParameter(gl.VERSION)}`);
+  out(`GLSL Version: ${gl.getParameter(gl.SHADING_LANGUAGE_VERSION)}`);
+  
+  // Check critical extension
+  out('\n  Extension checks:');
+  const ext1 = gl.getExtension('EXT_color_buffer_float');
+  out(`  EXT_color_buffer_float: ${ext1 ? '✓ SUPPORTED' : '✗ NOT SUPPORTED'}`);
+  
+  const ext2 = gl.getExtension('OES_texture_float_linear');
+  out(`  OES_texture_float_linear: ${ext2 ? '✓ SUPPORTED' : '✗ NOT SUPPORTED'}`);
+  
+  const ext3 = gl.getExtension('EXT_float_blend');
+  out(`  EXT_float_blend: ${ext3 ? '✓ SUPPORTED' : '✗ NOT SUPPORTED'}`);
+  
+  // List ALL extensions
+  const all = gl.getSupportedExtensions();
+  out(`\n  Total extensions: ${all.length}`);
+  if (all.length < 50) {
+    all.forEach(e => out(`    ${e}`));
+  } else {
+    all.slice(0, 20).forEach(e => out(`    ${e}`));
+    out(`    ... and ${all.length - 20} more`);
+  }
+}
+
+out('\n=== TEST COMPLETE ===');
+</script>
+</body>
+</html>

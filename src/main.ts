@@ -1,6 +1,22 @@
 import GUI from 'lil-gui';
 import * as S from './shaders';
 import * as GS from './grass_shaders';
+import * as FS from './fractal_shaders';
+// 2D Fractal shaders removed
+import * as TRIPPY from './trippy_shaders';
+import * as TONEMAP from './tonemap_shaders';
+import * as POST from './post_shaders';
+import { PRESET_GALLERY, getRandomPreset } from './presets';
+import AudioAnalyzer from './audio';
+import ModulationSystem from './modulation';
+import { MidiManager } from './midi';
+import { RemoteSync } from './remote';
+import { MainControlPanel } from './ui/MainControlPanel';
+import { BeatLinkPopup } from './ui/BeatLinkPopup';
+import { PresetGallery } from './ui/PresetGallery';
+import { hexToLinear, srgbToLinear } from './render-graph';
+import { ButterchurnRenderer } from './butterchurn-integration';
+import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!; if (!new URLSearchParams(location.search).get('debug')) hud.style.display = 'none';
@@ -24,12 +40,65 @@ const PALETTES: Record<string, Stop[]> = {
   'Neon Bloom': [[0, '#ff00a8'], [0.33, '#7a00ff'], [0.66, '#00e5ff'], [1, '#c6ff00']],
   'Pastel Data': [[0, '#ffadad'], [0.25, '#ffd6a5'], [0.5, '#caffbf'], [0.75, '#9bf6ff'], [1, '#bdb2ff']],
 };
+// Convert hex to sRGB [0-1]
 const hex = (h: string) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+// Convert hex to linear (for HDR workflow)
+const hexLinear = (h: string) => {
+  const srgb = hex(h);
+  return [srgbToLinear(srgb[0]), srgbToLinear(srgb[1]), srgbToLinear(srgb[2])];
+};
 function hueRot(c: number[], deg: number) { // YIQ rotation
   const a = deg * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
   const y = .299 * c[0] + .587 * c[1] + .114 * c[2], i = .596 * c[0] - .274 * c[1] - .322 * c[2], q = .211 * c[0] - .523 * c[1] + .312 * c[2];
   const i2 = i * ca - q * sa, q2 = i * sa + q * ca;
   return [y + .956 * i2 + .621 * q2, y - .272 * i2 - .647 * q2, y - 1.106 * i2 + 1.703 * q2].map(v => Math.min(1, Math.max(0, v)));
+}
+
+// Inigo Quilez cosine palette parameters
+// https://iquilezles.org/articles/palettes/
+function cosineFromStops(st: Stop[], hueShiftDeg: number) {
+  const cols = st.map(s => hex(s[1]));
+  const a = [0, 0, 0], b = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    const ch = cols.map(c => c[i]);
+    const mn = Math.min(...ch), mx = Math.max(...ch);
+    a[i] = (mn + mx) / 2;
+    b[i] = Math.max(0.15, (mx - mn) / 2);
+  }
+  const shift = ((hueShiftDeg / 360) % 1 + 1) % 1;
+  return {
+    a: new Float32Array(a),
+    b: new Float32Array(b),
+    c: new Float32Array([1, 1, 1]),
+    d: new Float32Array([shift, shift + 0.33, shift + 0.67])
+  };
+}
+function getCosinePaletteParams(paletteName: string, hueShift: number) {
+  // Prefer the live stop ramp (gallery presets and the Color dropdown write stops,
+  // not P.palette). Hue shift is in degrees in the UI; previous code added the
+  // raw degree value and then `% 1`, which is a no-op for integer slider steps.
+  if (typeof stops !== 'undefined' && Array.isArray(stops) && stops.length >= 2) {
+    return cosineFromStops(stops, hueShift);
+  }
+  const palettes: Record<string, { a: number[], b: number[], c: number[], d: number[] }> = {
+    'Liquid Spectrum': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 1.0, 1.0], d: [0.0, 0.33, 0.67] },
+    'Electric': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 1.0, 0.5], d: [0.8, 0.9, 0.3] },
+    'Glacier': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 0.7, 0.4], d: [0.0, 0.15, 0.2] },
+    'Sunset': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 0.5, 0.4], d: [0.0, 0.2, 0.5] },
+    'Neon Bloom': { a: [0.55, 0.4, 0.5], b: [0.45, 0.5, 0.5], c: [1.0, 1.0, 1.0], d: [0.0, 0.33, 0.67] },
+    'Neon Dreams': { a: [0.8, 0.5, 0.4], b: [0.2, 0.4, 0.2], c: [2.0, 1.0, 1.0], d: [0.0, 0.25, 0.25] },
+    'Cyberpunk': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [2.0, 1.0, 0.0], d: [0.5, 0.2, 0.25] },
+    'Deep Space': { a: [0.3, 0.3, 0.5], b: [0.3, 0.3, 0.3], c: [0.5, 0.5, 1.0], d: [0.0, 0.1, 0.2] }
+  };
+  const pal = palettes[paletteName] || palettes['Liquid Spectrum'];
+  const shift = ((hueShift / 360) % 1 + 1) % 1;
+  const shiftedD = pal.d.map((v) => (v + shift) % 1.0);
+  return {
+    a: new Float32Array(pal.a),
+    b: new Float32Array(pal.b),
+    c: new Float32Array(pal.c),
+    d: new Float32Array(shiftedD)
+  };
 }
 function cmykSafe(c: number[]) {
   const l = .299 * c[0] + .587 * c[1] + .114 * c[2]; const d = c.map(v => v - l); const m = Math.max(...d.map(Math.abs));
@@ -38,9 +107,196 @@ function cmykSafe(c: number[]) {
   return o.map(v => Math.min(.93, Math.max(.035, v)));
 }
 
+// ---------- Audio, Modulation ----------
+const audioAnalyzer = new AudioAnalyzer();
+
+// MilkDrop / Butterchurn integration
+let milkDropCanvas: HTMLCanvasElement | null = null;
+let milkDropRenderer: ButterchurnRenderer | null = null;
+let milkDropTexture: WebGLTexture | null = null;
+const modulationSystem = new ModulationSystem();
+
+// MilkDrop initialization and control
+let milkDropInitPromise: Promise<void> | null = null;
+
+async function initMilkDrop(): Promise<void> {
+  if (milkDropInitPromise) return milkDropInitPromise;
+  
+  milkDropInitPromise = (async () => {
+    console.log('initMilkDrop: Starting initialization...');
+    console.log('  audioAnalyzer.context:', audioAnalyzer.context ? 'exists' : 'null');
+    console.log('  milkDropCanvas:', milkDropCanvas ? 'exists' : 'null');
+    
+    // Ensure audio context exists (needed for Butterchurn even in headless mode)
+    if (!audioAnalyzer.context) {
+      console.log('  Ensuring audio context for MilkDrop...');
+      (audioAnalyzer as any).ensureContext();
+    }
+    
+    if (!milkDropCanvas) {
+      // Create offscreen canvas for Butterchurn (match actual display size)
+      milkDropCanvas = document.createElement('canvas');
+      const displayW = canvas.width || window.innerWidth;
+      const displayH = canvas.height || window.innerHeight;
+      milkDropCanvas.width = displayW;
+      milkDropCanvas.height = displayH;
+      console.log('  Created milkDropCanvas:', milkDropCanvas.width, 'x', milkDropCanvas.height);
+      
+      // Initialize Butterchurn renderer (lazy-loads modules)
+      if (audioAnalyzer.context) {
+        console.log('  Creating ButterchurnRenderer...');
+        milkDropRenderer = new ButterchurnRenderer(milkDropCanvas, audioAnalyzer.context);
+        
+        try {
+          await milkDropRenderer.init();
+          
+          // Connect audio
+          if (audioAnalyzer.analyserNode) {
+            milkDropRenderer.connectAudio(audioAnalyzer.analyserNode);
+          }
+          
+          // Load a default preset (pick a visually strong one)
+          const presets = milkDropRenderer.getPresetList();
+          if (presets.length > 0) {
+            // Pick a preset with strong visuals - curated list with case-insensitive substring matching
+            // Log available presets for debugging
+            if (frame < 5) console.log(`MilkDrop: ${presets.length} presets available, first 10:`, presets.slice(0, 10).map(p => p.name));
+            
+            const curated = ['alien fish pond', 'area 51', 'martin - cubetrace', 'Geiss & Sperl - Feedback'];
+            let defaultPreset = presets.find(p => 
+              curated.some(c => p.name.toLowerCase().includes(c.toLowerCase()))
+            );
+            if (!defaultPreset) defaultPreset = presets.find(p => p.name.toLowerCase().includes('flexi'));
+            if (!defaultPreset) defaultPreset = presets[0];
+            
+            console.log(`MilkDrop: Selected default preset: "${defaultPreset.name}"`);
+            milkDropRenderer.loadPreset(defaultPreset.name);
+            P.milkDropPreset = defaultPreset.name;
+            updateMilkDropPresetDisplay(defaultPreset.name);
+          }
+          
+          console.log('MilkDrop initialized successfully');
+        } catch (error) {
+          console.error('MilkDrop initialization failed:', error);
+          throw error;
+        }
+      } else {
+        console.warn('  Audio context not available, skipping ButterchurnRenderer creation');
+      }
+      
+      // Create WebGL texture for Butterchurn output
+      milkDropTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    }
+  })();
+  
+  return milkDropInitPromise;
+}
+
+function milkDropNext() {
+  if (milkDropRenderer) {
+    const name = milkDropRenderer.nextPreset();
+    if (name) {
+      P.milkDropPreset = name;
+      updateMilkDropPresetDisplay(name);
+    }
+  }
+}
+
+function milkDropPrev() {
+  if (milkDropRenderer) {
+    const name = milkDropRenderer.prevPreset();
+    if (name) {
+      P.milkDropPreset = name;
+      updateMilkDropPresetDisplay(name);
+    }
+  }
+}
+
+function milkDropRandom() {
+  if (milkDropRenderer) {
+    const name = milkDropRenderer.randomPreset();
+    if (name) {
+      P.milkDropPreset = name;
+      updateMilkDropPresetDisplay(name);
+    }
+  }
+}
+
+function updateMilkDropPresetDisplay(name: string) {
+  // Update panel display
+  const panelDisplay = document.getElementById('milkdrop-preset-name');
+  if (panelDisplay) {
+    panelDisplay.textContent = name;
+  }
+  
+  // Update remote display via remoteSync
+  if (remoteSync) {
+    remoteSync.syncState();
+  }
+}
+
+// Track active mode separately from P.mode to detect actual changes
+let activeMode: string = 'Wall Studio';
+let lastModeChangeTime: number = 0;
+
+// Centralized mode switching - handles init/dispose and UI rebuild
+function setMode(newMode: string) {
+  const oldMode = activeMode;
+  activeMode = newMode;
+  P.mode = newMode;
+  lastModeChangeTime = performance.now(); // Track mode change for watchdog grace period
+  recoverMsg = ''; // Clear any existing recovery banner
+  console.log(`setMode: ${oldMode} -> ${newMode}`);
+  
+  // Initialize MilkDrop if entering that mode
+  if (newMode === 'MilkDrop' && oldMode !== 'MilkDrop') {
+    console.log('Initializing MilkDrop...');
+    initMilkDrop().catch(e => console.error('MilkDrop init failed:', e));
+  }
+  
+  // Apply mode-specific defaults
+  if (isW()) wallDefaults();
+  
+  // Reset and rebuild UI
+  reset();
+  updateFolders();
+  
+  // Sync with remote
+  if (remoteSync) {
+    remoteSync.syncState();
+  }
+  
+  // Rebuild panel if it exists
+  if ((window as any).panel?.rebuild) {
+    (window as any).panel.rebuild();
+  }
+}
+
 // ---------- params ----------
 const P: any = {
-  mode: 'Wall Studio', seed: 1977,
+  mode: 'Wall Studio', seed: 1977, // Start on Wall Studio
+  performanceMode: false, // Performance mode: fullscreen, no UI, no cursor
+  // Trippy mode params
+  trippyMode: 0, trippySpeed: 1.0,
+  // Tunnel params
+  tunnelTwist: 1.0, tunnelRings: 8.0, tunnelFov: 1.0, tunnelWarp: 0.5,
+  // Kaleido params
+  kaleidoSegments: 6.0, kaleidoZoom: 1.0, kaleidoRotation: 0.2, kaleidoFeedback: 0.7,
+  // Plasma params
+  plasmaScale: 1.5, plasmaWarp: 0.8, plasmaFlow: 0.5, plasmaContrast: 1.2,
+  // Morph params
+  morphBlobs: 3.0, morphSmooth: 0.5, morphRate: 0.3, morphGlow: 0.8,
+  // Trippy palette
+  trippyPalette: 'Liquid Spectrum',
+  // MilkDrop params
+  milkDropPreset: '', milkDropAutoCycle: false, milkDropCycleBars: 8,
+  
+  // 2D Fractal params removed
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
   wObj: false, wObjMat: 'glossy', cycA: '#d8d8d8', cycB: '#8e8e8e', cycOn: true, grain: 0.025,
   wcView: 'Front', wcYaw: 0, wcPitch: 0, wcDist: 5.0, wcFov: 40, wcPanX: 0, wcPanY: 0, wcAuto: false,
@@ -48,6 +304,13 @@ const P: any = {
   gWind: 0.6, gGustK: 0.45, gGustSpeed: 1.6, gFlutter: 0.03, gWindAz: 30,
   gColor: 'natural', gBase: '#2c4a12', gTip: '#8fb53a', gDryC: '#c9b46a', gDry: 0.5, gColRand: 0.35, gSoil: '#3b2f22',
   gLight: 'Golden hour', gSunAz: 235, gSunEl: 11, gSunI: 1, gSkyI: 1, gHaze: 1, gShSoft: 1.5, gTrans: 1, gSpec: 0.35, gAO: 0.25, gExposure: 1.1, gShRes: 2048,
+  // Fractal mode
+  frType: 0, frPower: 8, frIter: 12, frBailout: 4, frScale: -1.5, frFold: 1.0, frMinR: 0.5, frFixedR: 1.0, frCamDist: 3, frCamFov: 50,
+  frRotSpeed: 0.25, frMorph: 0.3, frColor1: '#ff0080', frColor2: '#00e5ff', frColorMix: 2, frAmbient: 0.15, frDiffuse: 0.7, frGlow: 0.3,
+  frShadow: 0.6, frMaxSteps: 128, frMaxDist: 20, frSurfDist: 0.6, frLightAz: 45, frLightEl: 35,
+  frJuliaOrbit: false, frJuliaSpeed: 0.2, frFoldRot: 0, frCamOrbit: true, frCamOrbitSpeed: 0.3,
+  frSlicePlane: false, frSlicePos: 0,
+  frFogDensity: 0.1, frFogStart: 1.5, frAOStrength: 3.0, frAORadius: 0.15, frShadowSharpness: 8.0,
   gcView: 'Eye level', gcYaw: 0, gcPitch: 10, gcDist: 4.5, gcHeight: 0.9, gcFov: 45, gcPanX: 0, gcPanZ: 0, gcAuto: false, gcAutoSpd: 3,
   lsCam: 0.85, lsPrim: 'sphere', lsRotRand: 1, lsSizeRand: 0.15, lsFlow: false, lsDetach: false, lsFlowU: 0.03, lsFlowV: -0.04, lsSSS: 1, cL0Pal: '(main)', cL1Pal: '(main)', cOPal: 'Liquid Spectrum', cL0H: 0, cL0S: 1, cL0C: 1, cL1H: 0.08, cL1S: 1, cL1C: 1, cOH: 0, cOS: 1.3, cOC: 1.05, cMix1: 'normal', cMixA1: 1, cMixO: 'normal', cMixAO: 0, cHueCycle: 0, cGrad: 'folds', beadMode: 'patchwork', pShape: 'voronoi', pScale: 4, pSoft: 0.15, pSeed: 3, pJit: 0.35, pDrift: 0, pFab: 0, pOff: 0, beadSolid: '#ffd27a', lsDripLen: 0.35, lsDripAmt: 0.25, lsStyle: 'Beads', lsCount: 32768, lsRadius: 0.0375, lsRand: 0.1, lsVisc: 0.08, lsCoh: 0.25, lsCohR: 0.3, lsBounce: 0.25, lsFric: 0.7, lsDamp: 0.4, lsDrip: 300, lsTurn: 0, lsFloor: -1.25, lsBoxX: 4, lsBoxZ: 2.5, lsTank: false, lsSlide: 0.15, lsSub: 2,
   lsFabric: true, lsHem: -5, lsFloorOn: true, lsFloorCol: '#4a505c', lsFloorRough: 0.42, lsAbsorb: 3, lsInflate: 1.3, lsGain: 1.6,
@@ -55,17 +318,34 @@ const P: any = {
   pCount: 1048576, cohesion: 0.6, gBlend: 0.35, stream: 1.0, pLife: 0.12, vmax: 6, pTurb: 0.25, wellG: 1, pWidth: 1.1, streak: 0.06, pGain: 0.05, dof: 0, fabricUnder: 0, pColorBySpeed: 0.45,
   wells: [] as any[], particles: 1048576, noiseScale: 1.6, octaves: 3, evolution: 0.12, curl: 1.0, turbulence: 0.25,
   speed: 1.0, flowBias: 0.0, stretch: 1.6, life: 0.18, decay: 0.965, pointSize: 1.4, gain: 0.045, colorBySpeed: 0.7,
-  palette: 'Glacier', hueShift: 0, paletteOffset: 0, blend: 'additive', exposure: 1.0, bloom: 0.35, bloomThreshold: 0.25,
+  palette: 'Neon Bloom', hueShift: 0, paletteOffset: 0, blend: 'additive', exposure: 1.0, bloom: 0.35, bloomThreshold: 0.25,
   background: '#020208', densityComp: true, smoothing: 0.08,
   fold: 0.55, warp: 0.6, layers: 2, layerSep: 0.45, detail: 2, meshRes: 512, scale3d: 0.6, gloss: 70, spec: 1.0, iridescence: 0.5, rim: 0.7, saturation: 1.3, brightness: 0.6, ao: 0.7, evolution3d: 0.08,
   orbitSpeed: 0.05, camDist: 4.2, fov: 40, lightAngle: 35, fog: 0.5,
-  lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, toneMap: 'ACES', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
+  lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, tonemapMode: 'ACES', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
+  // Post FX (Phase 1)
+  bloomStrength: 0.12, bloomThreshold2: 1.5, kickBloomAmount: 0.3, caStrength: 0.0, distortion: 0.0,
+  // Quality governor (Issue 8)
+  resolutionScale: 1.0, autoQuality: true,
+  // Phase 3: MilkDrop-style feedback layer
+  feedbackEnabled: false, feedbackDecay: 0.95, feedbackZoom: 1.0, feedbackRotate: 0.0,
+  feedbackTranslateX: 0.0, feedbackTranslateY: 0.0, feedbackMix: 0.5,
+  feedbackKaleido: 0, feedbackNoise: 0.0, feedbackHueDrift: 0.0,
+  lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.15, vibrance: 0.1, wallPaletteMix: 0.65,
+  vignetteStrength: 0.0, vignetteRadius: 1.2, grainStrength: 0.0,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
   exportPreset: '4K UHD 3840×2160', orientation: 'landscape', width: 3840, height: 2160, dpi: 300, tiff: false, pdf: false, frameToExport: true,
 };
 const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias','stretch','life','decay','pointSize','gain','colorBySpeed','paletteOffset','exposure','bloom','bloomThreshold','zoom','driftX','driftY',
-  'fold','warp','layerSep','scale3d','gloss','spec','iridescence','rim','saturation','brightness','ao','evolution3d','orbitSpeed','camDist','fov','lightAngle','fog',
-  'gStrength','gAz','gEl','mass','stiffness','damping','wind','windAz','floor','cohesion','gBlend','stream','pLife','vmax','pTurb','wellG','pWidth','streak','pGain','dof','fabricUnder','pColorBySpeed'];
+  'fold','warp','layerSep','scale3d','gloss','spec','iridescence','rim','saturation','brightness','ao','evolution3d','orbitSpeed','camDist','fov','lightAngle','fog','detail','layers',
+  'gStrength','gAz','gEl','mass','stiffness','damping','wind','windAz','floor','cohesion','gBlend','stream','pLife','vmax','pTurb','wellG','pWidth','streak','pGain','dof','fabricUnder','pColorBySpeed',
+  'gH','gW','gCurv','gDensity','gWind','gWindAz','gGustK','gGustSpeed','gcDist','gcHeight','gcFov','gDry','hueShift','cHueCycle',
+  'lsRadius','lsDrip','lsVisc','lsCoh',
+  'feedbackMix','feedbackDecay','feedbackZoom','feedbackRotate','feedbackTranslateX','feedbackTranslateY','feedbackKaleido','feedbackNoise','feedbackHueDrift',
+  'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos','frFogDensity','frFogStart','frAOStrength','frAORadius','frShadowSharpness',
+  'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
+  'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
+  'bloomStrength','bloomThreshold2','kickBloomAmount','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength','wallPaletteMix'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
 function easeParams() { for (const k of SMOOTH) { const d = P[k] - L[k]; L[k] = Math.abs(d) < 1e-6 ? P[k] : L[k] + d * Math.min(1, P.smoothing <= 0 ? 1 : P.smoothing * 2); } }
@@ -117,6 +397,26 @@ const hdrFB = (w: number, h: number) => fbo(w, h, gl.RGBA16F, gl.RGBA, gl.HALF_F
 
 const sim = prog(S.QUAD_VS, S.SIM_FS), draw = prog(S.DRAW_VS, S.DRAW_FS), fade = prog(S.QUAD_VS, S.FADE_FS),
   bright = prog(S.QUAD_VS, S.BRIGHT_FS), blur = prog(S.QUAD_VS, S.BLUR_FS), comp = prog(S.QUAD_VS, S.COMP_FS);
+const fractal = prog(FS.FRACTAL_VS, FS.FRACTAL_FS);
+// fractal2d shader removed
+const trippy = prog(TRIPPY.trippyVert, TRIPPY.trippyFrag);
+const tonemap = prog(TONEMAP.TONEMAP_VS, TONEMAP.TONEMAP_FS);
+const bloomDown = prog(POST.POST_VS, POST.BLOOM_DOWN_FS);
+const bloomUp = prog(POST.POST_VS, POST.BLOOM_UP_FS);
+const bloomComposite = prog(POST.POST_VS, POST.BLOOM_COMPOSITE_FS);
+const feedback = prog(POST.POST_VS, POST.FEEDBACK_FS);
+const caDistort = prog(POST.POST_VS, POST.CA_DISTORT_FS);
+const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
+const blit = prog(POST.POST_VS, POST.BLIT_FS);
+const lumaKey = prog(POST.POST_VS, POST.LUMA_KEY_FS);
+// MilkDrop color grade: hue shift + saturation
+const milkDropGrade = prog(POST.POST_VS, `#version 300 es
+precision highp float;
+uniform sampler2D uInput; uniform float uHueShift; uniform float uSat;
+in vec2 vUv; out vec4 fragColor;
+vec3 rgb2hsv(vec3 c){ vec4 K=vec4(0,-1./3.,2./3.,-1.); vec4 p=mix(vec4(c.bg,K.wz),vec4(c.gb,K.xy),step(c.b,c.g)); vec4 q=mix(vec4(p.xyw,c.r),vec4(c.r,p.yzx),step(p.x,c.r)); float d=q.x-min(q.w,q.y); float e=1e-10; return vec3(abs(q.z+(q.w-q.y)/(6.*d+e)),d/(q.x+e),q.x); }
+vec3 hsv2rgb(vec3 c){ vec4 K=vec4(1,2./3.,1./3.,3.); vec3 p=abs(fract(c.xxx+K.xyz)*6.-K.www); return c.z*mix(K.xxx,clamp(p-K.xxx,0.,1.),c.y); }
+void main(){ vec3 col=texture(uInput,vUv).rgb; vec3 hsv=rgb2hsv(col); hsv.x=fract(hsv.x+uHueShift); hsv.y=clamp(hsv.y*uSat,0.,1.); fragColor=vec4(hsv2rgb(hsv),1); }`);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -194,23 +494,129 @@ function trailStep(T: Trails, c: number[], h: number[], pxScale: number) {
   gl.drawArrays(gl.POINTS, 0, P.particles); gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD);
   [T.a, T.b] = [T.b, T.a];
 }
-function bloomPass(T: Trails, pxScale: number) {
-  gl.disable(gl.BLEND); gl.useProgram(bright.p); gl.bindFramebuffer(gl.FRAMEBUFFER, T.b1.f); gl.viewport(0, 0, T.b1.w, T.b1.h);
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(bright.u.uT, 0); gl.uniform1f(bright.u.uExp, V.exposure); gl.uniform1f(bright.u.uThr, V.bloomThreshold); quad();
-  gl.useProgram(blur.p); gl.uniform1i(blur.u.uT, 0);
-  const pass = (src: FB, dst: FB, dx: number, dy: number) => { gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f); gl.viewport(0, 0, dst.w, dst.h); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform2f(blur.u.uDir, dx / src.w, dy / src.h); quad(); };
-  const k = Math.max(1, pxScale);
-  pass(T.b1, T.b1t, k, 0); pass(T.b1t, T.b1, 0, k);
-  pass(T.b1, T.b2t, 2 * k, 0); pass(T.b2t, T.b2, 0, k); pass(T.b2, T.b2t, k, 0); pass(T.b2t, T.b2, 0, k);
+// Bloom pyramid: 6 mip levels for physically based bloom
+type BloomPyramid = { down: FB[], up: FB[] };
+let bloomPyramid: BloomPyramid | null = null;
+
+function ensureBloomPyramid(baseW: number, baseH: number) {
+  if (bloomPyramid && bloomPyramid.down[0].w === baseW && bloomPyramid.down[0].h === baseH) return bloomPyramid;
+  
+  // Clean up old pyramid
+  if (bloomPyramid) {
+    bloomPyramid.down.forEach(fb => del(fb));
+    bloomPyramid.up.forEach(fb => del(fb));
+  }
+  
+  // Create 6-level mip pyramid
+  const down: FB[] = [];
+  const up: FB[] = [];
+  let w = Math.floor(baseW / 2), h = Math.floor(baseH / 2);
+  
+  for (let i = 0; i < 6; i++) {
+    down.push(hdrFB(w, h));
+    up.push(hdrFB(w, h));
+    w = Math.max(1, Math.floor(w / 2));
+    h = Math.max(1, Math.floor(h / 2));
+  }
+  
+  bloomPyramid = { down, up };
+  return bloomPyramid;
 }
+
+function bloomPass(T: Trails) {
+  const pyramid = ensureBloomPyramid(T.w, T.h);
+  gl.disable(gl.BLEND);
+  gl.useProgram(bloomDown.p);
+  
+  // Downsample chain with 13-tap + Karis average on level 0
+  gl.activeTexture(gl.TEXTURE0);
+  for (let i = 0; i < 6; i++) {
+    const src = i === 0 ? T.a.t : pyramid.down[i - 1].t;
+    const dst = pyramid.down[i];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f);
+    gl.viewport(0, 0, dst.w, dst.h);
+    gl.bindTexture(gl.TEXTURE_2D, src);
+    gl.uniform1i(bloomDown.u.uSrc, 0);
+    gl.uniform2f(bloomDown.u.uTexelSize, 1.0 / (i === 0 ? T.w : pyramid.down[i - 1].w), 1.0 / (i === 0 ? T.h : pyramid.down[i - 1].h));
+    gl.uniform1i(bloomDown.u.uLevel, i);
+    gl.uniform1f(bloomDown.u.uThreshold, P.bloomThreshold2);
+    quad();
+  }
+  
+  // Upsample chain with 3x3 tent filter and additive blending
+  gl.useProgram(bloomUp.p);
+  for (let i = 5; i >= 0; i--) {
+    const dst = pyramid.up[i];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f);
+    gl.viewport(0, 0, dst.w, dst.h);
+    
+    if (i === 5) {
+      // Top level: just copy from downsample
+      gl.bindTexture(gl.TEXTURE_2D, pyramid.down[5].t);
+    } else {
+      // Upsample from level above and blend with current down level
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.blendEquation(gl.FUNC_ADD);
+      
+      // First pass: upsample from above
+      gl.bindTexture(gl.TEXTURE_2D, pyramid.up[i + 1].t);
+      gl.uniform1i(bloomUp.u.uSrc, 0);
+      gl.uniform2f(bloomUp.u.uTexelSize, 1.0 / pyramid.up[i + 1].w, 1.0 / pyramid.up[i + 1].h);
+      quad();
+      
+      // Second pass: add current level
+      gl.bindTexture(gl.TEXTURE_2D, pyramid.down[i].t);
+      quad();
+      
+      gl.disable(gl.BLEND);
+    }
+    
+    if (i === 5) {
+      gl.uniform1i(bloomUp.u.uSrc, 0);
+      gl.uniform2f(bloomUp.u.uTexelSize, 1.0 / pyramid.down[5].w, 1.0 / pyramid.down[5].h);
+      quad();
+    }
+  }
+}
+// HDR composite buffer for tonemap pass
+let hdrComp: FB | null = null;
+
 function composite(T: Trails, off: number[], vp: number[]) {
+  // Composite to HDR buffer (no tonemap yet)
+  // hdrComp is now allocated in the render loop before this is called
+  if (!hdrComp) throw new Error('HDR composite buffer not allocated');
+  gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+  gl.viewport(0, 0, hdrComp.w, hdrComp.h);
+  
   gl.disable(gl.BLEND); gl.useProgram(comp.p); const u = comp.u;
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(u.uT, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, T.b1.t); gl.uniform1i(u.uB1, 1);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.b2.t); gl.uniform1i(u.uB2, 2); gl.activeTexture(gl.TEXTURE0);
-  gl.uniform2f(u.uOff, off[0], off[1]); gl.uniform2f(u.uFull, T.w, T.h); gl.uniform1f(u.uExp, V.exposure); gl.uniform1f(u.uBloom, V.bloom);
-  const bg = hex(P.background); gl.uniform3f(u.uBg, bg[0], bg[1], bg[2]); gl.uniform1i(u.uCmyk, P.cmykSafe ? 1 : 0); { const a = hex(P.cycA), b = hex(P.cycB); gl.uniform1i(u.uCyc, isW() && P.cycOn ? 1 : 0); gl.uniform3f(u.uCycA, a[0], a[1], a[2]); gl.uniform3f(u.uCycB, b[0], b[1], b[2]); gl.uniform1f(u.uGrain, isW() ? P.grain : 0); gl.uniform1f(u.uGSeed, frame % 97); } gl.uniform1i(u.uTone, P.mode !== '2D flow' ? (P.toneMap === 'ACES' ? 1 : P.toneMap === 'Exponential' ? 0 : 2) : 0);
-  gl.viewport(vp[0], vp[1], vp[2], vp[3]); quad();
+  gl.uniform2f(u.uOff, off[0], off[1]); gl.uniform2f(u.uFull, T.w, T.h); gl.uniform1f(u.uExp, 1.0); gl.uniform1f(u.uBloom, V.bloom);
+  const bg = hex(P.background); gl.uniform3f(u.uBg, bg[0], bg[1], bg[2]); gl.uniform1i(u.uCmyk, P.cmykSafe ? 1 : 0); { const a = hex(P.cycA), b = hex(P.cycB); gl.uniform1i(u.uCyc, isW() && P.cycOn ? 1 : 0); gl.uniform3f(u.uCycA, a[0], a[1], a[2]); gl.uniform3f(u.uCycB, b[0], b[1], b[2]); gl.uniform1f(u.uGrain, isW() ? P.grain : 0); gl.uniform1f(u.uGSeed, frame % 97); } gl.uniform1i(u.uTone, 0); // No tonemap in composite
+  quad();
+}
+
+function tonemapPass(vp: number[]) {
+  // Final tonemap pass: exposure -> AgX/ACES/Neutral -> sRGB -> dither
+  if (!hdrComp) throw new Error('HDR composite buffer not allocated');
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(vp[0], vp[1], vp[2], vp[3]);
+  gl.useProgram(tonemap.p);
+  
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, hdrComp.t);
+  gl.uniform1i(tonemap.u.uSrc, 0);
+  gl.uniform1f(tonemap.u.uExposure, V.exposure);
+  
+  // tonemapMode: 0=AgX, 1=ACES, 2=Khronos Neutral, 3=None
+  const tonemapModeVal = P.tonemapMode === 'ACES' ? 1 : P.tonemapMode === 'Khronos Neutral' ? 2 : P.tonemapMode === 'None' ? 3 : 0;
+  gl.uniform1i(tonemap.u.uTonemapMode, tonemapModeVal);
+  gl.uniform1f(tonemap.u.uFrame, frame);
+  gl.uniform2f(tonemap.u.uResolution, canvas.width, canvas.height);
+  
+  quad();
 }
 let curAspect = 16 / 9;
 function gainNorm() { let g = Math.pow(1048576 / P.particles, 0.6); if (P.densityComp) g *= Math.max(1, Math.max(curAspect, 1 / curAspect) / (16 / 9)); return g; }
@@ -362,7 +768,7 @@ function render3D(T: Trails, aspect: number, t3: number, tO: number, subr: numbe
   const applyL = (pr: any) => { gl.useProgram(pr.p); const u = pr.u; if (u.uView) gl.uniformMatrix4fv(u.uView, false, View);
   gl.uniform3f(u.uEye, eye[0], eye[1], eye[2]);
   gl.uniform1f(u.uGloss, V.gloss); gl.uniform1f(u.uSpec, V.spec); gl.uniform1f(u.uIrid, V.iridescence); { const mi = isW() ? WMATS.indexOf(P.wMat) : 0; gl.uniform1i(u.uMat, Math.max(0, mi)); gl.uniform1i(u.uWallPatch, P.wPatch && !P.wObj ? 1 : 0); const mc = hex(P.wColor); gl.uniform3f(u.uMatCol, mc[0], mc[1], mc[2]); gl.uniform1f(u.uWT2, t3); gl.uniform1f(u.uFurDens, P.wFurDens); gl.uniform1f(u.uRough2, P.wRough); gl.uniform1f(u.uAbsorb2, P.wAbsorb); gl.uniform1f(u.uDisp, P.wDisp); } gl.uniform1f(u.uRim, V.rim); gl.uniform1f(u.uFog, V.fog); gl.uniform1f(u.uFogStart, dist * 0.6);
-  gl.uniform1f(u.uSat, V.saturation); gl.uniform1f(u.uBright, V.brightness); gl.uniform1f(u.uPalOff, V.paletteOffset); gl.uniform1f(u.uPx, pxScale); colorUniforms(u);
+  gl.uniform1f(u.uSat, V.saturation); gl.uniform1f(u.uBright, V.brightness); gl.uniform1f(u.uPalOff, V.paletteOffset); if (u.uPalMix !== undefined) gl.uniform1f(u.uPalMix, V.wallPaletteMix ?? 0.65); gl.uniform1f(u.uPx, pxScale); colorUniforms(u);
   gl.uniform1i(u.uNL, act.length); gl.uniform1iv(u['uLType[0]'], pad(LT, 4)); gl.uniform3fv(u['uLPos[0]'], pad(LP, 12)); gl.uniform3fv(u['uLCol[0]'], pad(LC, 12));
   gl.uniform1fv(u['uLCos[0]'], pad(LCos, 4)); gl.uniform1iv(u['uLSh[0]'], pad(LSh, 4)); gl.uniformMatrix4fv(u['uLVP[0]'], false, LVP); if (u['uShTexel[0]']) gl.uniform1fv(u['uShTexel[0]'], STx);
   gl.uniform1f(u.uShSoft, P.shadowSoft); gl.uniform1f(u.uShBias, P.shadowBias); gl.uniform1f(u.uEnvI, P.envIntensity); gl.uniform1f(u.uEnvRot, P.envRot * Math.PI / 180);
@@ -572,17 +978,44 @@ const sphereHooks = {
 };
 
 // ---------- preview ----------
-let frame = 0, trails: Trails | undefined, frameRect = [0, 0, 1, 1], previewAspect = 16 / 9;
+// Timing state (real time from performance.now())
+let startTime = 0, currentTime = 0, dt = 0, lastFrameTime = 0;
+let frame = 0; // Frame counter (for compatibility, but timing uses currentTime)
+let trails: Trails | undefined, frameRect = [0, 0, 1, 1], previewAspect = 16 / 9;
+let lastCycleBar = -1; // For MilkDrop auto-cycle
+let feedbackA: FB | null = null, feedbackB: FB | null = null, feedbackCurrent = 0;
 let tSim = 0, off2d = [0, 0], t3 = 0, tOrbit = 0;
+// Auto quality governor state
+let frameTimeEMA = 16.67; // Target: 60fps = 16.67ms
+let lastQualityAdjust = 0;
 function layout() {
   const dpr = Math.min(2, devicePixelRatio || 1);
   canvas.width = Math.floor(innerWidth * dpr); canvas.height = Math.floor(innerHeight * dpr);
   const cw = canvas.width, ch = canvas.height;
+  
+  // Update MilkDrop renderer size if active
+  if (milkDropRenderer && P.mode === 'MilkDrop') {
+    milkDropRenderer.setRendererSize(cw, ch);
+  }
   previewAspect = Math.min(8, Math.max(1 / 8, P.frameToExport && P.width > 0 && P.height > 0 ? P.width / P.height : cw / ch));
   let w = cw, h = Math.round(cw / previewAspect); if (h > ch) { h = ch; w = Math.round(ch * previewAspect); }
+  
+  // Apply resolution scale (Quality governor - Issue 8)
+  const scale = Math.max(0.5, Math.min(1.0, P.resolutionScale));
+  w = Math.floor(w * scale);
+  h = Math.floor(h * scale);
+  
   w = Math.max(64, w); h = Math.max(64, h);
   frameRect = [Math.floor((cw - w) / 2), Math.floor((ch - h) / 2), w, h];
   freeTrails(trails); trails = makeTrails(w, h);
+  
+  // Allocate feedback ping-pong buffers (RGBA16F for Phase 3)
+  // Always canvas-sized to match hdrComp and avoid blit/tonemap issues
+  if (feedbackA) del(feedbackA);
+  if (feedbackB) del(feedbackB);
+  feedbackA = hdrFB(cw, ch);
+  feedbackB = hdrFB(cw, ch);
+  feedbackCurrent = 0;
 }
 function reset() { allocState(); allocP3(); layout(); frame = 0; tSim = 0; off2d = [0, 0]; t3 = 0; tOrbit = 0; simStep(0, worldHalf(previewAspect), true); settleFrame = 0; pStep(0, previewAspect, 0, true); allocS(); sStep(0, previewAspect, 0, true); }
 let fpsAcc = 0, fpsN = 0, fps = 0, last = performance.now(), busy = false;
@@ -596,14 +1029,309 @@ function popProbe() { if (!isLS() || !ss) return; const n = sW * sH; const pos =
   if (mj > 0.2) { let bi = -1, bd = 0; for (let i = 0; i < sN; i++) { const d = popPrev ? Math.hypot(pos[i*4]-popPrev[i*4], pos[i*4+1]-popPrev[i*4+1], pos[i*4+2]-popPrev[i*4+2]) : 0; if (d > bd) { bd = d; bi = i; } } log(`POPBIG f=${popStat.frames} #${bi} d=${bd.toFixed(3)} s=${vel[bi*4+2].toFixed(2)} hw=${(pos[bi*4+3]/0.45).toFixed(2)} prevhw=${popPrev ? (popPrev[bi*4+3]/0.45).toFixed(2) : ''} y=${pos[bi*4+1].toFixed(2)}`); }
   popPrev = pos; popStat.frames++; popStat.maxJump = Math.max(popStat.maxJump, mj); popStat.faded = Math.max(popStat.faded, faded); popStat.jumps += jumps; gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   if (popStat.frames === 300) log(`POPTEST frames=300 beads=${sN} maxFadedOrRamping=${popStat.faded} maxPerFrameMove=${popStat.maxJump.toFixed(4)} jumpEvents(>1.5r)=${popStat.jumps}`); }
+function renderFractal(T: Trails, vp: number[]) {
+  gl.disable(gl.BLEND); gl.useProgram(fractal.p); const u = fractal.u;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f); gl.viewport(0, 0, T.w, T.h);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  
+  const t = frame * DT;
+  const camDist = V.frCamDist;
+  
+  // Camera orbit
+  let camAngle = t * V.frRotSpeed;
+  if (P.frCamOrbit) {
+    camAngle += t * P.frCamOrbitSpeed;
+  }
+  
+  const camPos = [Math.cos(camAngle) * camDist, camDist * 0.3, Math.sin(camAngle) * camDist];
+  const camTarget = [0, 0, 0];
+  
+  gl.uniform2f(u.uResolution, T.w, T.h);
+  gl.uniform1f(u.uTime, t);
+  gl.uniform3fv(u.uCamPos, camPos);
+  gl.uniform3fv(u.uCamTarget, camTarget);
+  gl.uniform1f(u.uCamFov, V.frCamFov);
+  
+  gl.uniform1i(u.uFractalType, P.frType);
+  gl.uniform1f(u.uPower, V.frPower);
+  
+  // Reduce quality for Auto mode to hit 60fps
+  // More aggressive reduction when scale hits floor (0.5)
+  const qualityScale = P.autoQuality ? Math.max(0.5, P.resolutionScale) : 1.0;
+  const iterations = Math.max(1, Math.min(32, Math.floor(P.frIter * qualityScale)));
+  gl.uniform1i(u.uIterations, iterations);
+  
+  gl.uniform1f(u.uBailout, P.frBailout);
+  gl.uniform1f(u.uScale, V.frScale);
+  gl.uniform1f(u.uFoldLimit, V.frFold);
+  gl.uniform1f(u.uMinRadius, V.frMinR);
+  gl.uniform1f(u.uFixedRadius, V.frFixedR);
+  
+  const c1 = hex(P.frColor1), c2 = hex(P.frColor2);
+  gl.uniform3f(u.uColor1, c1[0], c1[1], c1[2]);
+  gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
+  gl.uniform1f(u.uColorMix, V.frColorMix);
+  gl.uniform1f(u.uAmbient, V.frAmbient);
+  gl.uniform1f(u.uDiffuse, V.frDiffuse);
+  
+  const lightAz = P.frLightAz * Math.PI / 180;
+  const lightEl = P.frLightEl * Math.PI / 180;
+  const lightDir = [
+    Math.cos(lightEl) * Math.cos(lightAz),
+    Math.sin(lightEl),
+    Math.cos(lightEl) * Math.sin(lightAz)
+  ];
+  gl.uniform3fv(u.uLightDir, lightDir);
+  gl.uniform1f(u.uGlow, V.frGlow);
+  gl.uniform1f(u.uShadowStr, V.frShadow);
+  
+  // IQ lighting enhancements
+  if (u.uFogDensity !== undefined) gl.uniform1f(u.uFogDensity, P.frFogDensity || 0.0);
+  if (u.uFogStart !== undefined) gl.uniform1f(u.uFogStart, P.frFogStart || 0.0);
+  if (u.uAOStrength !== undefined) gl.uniform1f(u.uAOStrength, P.frAOStrength || 3.0);
+  if (u.uAORadius !== undefined) gl.uniform1f(u.uAORadius, P.frAORadius || 0.15);
+  if (u.uShadowSharpness !== undefined) gl.uniform1f(u.uShadowSharpness, P.frShadowSharpness || 8.0);
+  
+  // Cosine palette (tied to unified palette system)
+  if (u.uCosinePaletteA !== undefined) {
+    const pal = getCosinePaletteParams(P.palette, P.hueShift);
+    gl.uniform3fv(u.uCosinePaletteA, pal.a);
+    gl.uniform3fv(u.uCosinePaletteB, pal.b);
+    gl.uniform3fv(u.uCosinePaletteC, pal.c);
+    gl.uniform3fv(u.uCosinePaletteD, pal.d);
+    gl.uniform1f(u.uPaletteOffset, P.paletteOffset || 0.0);
+  }
+  
+  // Reduce max steps for Auto mode
+  const maxSteps = P.autoQuality ? Math.max(32, Math.floor(P.frMaxSteps * qualityScale)) : P.frMaxSteps;
+  gl.uniform1i(u.uMaxSteps, maxSteps);
+  gl.uniform1f(u.uMaxDist, P.frMaxDist);
+  gl.uniform1f(u.uSurfDist, V.frSurfDist);
+  gl.uniform1f(u.uRotSpeed, V.frRotSpeed);
+  gl.uniform1f(u.uMorphAmt, V.frMorph);
+  gl.uniform1i(u.uSlicePlane, P.frSlicePlane ? 1 : 0);
+  gl.uniform1f(u.uSlicePos, P.frSlicePos);
+  gl.uniform1f(u.uFoldRot, V.frFoldRot);
+  
+  // Julia C animation
+  let jc = [0.18, 0.88, 0.24, 0.16];
+  if (P.frJuliaOrbit) {
+    const angle = t * P.frJuliaSpeed;
+    jc[0] = Math.cos(angle) * 0.5;
+    jc[1] = Math.sin(angle) * 0.7;
+    jc[2] = Math.cos(angle * 1.3) * 0.4;
+    jc[3] = Math.sin(angle * 0.7) * 0.3;
+  }
+  gl.uniform4f(u.uJuliaC, jc[0], jc[1], jc[2], jc[3]);
+  
+  // Color transforms (hue shift and saturation)
+  if (u.uHueShift !== undefined && u.uSat !== undefined) {
+    const hueTurns = P.hueShift;
+    gl.uniform1f(u.uHueShift, ((hueTurns % 1) + 1) % 1);
+    gl.uniform1f(u.uSat, V.saturation);
+  }
+  
+  quad();
+}
+
+// 2D Fractal rendering removed
+
+// ---------- Trippy Mode rendering ----------
+function renderTrippy(T: Trails, modeIndex: number) {
+  gl.disable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f);
+  gl.viewport(0, 0, T.w, T.h);
+  gl.useProgram(trippy.p);
+  
+  const u = trippy.u;
+  gl.uniform1f(u.uTime, currentTime);
+  gl.uniform1i(u.uMode, modeIndex);
+  gl.uniform2f(u.uResolution, T.w, T.h);
+  
+  // DEBUG: Log Kaleido uniforms once per second when mode is Kaleido (modeIndex=1)
+  if (modeIndex === 1 && frame % 60 === 0) {
+    console.log('Kaleido uniforms:', {
+      uSat: gl.getUniform(trippy.p, u.uSat),
+      uHueShift: gl.getUniform(trippy.p, u.uHueShift),
+      uPaletteSize: gl.getUniform(trippy.p, u.uPaletteSize),
+      'V.saturation': V.saturation,
+      'P.hueShift': P.hueShift,
+      'stops.length': stops.length
+    });
+  }
+  // Smoothed audio envelopes
+  if (u.uKickEnv !== undefined) gl.uniform1f(u.uKickEnv, audioAnalyzer.state.kickEnv);
+  if (u.uSnareEnv !== undefined) gl.uniform1f(u.uSnareEnv, audioAnalyzer.state.snareEnv);
+  if (u.uHatEnv !== undefined) gl.uniform1f(u.uHatEnv, audioAnalyzer.state.hatEnv);
+  if (u.uBassEnv !== undefined) gl.uniform1f(u.uBassEnv, audioAnalyzer.state.bassEnv);
+  if (u.uMidEnv !== undefined) gl.uniform1f(u.uMidEnv, audioAnalyzer.state.midEnv);
+  if (u.uHighEnv !== undefined) gl.uniform1f(u.uHighEnv, audioAnalyzer.state.highEnv);
+  if (u.uOnset !== undefined) gl.uniform1f(u.uOnset, audioAnalyzer.state.onset);
+  gl.uniform1f(u.uSpeed, L.trippySpeed);
+  // Use linear colors for HDR
+  const c1 = hexLinear(stops[0][1]);
+  const c2 = hexLinear(stops[Math.min(1, stops.length-1)][1]);
+  const c3 = hexLinear(stops[Math.min(2, stops.length-1)][1]);
+  gl.uniform3f(u.uColor1, c1[0], c1[1], c1[2]);
+  gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
+  gl.uniform3f(u.uColor3, c3[0], c3[1], c3[2]);
+  const hueTurns = ((P.hueShift / 360) + (P.cHueCycle / 60) * currentTime);
+  gl.uniform1f(u.uHueShift, ((hueTurns % 1) + 1) % 1);
+  if (u.uSat !== undefined) gl.uniform1f(u.uSat, V.saturation);
+  
+  // VJ Controls
+  if (u.uTunnelTwist !== undefined) gl.uniform1f(u.uTunnelTwist, L.tunnelTwist);
+  if (u.uTunnelRings !== undefined) gl.uniform1f(u.uTunnelRings, L.tunnelRings);
+  if (u.uTunnelFov !== undefined) gl.uniform1f(u.uTunnelFov, L.tunnelFov);
+  if (u.uTunnelWarp !== undefined) gl.uniform1f(u.uTunnelWarp, L.tunnelWarp);
+  if (u.uKaleidoSegments !== undefined) gl.uniform1f(u.uKaleidoSegments, L.kaleidoSegments);
+  if (u.uKaleidoZoom !== undefined) gl.uniform1f(u.uKaleidoZoom, L.kaleidoZoom);
+  if (u.uKaleidoRotation !== undefined) gl.uniform1f(u.uKaleidoRotation, L.kaleidoRotation);
+  if (u.uKaleidoFeedback !== undefined) gl.uniform1f(u.uKaleidoFeedback, L.kaleidoFeedback);
+  if (u.uPlasmaScale !== undefined) gl.uniform1f(u.uPlasmaScale, L.plasmaScale);
+  if (u.uPlasmaWarp !== undefined) gl.uniform1f(u.uPlasmaWarp, L.plasmaWarp);
+  if (u.uPlasmaFlow !== undefined) gl.uniform1f(u.uPlasmaFlow, L.plasmaFlow);
+  if (u.uPlasmaContrast !== undefined) gl.uniform1f(u.uPlasmaContrast, L.plasmaContrast);
+  if (u.uMorphBlobs !== undefined) gl.uniform1f(u.uMorphBlobs, L.morphBlobs);
+  if (u.uMorphSmooth !== undefined) gl.uniform1f(u.uMorphSmooth, L.morphSmooth);
+  if (u.uMorphRate !== undefined) gl.uniform1f(u.uMorphRate, L.morphRate);
+  if (u.uMorphGlow !== undefined) gl.uniform1f(u.uMorphGlow, L.morphGlow);
+  
+  // Pass palette (linear colors for HDR)
+  const pal = new Float32Array(8 * 3);
+  for (let i = 0; i < Math.min(8, stops.length); i++) {
+    const c = hexLinear(stops[i][1]);
+    pal[i * 3] = c[0];
+    pal[i * 3 + 1] = c[1];
+    pal[i * 3 + 2] = c[2];
+  }
+  gl.uniform1i(u.uPaletteSize, Math.min(8, stops.length));
+  const palLoc = u['uPalette[0]'] || u.uPalette;
+  if (palLoc) gl.uniform3fv(palLoc, pal);
+  
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
 function tick(now: number) {
   requestAnimationFrame(tick); if (busy || gl.isContextLost()) return;
-  const dt = now - last; last = now; fpsAcc += dt; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
-  easeParams(); V = L; curAspect = previewAspect;
+  
+  // Initialize start time on first frame
+  if (startTime === 0) {
+    startTime = now;
+    console.log(`FIRST FRAME: feedbackEnabled=${P.feedbackEnabled}, feedbackMix=${P.feedbackMix}`);
+  }
+  
+  // Update timing (real seconds, not frame*0.016)
+  const deltaNow = now - last;
+  last = now;
+  dt = deltaNow / 1000; // Convert to seconds
+  currentTime = (now - startTime) / 1000; // Total elapsed seconds
+  frame++; // Frame counter (for compatibility)
+  // Rebuild palTex when hueShift moves (custom panel writes P.hueShift but never called buildPalette)
+  // Use Math.abs check to avoid floating point drift
+  if (typeof (globalThis as any).__palHue !== 'number' || Math.abs((globalThis as any).__palHue - P.hueShift) > 0.001) {
+    (globalThis as any).__palHue = P.hueShift;
+    buildPalette();
+  }
+  
+  // FPS tracking
+  fpsAcc += deltaNow; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
+  
+  // Auto quality governor with EMA + hysteresis
+  if (P.autoQuality) {
+    frameTimeEMA = frameTimeEMA * 0.9 + deltaNow * 0.1;
+    const nowQuality = performance.now();
+    if (nowQuality - lastQualityAdjust > 2000) { // Adjust every 2s max
+      const TARGET_HIGH = 14.5; // 68fps - scale up threshold
+      const TARGET_LOW = 18.0;  // 55fps - scale down threshold
+      const currentScale = P.resolutionScale;
+      let newScale = currentScale;
+      
+      if (frameTimeEMA > TARGET_LOW && currentScale > 0.5) {
+        // Too slow, reduce quality
+        newScale = Math.max(0.5, currentScale - 0.05);
+      } else if (frameTimeEMA < TARGET_HIGH && currentScale < 1.0) {
+        // Fast enough, increase quality
+        newScale = Math.min(1.0, currentScale + 0.05);
+      }
+      
+      if (newScale !== currentScale) {
+        P.resolutionScale = newScale;
+        layout(); // Reallocate buffers
+        lastQualityAdjust = nowQuality;
+      }
+    }
+  }
+  
+  // Update audio analysis
+  audioAnalyzer.update();
+  
+  // Update control panel (audio meters, beat pulse, modulation indicators)
+  panel.update();
+  
+  // Apply modulation to eased parameters L before final copy to V
+  easeParams();
+  modulationSystem.update(audioAnalyzer.state, L);
+  V = L; curAspect = previewAspect;
   const half = worldHalf(previewAspect);
   const T = trails!; const px = Math.min(T.w, T.h) / 1080;
-  if (P.mode === 'Grass Field') {
-    if (!P.paused) frame++; renderGrass(T, previewAspect, frame * DT, [0, 1, 0, 1], px);
+  if (P.mode === 'Tunnel') {
+    if (!P.paused) { t3 += dt * V.evolution3d; tOrbit += dt * V.orbitSpeed; }
+    renderTrippy(T, 0);
+  } else if (P.mode === 'Kaleido') {
+    if (!P.paused) { t3 += dt * V.evolution3d; tOrbit += dt * V.orbitSpeed; }
+    renderTrippy(T, 1);
+  } else if (P.mode === 'Plasma') {
+    if (!P.paused) { t3 += dt * V.evolution3d; tOrbit += dt * V.orbitSpeed; }
+    renderTrippy(T, 2);
+  } else if (P.mode === 'Morph') {
+    if (!P.paused) { t3 += dt * V.orbitSpeed; }
+    renderTrippy(T, 3);
+  } else if (P.mode === '3D Fractal') {
+    if (!P.paused) frame++;
+    renderFractal(T, [0, 1, 0, 1]);
+  } else if (P.mode === 'MilkDrop') {
+    if (!P.paused) {
+      // Render Butterchurn
+      if (milkDropRenderer) {
+        milkDropRenderer.render();
+        
+        // Copy Butterchurn canvas to our texture
+        if (milkDropCanvas && milkDropTexture) {
+          gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, milkDropCanvas);
+          
+          // Apply color grade (hue shift + saturation) to MilkDrop output
+          // Use trails.b as temp buffer for color grading
+          gl.bindFramebuffer(gl.FRAMEBUFFER, T.b.f);
+          gl.viewport(0, 0, T.w, T.h);
+          gl.useProgram(milkDropGrade.p);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+          gl.uniform1i(milkDropGrade.u.uInput, 0);
+          // Convert hue degrees to turns
+          const hueTurns = ((P.hueShift / 360) + (P.cHueCycle / 60) * currentTime);
+          gl.uniform1f(milkDropGrade.u.uHueShift, ((hueTurns % 1) + 1) % 1);
+          gl.uniform1f(milkDropGrade.u.uSat, V.saturation);
+          quad();
+          
+          // Blit color-graded result to trails.a
+          gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f);
+          gl.viewport(0, 0, T.w, T.h);
+          gl.useProgram(blit.p);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, T.b.t);
+          gl.uniform1i(blit.u.uSrc, 0);
+          quad();
+        }
+      }
+      
+      // Auto-cycle on bars if enabled
+      if (P.milkDropAutoCycle && audioAnalyzer.state.bar % P.milkDropCycleBars === 0 && audioAnalyzer.state.bar !== lastCycleBar) {
+        lastCycleBar = audioAnalyzer.state.bar;
+        milkDropRandom();
+      }
+    }
   } else if (P.mode === '3D fabric') {
     if (!P.paused) { t3 += DT * V.evolution3d; tOrbit += DT * V.orbitSpeed; frame++; }
     settleFrame = frame; render3D(T, previewAspect, t3, tOrbit, [0, 1, 0, 1], px);
@@ -617,11 +1345,274 @@ function tick(now: number) {
     tSim += DT * V.evolution; off2d = [off2d[0] + V.driftX * DT, off2d[1] + V.driftY * DT];
     simStep(frame, half, false, tSim, off2d); trailStep(T, [0, 0], [half[0] / V.zoom, half[1] / V.zoom], px); frame++;
   }
-  bloomPass(T, px);
+  
+  // Allocate HDR composite buffer (or resize if needed)
+  if (!hdrComp || hdrComp.w !== canvas.width || hdrComp.h !== canvas.height) {
+    if (hdrComp) del(hdrComp);
+    hdrComp = hdrFB(canvas.width, canvas.height);
+  }
+  if (!hdrComp) throw new Error('Failed to allocate HDR composite buffer');
+  
+  // Phase 3: MilkDrop-style feedback layer (BEFORE bloom, so bloom isn't fed back)
+  if (P.feedbackEnabled && P.feedbackMix > 0.001 && feedbackA && feedbackB) {
+    // Debug: Log that feedback is active (first 5 frames only)
+    if (frame < 5) {
+      console.log(`FEEDBACK ACTIVE: frame=${frame}, mix=${P.feedbackMix.toFixed(3)}, decay=${P.feedbackDecay.toFixed(3)}`);
+    }
+    
+    const prevFB = feedbackCurrent === 0 ? feedbackA : feedbackB;
+    const nextFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
+    
+    // Debug: Sample feedback texture (center region, not corner)
+    if (frame === 10 || frame === 40 || frame === 70) {
+      const debugStage = (fb: FB, name: string) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb.f);
+        const x = Math.floor(fb.w / 2 - 50);
+        const y = Math.floor(fb.h / 2 - 50);
+        const samples = new Float32Array(100 * 100 * 4);
+        gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+        let sum = 0;
+        for (let i = 0; i < samples.length; i += 4) {
+          const luma = 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+          sum += luma;
+        }
+        const mean = sum / (samples.length / 4);
+        const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+        console.log(`${name} - Center: ${center.toFixed(3)}, Mean: ${mean.toFixed(3)}`);
+      };
+      
+      debugStage(prevFB, 'Feedback texture');
+    }
+    
+    // Feedback pass: composite raw scene + warped echo
+    gl.bindFramebuffer(gl.FRAMEBUFFER, nextFB.f);
+    gl.viewport(0, 0, nextFB.w, nextFB.h);
+    gl.useProgram(feedback.p);
+    
+    // Audio-driven modulation
+    const kickZoom = audioAnalyzer.state.kickEnv * 0.1;
+    const bassWarp = audioAnalyzer.state.bassEnv * 0.02;
+    const bassNoise = audioAnalyzer.state.bassEnv * 0.03;
+    const onsetHue = audioAnalyzer.state.onset * Math.PI;
+    
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, prevFB.t); gl.uniform1i(feedback.u.uPrev, 0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(feedback.u.uCurrent, 1);
+    gl.uniform1f(feedback.u.uDecay, P.feedbackDecay);
+    gl.uniform1f(feedback.u.uZoom, P.feedbackZoom + kickZoom);
+    gl.uniform1f(feedback.u.uRotate, P.feedbackRotate + bassWarp * Math.PI);
+    gl.uniform2f(feedback.u.uTranslate, P.feedbackTranslateX, P.feedbackTranslateY);
+    gl.uniform1f(feedback.u.uMix, P.feedbackMix);
+    gl.uniform1f(feedback.u.uTime, currentTime);
+    gl.uniform1f(feedback.u.uKaleido, P.feedbackKaleido);
+    gl.uniform1f(feedback.u.uNoiseAmt, P.feedbackNoise + bassNoise);
+    gl.uniform1f(feedback.u.uHueDrift, P.feedbackHueDrift + onsetHue);
+    quad();
+    
+    // Copy UNkeyed feedback result to hdrComp for display/bloom/post
+    // This shows full scene without luma key erasing dark areas
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    gl.viewport(0, 0, hdrComp.w, hdrComp.h);
+    gl.useProgram(blit.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, nextFB.t); gl.uniform1i(blit.u.uSrc, 0);
+    quad();
+    
+    // Now apply luma key to nextFB for storage (sparse emissive layer for next frame)
+    // Use temp buffer since we can't read/write same FB
+    const tempKey = hdrFB(nextFB.w, nextFB.h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, tempKey.f);
+    gl.viewport(0, 0, tempKey.w, tempKey.h);
+    gl.useProgram(lumaKey.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, nextFB.t); gl.uniform1i(lumaKey.u.uSrc, 0);
+    quad();
+    
+    // Swap: tempKey becomes stored feedback, will be prevFB next frame
+    // Store in correct slot (not nextFB, but the slot that will be prevFB next frame)
+    const storageFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, storageFB.f);
+    gl.viewport(0, 0, storageFB.w, storageFB.h);
+    gl.useProgram(blit.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tempKey.t); gl.uniform1i(blit.u.uSrc, 0);
+    quad();
+    del(tempKey);
+    
+    feedbackCurrent = 1 - feedbackCurrent;
+    
+    // Debug: Check after feedback composite
+    if (frame === 10 || frame === 40 || frame === 70) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+      const x = Math.floor(hdrComp.w / 2 - 50);
+      const y = Math.floor(hdrComp.h / 2 - 50);
+      const samples = new Float32Array(100 * 100 * 4);
+      gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+      let sum = 0;
+      for (let i = 0; i < samples.length; i += 4) {
+        sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+      }
+      const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+      console.log(`After feedback composite - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+    }
+  } else {
+    // No feedback: just copy scene to hdrComp
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    gl.viewport(0, 0, hdrComp.w, hdrComp.h);
+    gl.useProgram(blit.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(blit.u.uSrc, 0);
+    quad();
+  }
+  
+  // Phase 1 Post Stack: bloom → CA/distort → color grade → tonemap
+  // Bloom operates on original scene T, then composited after feedback
+  bloomPass(T);
+  
+  // Composite bloom back into hdrComp
+  const tempBloom = hdrFB(canvas.width, canvas.height);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, tempBloom.f);
+  gl.viewport(0, 0, tempBloom.w, tempBloom.h);
+  gl.useProgram(bloomComposite.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp.t); gl.uniform1i(bloomComposite.u.uSrc, 0);
+  for (let i = 0; i < 6; i++) {
+    gl.activeTexture(gl.TEXTURE1 + i);
+    gl.bindTexture(gl.TEXTURE_2D, bloomPyramid!.up[i].t);
+    gl.uniform1i(bloomComposite.u['uBloom' + i], 1 + i);
+  }
+  // Kick-driven bloom strength
+  const bloomStr = P.bloomStrength * (1.0 + audioAnalyzer.state.kickEnv * P.kickBloomAmount);
+  gl.uniform1f(bloomComposite.u.uBloomStrength, bloomStr);
+  quad();
+  
+  // Swap buffers
+  const oldHdr = hdrComp;
+  hdrComp = tempBloom;
+  del(oldHdr);
+  
+  // Debug: Check after bloom
+  if (P.feedbackEnabled && frame % 30 === 0) {
+    const x = Math.floor(hdrComp.w / 2 - 50);
+    const y = Math.floor(hdrComp.h / 2 - 50);
+    const samples = new Float32Array(100 * 100 * 4);
+    gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) {
+      sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+    }
+    const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+    console.log(`After bloom - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+  }
+  
+  // Chromatic aberration + barrel distortion (kick-driven CA)
+  const caStrength = P.caStrength * (1.0 + audioAnalyzer.state.kickEnv * 0.5);
+  if (caStrength > 0.001 || Math.abs(P.distortion) > 0.001) {
+    const tempCA = hdrFB(canvas.width, canvas.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, tempCA.f);
+    gl.viewport(0, 0, tempCA.w, tempCA.h);
+    gl.useProgram(caDistort.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp.t); gl.uniform1i(caDistort.u.uSrc, 0);
+    gl.uniform1f(caDistort.u.uCAStrength, caStrength);
+    gl.uniform1f(caDistort.u.uDistortion, P.distortion);
+    quad();
+    const oldComp = hdrComp;
+    hdrComp = tempCA;
+    if (oldComp) del(oldComp);
+    
+    // Debug: Check after CA
+    if (P.feedbackEnabled && frame % 30 === 0) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+      const x = Math.floor(hdrComp.w / 2 - 50);
+      const y = Math.floor(hdrComp.h / 2 - 50);
+      const samples = new Float32Array(100 * 100 * 4);
+      gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+      let sum = 0;
+      for (let i = 0; i < samples.length; i += 4) {
+        sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+      }
+      const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+      console.log(`After CA - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+    }
+  }
+  
+  // Color grade + vignette + grain (snare-driven grain flash)
+  const grainStr = P.grainStrength * (1.0 + audioAnalyzer.state.snareEnv * 2.0);
+  const tempGrade = hdrFB(canvas.width, canvas.height);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, tempGrade.f);
+  gl.viewport(0, 0, tempGrade.w, tempGrade.h);
+  gl.useProgram(colorGrade.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp.t); gl.uniform1i(colorGrade.u.uSrc, 0);
+  const lift = hex(P.lift).map(v => (v - 0.5) * 0.2);
+  const gamma = hex(P.gamma).map(v => 0.5 + v * 1.5);
+  const gain = hex(P.gainPost);
+  gl.uniform3f(colorGrade.u.uLift, lift[0], lift[1], lift[2]);
+  gl.uniform3f(colorGrade.u.uGamma, gamma[0], gamma[1], gamma[2]);
+  gl.uniform3f(colorGrade.u.uGain, gain[0], gain[1], gain[2]);
+  gl.uniform1f(colorGrade.u.uSaturation, P.saturationPost * (V.saturation / 1.3));
+  gl.uniform1f(colorGrade.u.uVibrance, P.vibrance);
+  gl.uniform1f(colorGrade.u.uVignetteStrength, P.vignetteStrength);
+  gl.uniform1f(colorGrade.u.uVignetteRadius, P.vignetteRadius);
+  gl.uniform1f(colorGrade.u.uGrainStrength, grainStr);
+  gl.uniform1f(colorGrade.u.uFrame, frame);
+  quad();
+  const oldComp2 = hdrComp;
+  hdrComp = tempGrade;
+  if (oldComp2) del(oldComp2);
+  
+  // Debug: Check after color grade
+  if (P.feedbackEnabled && frame % 30 === 0) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    const x = Math.floor(hdrComp.w / 2 - 50);
+    const y = Math.floor(hdrComp.h / 2 - 50);
+    const samples = new Float32Array(100 * 100 * 4);
+    gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) {
+      sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+    }
+    const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+    console.log(`After color grade - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+  }
+  
+  // Debug: Check before tonemap (final HDR buffer)
+  if (P.feedbackEnabled && frame % 30 === 0) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    const x = Math.floor(hdrComp.w / 2 - 50);
+    const y = Math.floor(hdrComp.h / 2 - 50);
+    const samples = new Float32Array(100 * 100 * 4);
+    gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) {
+      sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+    }
+    const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+    console.log(`Before tonemap (final HDR) - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+  }
+  
+  // Final tonemap to screen (upscale to fill canvas, not letterbox)
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
-  composite(T, [-frameRect[0], -frameRect[1]], frameRect);
-  const what = isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
-  hud.textContent = `${fps.toFixed(1)} fps  ·  ${what}  ·  frame ${frame}  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
+  tonemapPass([0, 0, canvas.width, canvas.height]);
+  
+  // Probe RIGHT AFTER final blit, but throttle to ~1/sec to avoid stalling GPU pipeline
+  // Synchronous readPixels every frame dropped FPS from 60 to 52
+  const nowProbe = performance.now();
+  if (frame >= 30 && nowProbe - lastProbeTime > 1000) { // Throttle to ~1/sec
+    lastProbeResult = probe();
+    // Note: lastProbeTime is updated in the watchdog interval when it checks, not here
+  }
+  
+  // Debug: Check final screen output
+  if (P.feedbackEnabled && frame % 30 === 0) {
+    const x = Math.floor(canvas.width / 2 - 50);
+    const y = Math.floor(canvas.height / 2 - 50);
+    const samples = new Uint8Array(100 * 100 * 4);
+    gl.readPixels(x, y, 100, 100, gl.RGBA, gl.UNSIGNED_BYTE, samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) {
+      sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+    }
+    const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+    console.log(`After tonemap (screen LDR) - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+  }
+  
+  const what = P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
+  const frameTime = dt * 1000; // ms
+  hud.textContent = `${fps.toFixed(1)} fps (${frameTime.toFixed(1)}ms)  ·  ${what}  ·  time ${currentTime.toFixed(1)}s  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
 }
 function log(m: string) { fetch('/api/log', { method: 'POST', body: m }).catch(() => { }); }
 setInterval(() => !busy && log(`fps=${fps.toFixed(1)} mode=${P.mode} particles=${isLS() ? sN : P.mode === 'Particle Fabric' ? P.pCount : P.particles} style=${P.lsStyle} fabric=${P.lsFabric} mesh=${mesh.rx}x${mesh.ry}x${P.layers} preview=${trails?.w}x${trails?.h} frame=${frame}`), 3000);
@@ -669,40 +1660,6 @@ function gMSFB(w: number, h: number) { if (gMS && gMS.w === w && gMS.h === h) re
   gl.bindRenderbuffer(gl.RENDERBUFFER, d); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, s, gl.DEPTH_COMPONENT24, w, h);
   const f = gl.createFramebuffer()!; gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, c); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, d);
   gMS = { w, h, c, d, f }; return gMS; }
-function renderGrass(T: Trails, aspect: number, tt: number, subr: number[], pxScale: number, shRes = P.gShRes) {
-  const C = gCam(aspect, tt, subr); const L0 = gLightState; const az = P.gSunAz * Math.PI / 180, el = P.gSunEl * Math.PI / 180;
-  const sd = [Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)];
-  const R = P.gR, ext = R + 1.5; const LV = lookAt([sd[0] * 30, sd[1] * 30, sd[2] * 30], [0, 0, 0], Math.abs(sd[1]) > 0.98 ? [0, 0, 1] : [0, 1, 0]); const LP = ortho(-ext, ext, -ext, ext, 1, 70); const LVP = mul(LP, LV);
-  const GN = Math.max(64, Math.min(768, Math.round(P.gDensity))), seg = Math.max(2, Math.min(8, Math.round(P.gSeg)));
-  const wa = P.gWindAz * Math.PI / 180;
-  const common = (u: any) => { gl.uniform1f(u.uT, tt); gl.uniform1f(u.uTerrA, P.gTerrA); gl.uniform1f(u.uWind, P.gWind); gl.uniform1f(u.uGustK, P.gGustK); gl.uniform1f(u.uGustSpeed, P.gGustSpeed); gl.uniform1f(u.uFlutter, P.gFlutter); gl.uniform2f(u.uWindDir, Math.sin(wa), Math.cos(wa)); };
-  const blade = (pr: any, VP: number[]) => { const u = pr.u; gl.useProgram(pr.p); common(u); gl.uniformMatrix4fv(u.uVP, false, VP); gl.uniform1i(u.uGN, GN); gl.uniform1i(u.uSeg, seg); gl.uniform1f(u.uGR, R);
-    gl.uniform1f(u.uH, P.gH); gl.uniform1f(u.uHR, P.gHR); gl.uniform1f(u.uBW, P.gW); gl.uniform1f(u.uCurv, P.gCurv); gl.uniform1f(u.uStiff, P.gStiff); gl.uniform1f(u.uLean, P.gLean); gl.uniform1f(u.uTwist, P.gTwist); gl.uniform1f(u.uClump, P.gClump); };
-  const GRES = 160, GEXT = 45;
-  const ground = (pr: any, VP: number[]) => { const u = pr.u; gl.useProgram(pr.p); common(u); gl.uniformMatrix4fv(u.uVP, false, VP); gl.uniform1i(u.uGRes, GRES); gl.uniform1f(u.uGExt, GEXT); };
-  // shadow pass
-  const sh = gShadowFB(shRes); gl.bindFramebuffer(gl.FRAMEBUFFER, sh.f); gl.viewport(0, 0, sh.n, sh.n); gl.clearDepth(1); gl.clear(gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1.5, 2);
-  ground(gGroundSh, LVP); gl.drawArrays(gl.TRIANGLES, 0, GRES * GRES * 6);
-  if (P.gOn) { blade(gBladeSh, LVP); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 2 * (seg + 1), GN * GN); }
-  gl.disable(gl.POLYGON_OFFSET_FILL);
-  // main pass (4x MSAA, resolved into T.a)
-  const ms = gMSFB(T.w, T.h); gl.bindFramebuffer(gl.FRAMEBUFFER, ms.f); gl.viewport(0, 0, T.w, T.h); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  const sI = P.gSunI, kI = P.gSkyI; const sun = L0.sun.map((v: number) => v * sI), sky = L0.sky.map((v: number) => v * kI), gnd = L0.gnd.map((v: number) => v * kI), hz = L0.haze.map((v: number) => v * kI);
-  const lightU = (u: any) => { gl.uniform3f(u.uEye, C.eye[0], C.eye[1], C.eye[2]); gl.uniform3f(u.uSunDir, sd[0], sd[1], sd[2]); gl.uniform3fv(u.uSunCol, sun); gl.uniform3fv(u.uSkyCol, sky); gl.uniform3fv(u.uGndCol, gnd); gl.uniform3fv(u.uHazeCol, hz);
-    gl.uniform1f(u.uHaze, L0.hd * P.gHaze); gl.uniform1f(u.uShSoft, P.gShSoft); gl.uniform1f(u.uShTex, 1 / sh.n); gl.uniform1f(u.uAOMin, P.gAO); gl.uniform1f(u.uTrans, P.gTrans); gl.uniform1f(u.uSpec, P.gSpec); gl.uniform1f(u.uSpecP, 60);
-    gl.uniformMatrix4fv(u.uLVP, false, LVP); gl.activeTexture(gl.TEXTURE14); gl.bindSampler(14, null); gl.bindTexture(gl.TEXTURE_2D, sh.t); gl.uniform1i(u.uShadow, 14); colorUniforms(u); };
-  gl.disable(gl.DEPTH_TEST); gl.useProgram(gSky.p); { const u = gSky.u; gl.uniformMatrix4fv(u.uInvVP, false, inv4(C.VP)); gl.uniform3f(u.uEye, C.eye[0], C.eye[1], C.eye[2]); gl.uniform3f(u.uSunDir, sd[0], sd[1], sd[2]); gl.uniform3fv(u.uSunCol, sun); gl.uniform3fv(u.uSkyCol, sky); gl.uniform3fv(u.uHazeCol, hz); } quad();
-  gl.enable(gl.DEPTH_TEST);
-  ground(gGround, C.VP); lightU(gGround.u); { const u = gGround.u; gl.uniform1i(u.uGrassOn, P.gOn ? 1 : 0); gl.uniform1f(u.uGR, R); const so = hex(P.gSoil), gt = hex(P.gTip), gb = hex(P.gBase).map((v, i) => Math.pow(v * 0.45 + gt[i] * 0.55, 2.2)); gl.uniform3f(u.uSoil, Math.pow(so[0], 2.2), Math.pow(so[1], 2.2), Math.pow(so[2], 2.2)); gl.uniform3f(u.uGBase, gb[0] * .85, gb[1] * .85, gb[2] * .85); }
-  gl.drawArrays(gl.TRIANGLES, 0, GRES * GRES * 6);
-  if (P.gOn) { blade(gBlade, C.VP); lightU(gBlade.u); const u = gBlade.u; gl.uniform1i(u.uGrassColor, P.gColor === 'patchwork' ? 1 : 0); gl.uniform1f(u.uColRand, P.gColRand); gl.uniform1f(u.uDry, P.gDry);
-    const lin = (h: string) => hex(h).map(v => Math.pow(v, 2.2)); gl.uniform3fv(u.uGBase, lin(P.gBase)); gl.uniform3fv(u.uGTip, lin(P.gTip)); gl.uniform3fv(u.uGDry, lin(P.gDryC));
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 2 * (seg + 1), GN * GN); }
-  gl.disable(gl.DEPTH_TEST);
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, ms.f); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, T.a.f); gl.blitFramebuffer(0, 0, T.w, T.h, 0, 0, T.w, T.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-}
 function inv4(m: number[]) { const a = m, o = new Array(16); const b00 = a[0] * a[5] - a[1] * a[4], b01 = a[0] * a[6] - a[2] * a[4], b02 = a[0] * a[7] - a[3] * a[4], b03 = a[1] * a[6] - a[2] * a[5], b04 = a[1] * a[7] - a[3] * a[5], b05 = a[2] * a[7] - a[3] * a[6], b06 = a[8] * a[13] - a[9] * a[12], b07 = a[8] * a[14] - a[10] * a[12], b08 = a[8] * a[15] - a[11] * a[12], b09 = a[9] * a[14] - a[10] * a[13], b10 = a[9] * a[15] - a[11] * a[13], b11 = a[10] * a[15] - a[11] * a[14];
   let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06; det = 1 / (det || 1e-12);
   o[0] = (a[5] * b11 - a[6] * b10 + a[7] * b09) * det; o[1] = (a[2] * b10 - a[1] * b11 - a[3] * b09) * det; o[2] = (a[13] * b05 - a[14] * b04 + a[15] * b03) * det; o[3] = (a[10] * b04 - a[9] * b05 - a[11] * b03) * det;
@@ -710,26 +1667,24 @@ function inv4(m: number[]) { const a = m, o = new Array(16); const b00 = a[0] * 
   o[8] = (a[4] * b10 - a[5] * b08 + a[7] * b06) * det; o[9] = (a[1] * b08 - a[0] * b10 - a[3] * b06) * det; o[10] = (a[12] * b04 - a[13] * b02 + a[15] * b00) * det; o[11] = (a[9] * b02 - a[8] * b04 - a[11] * b00) * det;
   o[12] = (a[5] * b07 - a[4] * b09 - a[6] * b06) * det; o[13] = (a[0] * b09 - a[1] * b07 + a[2] * b06) * det; o[14] = (a[13] * b01 - a[12] * b03 - a[14] * b00) * det; o[15] = (a[8] * b03 - a[9] * b01 + a[10] * b00) * det; return o; }
 // mouse camera (Grass mode only): drag = orbit, wheel = zoom, right/shift-drag = pan
-{ let drag: any = null; canvas.addEventListener('contextmenu', e => { if (P.mode === 'Grass Field' || isW()) e.preventDefault(); });
-  canvas.addEventListener('pointerdown', e => { if (P.mode !== 'Grass Field' && !isW()) return; drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey }; canvas.setPointerCapture(e.pointerId); });
+{ let drag: any = null; canvas.addEventListener('contextmenu', e => { if (isW()) e.preventDefault(); });
+  canvas.addEventListener('pointerdown', e => { if (!isW()) return; drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey }; canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
     if (isW()) { if (drag.pan) { P.wcPanX -= dx * P.wcDist * 0.0012; P.wcPanY += dy * P.wcDist * 0.0012; } else { P.wcYaw -= dx * 0.2; P.wcPitch += dy * 0.15; } wClamp(); }
-    else if (drag.pan) { const y = P.gcYaw * Math.PI / 180, k = P.gcDist * 0.0015; P.gcPanX -= (Math.cos(y) * dx - Math.sin(y) * dy) * k; P.gcPanZ -= (-Math.sin(y) * dx - Math.cos(y) * dy) * k; }
-    else { P.gcYaw = ((P.gcYaw - dx * 0.3) % 360 + 540) % 360 - 180; P.gcPitch += dy * 0.2; }
     gui.controllersRecursive().forEach(c => c.updateDisplay()); });
   canvas.addEventListener('pointerup', () => { drag = null; });
-  canvas.addEventListener('wheel', e => { if (P.mode !== 'Grass Field' && !isW()) return; e.preventDefault(); if (isW()) { P.wcDist *= Math.exp(e.deltaY * 0.001); wClamp(); } else P.gcDist *= Math.exp(e.deltaY * 0.001); gui.controllersRecursive().forEach(c => c.updateDisplay()); }, { passive: false }); }
+  canvas.addEventListener('wheel', e => { if (!isW()) return; e.preventDefault(); P.wcDist *= Math.exp(e.deltaY * 0.001); wClamp(); gui.controllersRecursive().forEach(c => c.updateDisplay()); }, { passive: false }); }
 
 // ---------- tiled still render ----------
 const status = { text: 'idle' };
 async function renderStill() {
   if (busy) return; busy = true; V = P; // stills use the final (target) values, not the eased ones
   const W = Math.round(P.width), H = Math.round(P.height), aspect = W / H, half = worldHalf(aspect), N = frame; curAspect = aspect;
-  const pxScale = Math.min(W, H) / 1080; const isP = P.mode === 'Particle Fabric', isS = isLS(), isG = P.mode === 'Grass Field'; const is3D = P.mode === '3D fabric' || isP || isS || isG;
+  const pxScale = Math.min(W, H) / 1080; const isP = P.mode === 'Particle Fabric', isS = isLS(); const is3D = P.mode === '3D fabric' || isP || isS;
   const K = is3D ? 0 : Math.min(N, Math.min(900, Math.max(30, Math.ceil(Math.log(0.002) / Math.log(P.decay)))));
   const TILE = Math.min(2048, MAXTEX - 512); const M = Math.ceil(24 * pxScale + P.pointSize * pxScale) + 4;
   const job = Math.random().toString(36).slice(2); const t0 = performance.now();
-  const name = `still_${isG ? 'grass' : isS ? 'spheres-' + P.lsStyle.toLowerCase() : isP ? 'particles' : is3D ? '3d' : '2d'}_${W}x${H}_seed${P.seed}_${P.palette.replace(/\W+/g, '')}_f${N}${P.cmykSafe ? '_cmyksafe' : ''}`;
+  const name = `still_${isS ? 'grass' : isS ? 'spheres-' + P.lsStyle.toLowerCase() : isP ? 'particles' : is3D ? '3d' : '2d'}_${W}x${H}_seed${P.seed}_${P.palette.replace(/\W+/g, '')}_f${N}${P.cmykSafe ? '_cmyksafe' : ''}`;
   const yieldUI = () => new Promise(r => setTimeout(r, 0));
   const ft = (f: number) => f * DT * P.evolution, fo = (f: number) => [P.driftX * f * DT, P.driftY * f * DT];
   let snap: FB | undefined; let t3s = t3;
@@ -754,7 +1709,7 @@ async function renderStill() {
     const px0 = x0 - M, px1 = x0 + tw + M, py0 = y0 - M, py1 = y0 + th + M;
     if (is3D) {
       const sr = [px0 / W, px1 / W, py0 / H, py1 / H]; settleFrame = N;
-      if (isG) renderGrass(T, aspect, N * DT, sr, pxScale, 4096); else if (isS) render3D(T, aspect, t3s, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport, sphereHooks); else if (isP) renderParticleScene(T, aspect, t3s, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport); else render3D(T, aspect, t3, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport);
+      if (isS) render3D(T, aspect, t3s, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport, sphereHooks); else if (isP) renderParticleScene(T, aspect, t3s, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport); else render3D(T, aspect, t3, tOrbit, sr, pxScale, P.stillMeshMul, P.shadowResExport);
       status.text = `tile ${ty * cols + tx + 1}/${cols * rows}`; gl.flush(); await yieldUI();
     } else {
       const wx = (px: number) => -vh[0] + px / W * 2 * vh[0], wy = (py: number) => vh[1] - py / H * 2 * vh[1];
@@ -765,7 +1720,7 @@ async function renderStill() {
         if (f % 16 == 0) { gl.flush(); status.text = `tile ${ty * cols + tx + 1}/${cols * rows} step ${f - N + K}/${K}`; await yieldUI(); }
       }
     }
-    bloomPass(T, pxScale);
+    bloomPass(T);
     gl.bindFramebuffer(gl.FRAMEBUFFER, out!.f); composite(T, [M, M], [0, 0, tw, th]);
     const px = new Uint8Array(tw * th * 4); gl.readPixels(0, 0, tw, th, gl.RGBA, gl.UNSIGNED_BYTE, px);
     const flip = new Uint8Array(px.length); const rb = tw * 4; for (let r = 0; r < th; r++) flip.set(px.subarray((th - 1 - r) * rb, (th - r) * rb), r * rb);
@@ -784,8 +1739,8 @@ async function renderStill() {
 }
 // ---------- deterministic MP4 (frames -> ffmpeg) ----------
 async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
-  if (busy || P.mode === '2D flow') return; busy = true; V = P; const isP = P.mode === 'Particle Fabric', isS = isLS(), isG = P.mode === 'Grass Field'; const aspect = w / h; curAspect = aspect;
-  const name = `video_${isW() ? 'wall-' + P.wMat : isG ? 'grass' : isS ? 'spheres-' + P.lsStyle.toLowerCase() : isP ? 'particles' : '3d'}_${w}x${h}_seed${P.seed}_${P.palette.replace(/\W+/g, '')}_${seconds}s`; const t0 = performance.now();
+  if (busy || P.mode === '2D flow') return; busy = true; V = P; const isP = P.mode === 'Particle Fabric', isS = isLS(); const aspect = w / h; curAspect = aspect;
+  const name = `video_${isW() ? 'wall-' + P.wMat : isS ? 'spheres-' + P.lsStyle.toLowerCase() : isP ? 'particles' : '3d'}_${w}x${h}_seed${P.seed}_${P.palette.replace(/\W+/g, '')}_${seconds}s`; const t0 = performance.now();
   await fetch(`/api/vstart?name=${name}&w=${w}&h=${h}&fps=60&crf=26`, { method: 'POST' });
   const T = makeTrails(w, h); const out = fbo(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST); const px = new Uint8Array(w * h * 4);
   if (isP) { pStep(0, aspect, 0, true); for (let f = 0; f < warm; f++) pStep(f, aspect, f * DT * P.evolution3d); }
@@ -794,8 +1749,8 @@ async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
   for (let k = 0; k < n; k++) {
     const f = warm + k; if (isP) pStep(f, aspect, f * DT * P.evolution3d); if (isS) sStep(f, aspect, f * DT * P.evolution3d);
     const tt = (f + 1) * DT * P.evolution3d, to = (f + 1) * DT * P.orbitSpeed; settleFrame = f + 1;
-    if (isG) renderGrass(T, aspect, (f + 1) * DT, [0, 1, 0, 1], pxScale); else if (isS) render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale, 1, P.shadowResLive, sphereHooks); else if (isP) renderParticleScene(T, aspect, tt, to, [0, 1, 0, 1], pxScale); else render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale);
-    bloomPass(T, pxScale); gl.bindFramebuffer(gl.FRAMEBUFFER, out.f); composite(T, [0, 0], [0, 0, w, h]);
+    if (isS) render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale, 1, P.shadowResLive, sphereHooks); else if (isP) renderParticleScene(T, aspect, tt, to, [0, 1, 0, 1], pxScale); else render3D(T, aspect, tt, to, [0, 1, 0, 1], pxScale);
+    bloomPass(T); gl.bindFramebuffer(gl.FRAMEBUFFER, out.f); composite(T, [0, 0], [0, 0, w, h]);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     await fetch('/api/vframe', { method: 'POST', body: px }); status.text = `video frame ${k + 1}/${n}`;
   }
@@ -807,39 +1762,145 @@ async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
 // ---------- recovery: watchdog, last-good settings, context loss ----------
 const DEFAULTS = JSON.parse(JSON.stringify(P)); const DEFAULT_STOPS = JSON.parse(JSON.stringify(stops));
 let lastGood: any = null, badTicks = 0, recoverMsg = '', lastGoodAt = 0;
+let lastProbeResult: any = null; // Cache probe result from render loop for watchdog interval
 function probe() {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); let s = 0, n = 0;
-  for (const [fx, fy] of [[.5, .5], [.25, .25], [.75, .25], [.25, .75], [.75, .75]]) {
-    const w = 16, px = new Uint8Array(w * w * 4);
-    gl.readPixels(Math.floor(frameRect[0] + frameRect[2] * fx) - 8, Math.floor(frameRect[1] + frameRect[3] * fy) - 8, w, w, gl.RGBA, gl.UNSIGNED_BYTE, px);
-    for (let i = 0; i < px.length; i += 4) { s += px[i] + px[i + 1] + px[i + 2]; n += 3; }
+  // This is called in the render loop RIGHT AFTER final tonemap blit to screen
+  // so it reads the actual displayed pixels (in the same frame, before compositor clears)
+  // Throttled to ~1/sec to avoid stalling GPU pipeline (was dropping FPS from 60 to 52)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  
+  // Sample 64x64 for max-luma test (catches sparse bright content like default Kaleido)
+  const sampleW = 64, sampleH = 64;
+  const px = new Uint8Array(sampleW * sampleH * 4);
+  
+  // Read from center of frame, scaled down
+  const fx = frameRect[0] + frameRect[2] / 2 - sampleW / 2;
+  const fy = frameRect[1] + frameRect[3] / 2 - sampleH / 2;
+  gl.readPixels(Math.floor(fx), Math.floor(fy), sampleW, sampleH, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  
+  // First pass: calculate mean and max luma
+  let s = 0, n = 0, maxLum = 0, allZero = true;
+  const BLACK_THRESHOLD = 2.0; // Any pixel > ~2/255 means not black
+  
+  for (let i = 0; i < px.length; i += 4) { 
+    const pixelLum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+    s += px[i] + px[i + 1] + px[i + 2]; 
+    n += 3;
+    maxLum = Math.max(maxLum, pixelLum);
+    if (pixelLum > BLACK_THRESHOLD) allZero = false;
   }
-  const lum = s / n; let nan = false;
+  
+  const lum = s / n;
+  
+  // Second pass: calculate standard deviation
+  let sumSqDiff = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    const pixelLum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+    const diff = pixelLum - lum;
+    sumSqDiff += diff * diff;
+  }
+  const std = Math.sqrt(sumSqDiff / (px.length / 4));
+  let nan = false;
+  
+  // Check for NaN in state buffers (throttled separately)
   if (isLS()) { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, ss[0].f); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
   else if (P.mode === 'Particle Fabric') { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, ps[0].f); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
   else if (P.mode !== '3D fabric') { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, st[0].f); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
+  
   const bad = SMOOTH.some(k => !Number.isFinite(L[k]));
-  return { lum: +lum.toFixed(1), nan: nan || bad, lost: gl.isContextLost() };
+  return { lum: +lum.toFixed(1), maxLum: +maxLum.toFixed(1), std: +std.toFixed(1), allZero, nan: nan || bad, lost: gl.isContextLost() };
 }
 const bgLum = () => hex(P.background).reduce((a, b) => a + b, 0) / 3 * 255;
-function recover(why: string) {
-  const src = lastGood || { ...DEFAULTS, stops: DEFAULT_STOPS };
-  load(JSON.parse(JSON.stringify(src)), true); SMOOTH.forEach(k => L[k] = P[k]); reset(); badTicks = 0;
-  recoverMsg = `recovered (${why})`; setTimeout(() => recoverMsg = '', 4000); log('RECOVER ' + why);
+let blackStartTime = 0;
+function recover(why: string, clearFeedback: boolean = false) {
+  // DON'T reset user params - just clear buffers and reset seed
+  // User requirement: "don't reset user params on recover"
+  // Recovery should fix NaN/black/frozen, not change user's active settings
+  
+  const currentMode = P.mode;
+  P.seed = Math.floor(Math.random() * 4e9); // New random seed to break frozen patterns
+  
+  // Smooth params should match P params
+  SMOOTH.forEach(k => L[k] = P[k]);
+  
+  // Only clear feedback buffers if truly necessary (NaN or all zeros for >1s)
+  if (clearFeedback) {
+    reset();
+  }
+  
+  badTicks = 0;
+  blackStartTime = 0;
+  recoverMsg = `⚠ recovered (${why})`; setTimeout(() => recoverMsg = '', 6000); 
+  log('RECOVER ' + why + ' mode=' + currentMode + ' clearFB=' + clearFeedback);
+  console.warn(`Flow Engine: Auto-recovered from ${why}, kept mode ${currentMode}, clearFB=${clearFeedback}`);
 }
+
+// Throttle watchdog to ~2/sec for performance
+let lastProbeTime = 0;
 setInterval(() => {
   if (busy || P.paused || gl.isContextLost() || frame < 30) return;
-  const p = probe(); const black = p.lum <= bgLum() + 1.2;
-  if (black || p.nan) { if (++badTicks >= 3) recover(p.nan ? 'NaN' : 'black frame'); }
-  else { badTicks = 0; if (p.lum > bgLum() + 6 && performance.now() - lastGoodAt > 2000) { lastGood = snapshot(); lastGoodAt = performance.now(); } }
-}, 400);
+  const now = performance.now();
+  
+  // Grace period after mode switch (2.5s) to avoid false fires during init
+  if (now - lastModeChangeTime < 2500) return;
+  
+  // Skip watchdog for MilkDrop mode (it renders into offscreen canvas)
+  if (P.mode === 'MilkDrop') return;
+  
+  // Throttle watchdog checks to ~2/sec
+  if (now - lastProbeTime < 500) return;
+  lastProbeTime = now;
+  
+  // Use cached probe result from render loop (fixes reading wrong/cleared buffer)
+  if (!lastProbeResult) return;
+  const p = lastProbeResult;
+  
+  // Use maxLum (not mean lum) to avoid false positives on sparse-on-black scenes
+  // Sparse scenes like Kaleido have low mean but high max
+  const black = p.maxLum <= bgLum() + 5;
+  
+  if (p.nan) {
+    // NaN detected - immediate recovery with FB clear
+    recover('NaN', true);
+    return;
+  }
+  
+  if (black && p.allZero) {
+    // Truly all zeros - track duration
+    if (blackStartTime === 0) {
+      blackStartTime = now;
+    } else if (now - blackStartTime > 1000) {
+      // All zeros for >1s - but NEVER fire if std > 1 (sparse bright content exists)
+      if (p.std > 1.0) {
+        // Sparse content with variation - not actually frozen, just sparse-on-black
+        console.log(`Watchdog skip (std=${p.std}): mode=${P.mode} lum=${p.lum} maxLum=${p.maxLum} std=${p.std} allZero=${p.allZero}`);
+        blackStartTime = 0; // Reset timer - this is expected behavior
+        return;
+      }
+      const shouldClearFeedback = true; // If we got here, std <= 1.0
+      console.warn(`Watchdog fire: mode=${P.mode} lum=${p.lum} maxLum=${p.maxLum} std=${p.std} allZero=${p.allZero} black=${black} clearFB=${shouldClearFeedback}`);
+      recover('black >1s', shouldClearFeedback);
+      return;
+    }
+  } else {
+    // Not black or has some pixels
+    blackStartTime = 0;
+    badTicks = 0;
+    
+    // Save good state periodically
+    if (p.maxLum > bgLum() + 10 && now - lastGoodAt > 2000) {
+      lastGood = snapshot();
+      lastGoodAt = now;
+    }
+  }
+}, 100);
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); sessionStorage.setItem('flow-recover', JSON.stringify(lastGood || snapshot())); log('CONTEXT LOST'); });
 canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); });
-gui.add({ r() { recover('button'); } }, 'r').name('⛑ Reset / Recover (Esc)');
+gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
+gui.add({ r() { recover('button', true); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
 gui.add(P, 'paused').name('pause (Space)'); gui.add(P, 'smoothing', 0, 0.5, 0.01).name('slider easing');
@@ -905,6 +1966,7 @@ sim_.add(P, 'driftX', -0.1, 0.1, 0.001).name('field drift X'); sim_.add(P, 'drif
 sim_.add(P, 'densityComp').name('density compensation');
 const look = gui.addFolder('Look');
 look.add(P, 'exposure', 0.4, 4, 0.01); look.add(P, 'bloom', 0, 2, 0.01).name('bloom strength'); look.add(P, 'bloomThreshold', 0, 0.8, 0.01);
+look.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral', 'None']).name('tonemap');
 look.addColor(P, 'background');
 const col = gui.addFolder('Palette');
 col.add(P, 'palette', Object.keys(PALETTES)).onChange((v: string) => { stops = PALETTES[v].map(s => [s[0], s[1]] as Stop); syncStops(); rebuildStops(); buildPalette(); });
@@ -944,7 +2006,143 @@ let savedCtl: any; function refreshSaved() { savedCtl?.destroy(); savedCtl = pre
 refreshSaved();
 pre.add({ exportJSON() { const b = new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = store.name + '.json'; a.click(); } }, 'exportJSON').name('⬇ Export JSON');
 pre.add({ importJSON() { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json'; i.onchange = async () => load(JSON.parse(await i.files![0].text())); i.click(); } }, 'importJSON').name('⬆ Import JSON');
-const gF = gui.addFolder('Grass'); gF.add(P, 'gOn').name('grass on (off = colored plane)'); gF.add(P, 'gDensity', 128, 768, 16).name('density (blades per side)');
+
+// Audio and Modulation
+const audioF = gui.addFolder('Audio / Beat Detection');
+audioF.close();
+const audioState: any = { status: 'No audio source' };
+const audioFileInput = document.createElement('input');
+audioFileInput.type = 'file';
+audioFileInput.accept = 'audio/*';
+audioFileInput.onchange = async () => {
+  if (audioFileInput.files && audioFileInput.files[0]) {
+    const success = await audioAnalyzer.loadFile(audioFileInput.files[0]);
+    audioState.status = success ? `File loaded: ${audioAnalyzer.state.fileName}` : 'Failed to load file';
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+  }
+};
+audioF.add({ loadFile() { audioFileInput.click(); } }, 'loadFile').name('📁 Load Audio File');
+audioF.add({ play() { audioAnalyzer.play(); audioState.status = 'Playing'; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'play').name('▶ Play');
+audioF.add({ pause() { audioAnalyzer.pause(); audioState.status = 'Paused'; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'pause').name('⏸ Pause');
+audioF.add({ stop() { audioAnalyzer.stop(); audioState.status = 'Stopped'; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'stop').name('⏹ Stop');
+audioF.add({ enableMic: async () => { const ok = await audioAnalyzer.enableMicrophone(); audioState.status = ok ? 'Microphone active' : 'Microphone denied'; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'enableMic').name('🎤 Enable Microphone');
+audioF.add({ enableSystem: async () => { const ok = await audioAnalyzer.enableSystemAudio(); audioState.status = ok ? 'System audio active' : audioAnalyzer.state.systemAudioError; gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'enableSystem').name('🔊 Enable System Audio (Spotify)');
+audioF.add(audioState, 'status').name('Status').listen().disable();
+audioF.add(audioAnalyzer.state, 'bpm', 40, 240, 1).name('Detected BPM').listen().disable();
+audioF.add(audioAnalyzer.state, 'manualBpm', 40, 240, 1).name('Manual BPM').onChange((v: number) => audioAnalyzer.setManualBpm(v));
+audioF.add({ tap() { audioAnalyzer.tapTempo(); gui.controllersRecursive().forEach(c => c.updateDisplay()); } }, 'tap').name('🥁 Tap Tempo');
+audioF.add(audioAnalyzer.state, 'level', 0, 1, 0.01).name('Level').listen().disable();
+audioF.add(audioAnalyzer.state, 'bass', 0, 1, 0.01).name('Bass').listen().disable();
+audioF.add(audioAnalyzer.state, 'mid', 0, 1, 0.01).name('Mid').listen().disable();
+audioF.add(audioAnalyzer.state, 'high', 0, 1, 0.01).name('High').listen().disable();
+
+const modF = gui.addFolder('Modulation Mapping');
+modF.close();
+const modState: any = { target: 'frPower', source: 'bass', mappingCount: 0 };
+
+// Build complete target list: 73 top-level + 44 lights/wells = 117 total
+const MOD_TARGETS: string[] = [...SMOOTH];
+
+// Add all light parameters (4 lights × 5 params = 20)
+const LIGHT_PARAMS = ['az', 'el', 'dist', 'intensity', 'cone'];
+for (let i = 0; i < 4; i++) {
+  for (const param of LIGHT_PARAMS) {
+    MOD_TARGETS.push(`light${i}.${param}`);
+  }
+}
+
+// Add all well parameters (4 wells × 6 params = 24)
+const WELL_PARAMS = ['x', 'y', 'z', 'mass', 'falloff', 'swirl'];
+for (let i = 0; i < 4; i++) {
+  for (const param of WELL_PARAMS) {
+    MOD_TARGETS.push(`well${i}.${param}`);
+  }
+}
+
+MOD_TARGETS.sort();
+const MOD_SOURCES = ['beat', 'bass', 'mid', 'high', 'level', 'envelope'];
+modF.add(modState, 'target', MOD_TARGETS).name('Target parameter');
+modF.add(modState, 'source', MOD_SOURCES).name('Source signal');
+modF.add({ 
+  add() {
+    // Get base value, handling nested paths for lights/wells
+    let baseValue = 1.0;
+    const target = modState.target;
+    const match = target.match(/^(light|well)(\d+)\.(\w+)$/);
+    if (match) {
+      const [, type, index, prop] = match;
+      const arrayName = type === 'light' ? 'lights' : 'wells';
+      const arr = P[arrayName];
+      if (arr && arr[parseInt(index)]) {
+        baseValue = arr[parseInt(index)][prop] !== undefined ? arr[parseInt(index)][prop] : 1.0;
+      }
+    } else {
+      baseValue = P[target] !== undefined ? P[target] : 1.0;
+    }
+    
+    modulationSystem.addMapping(target, modState.source, baseValue);
+    modState.mappingCount = modulationSystem.getAllMappings().length;
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+  }
+}, 'add').name('➕ Add Mapping');
+modF.add({ 
+  clearAll() { 
+    modulationSystem.clearAllMappings();
+    modState.mappingCount = 0;
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+  }
+}, 'clearAll').name('🗑 Clear All Mappings');
+modF.add(modState, 'mappingCount').name('Active mappings').listen().disable();
+
+// Fractal folder
+const frF = gui.addFolder('3D Fractal');
+
+const fractalDefaults = (type: number) => {
+  // Auto-rotation for all fractals
+  P.frRotSpeed = 0.15;
+  
+  if (type === 0) { // Mandelbulb
+    P.frIter = 12; P.frPower = 8; P.frCamDist = 2.5;
+  } else if (type === 1) { // Mandelbox
+    P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
+  } else if (type === 2) { // Menger Sponge
+    P.frIter = 5; P.frCamDist = 4;
+  }
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+};
+
+frF.add(P, 'frType', { 
+  'Mandelbulb': 0, 
+  'Mandelbox': 1,
+  'Menger Sponge': 2
+}).name('Fractal type').onChange(fractalDefaults);
+frF.add(P, 'frPower', 2, 16, 0.1).name('Power (Mandelbulb)');
+frF.add(P, 'frIter', 4, 24, 1).name('Max iterations');
+frF.add(P, 'frBailout', 2, 10, 0.1).name('Bailout radius');
+frF.add(P, 'frScale', -3, -0.5, 0.01).name('Scale (Mandelbox)');
+frF.add(P, 'frFold', 0.1, 2, 0.01).name('Fold limit (Mandelbox)');
+frF.add(P, 'frMinR', 0.1, 1, 0.01).name('Min radius (Mandelbox)');
+frF.add(P, 'frFixedR', 0.5, 2, 0.01).name('Fixed radius (Mandelbox)');
+const frCam = frF.addFolder('Camera'); frCam.close();
+frCam.add(P, 'frCamDist', 1, 8, 0.1).name('Distance');
+frCam.add(P, 'frCamFov', 30, 90, 1).name('Field of view');
+frCam.add(P, 'frRotSpeed', -0.5, 0.5, 0.01).name('Auto-rotate speed');
+const frCol = frF.addFolder('Colors & Lighting'); frCol.close();
+frCol.addColor(P, 'frColor1').name('Color 1');
+frCol.addColor(P, 'frColor2').name('Color 2');
+frCol.add(P, 'frColorMix', 0, 10, 0.1).name('Color frequency');
+frCol.add(P, 'frAmbient', 0, 1, 0.01).name('Ambient');
+frCol.add(P, 'frDiffuse', 0, 2, 0.01).name('Diffuse');
+frCol.add(P, 'frGlow', 0, 2, 0.01).name('Glow');
+frCol.add(P, 'frShadow', 0, 1, 0.01).name('Shadow strength');
+frCol.add(P, 'frLightAz', -180, 180, 1).name('Light azimuth');
+frCol.add(P, 'frLightEl', -10, 90, 1).name('Light elevation');
+const frAdv = frF.addFolder('Advanced'); frAdv.close();
+frAdv.add(P, 'frMaxSteps', 64, 256, 1).name('Max ray steps');
+frAdv.add(P, 'frMaxDist', 10, 50, 1).name('Max ray distance');
+frAdv.add(P, 'frSurfDist', 0.1, 2, 0.01).name('Surface detail');
+
+const gF = gui.addFolder('Grass (deprecated)'); gF.add(P, 'gOn').name('grass on (off = colored plane)'); gF.add(P, 'gDensity', 128, 768, 16).name('density (blades per side)');
 gF.add(P, 'gH', 0.05, 1.2, 0.01).name('height (m)'); gF.add(P, 'gHR', 0, 1, 0.01).name('height randomness'); gF.add(P, 'gW', 0.003, 0.04, 0.001).name('blade width (m)');
 gF.add(P, 'gCurv', 0, 1.5, 0.01).name('curvature'); gF.add(P, 'gStiff', 0.2, 3, 0.01).name('stiffness'); gF.add(P, 'gLean', 0, 1, 0.01).name('lean randomness'); gF.add(P, 'gTwist', 0, 2, 0.01).name('twist');
 gF.add(P, 'gClump', 0, 1, 0.01).name('clumping'); gF.add(P, 'gSeg', 2, 8, 1).name('segments'); gF.add(P, 'gTerrA', 0, 1, 0.01).name('terrain roll (m)');
@@ -954,6 +2152,7 @@ const glF = gui.addFolder('Lighting'); glF.add(P, 'gLight', Object.keys(G_LIGHTS
 glF.add(P, 'gSunAz', 0, 360, 1).name('sun direction (°)'); glF.add(P, 'gSunEl', 1, 89, 0.5).name('sun height (°)'); glF.add(P, 'gSunI', 0, 3, 0.01).name('sun intensity'); glF.add(P, 'gSkyI', 0, 3, 0.01).name('sky fill');
 glF.add(P, 'gShSoft', 0.5, 6, 0.1).name('shadow softness'); glF.add(P, 'gTrans', 0, 3, 0.01).name('translucency / backlight'); glF.add(P, 'gSpec', 0, 2, 0.01).name('blade sheen'); glF.add(P, 'gAO', 0, 1, 0.01).name('root darkness (min AO)'); glF.add(P, 'gHaze', 0, 4, 0.01).name('haze');
 glF.add(P, 'exposure', 0.2, 4, 0.01).name('exposure');
+glF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral', 'None']).name('tonemap');
 const camF = gui.addFolder('Camera'); camF.add(P, 'gcView', Object.keys(G_VIEWS)).name('preset view').onChange((v: string) => { applyGView(v); gui.controllersRecursive().forEach(c => c.updateDisplay()); });
 camF.add(P, 'gcHeight', 0, 3, 0.01).name('look-at height (m)'); camF.add(P, 'gcDist', 0.3, 7, 0.01).name('distance (m)'); camF.add(P, 'gcPitch', -2, 89, 0.5).name('angle / pitch (°)'); camF.add(P, 'gcYaw', -180, 180, 0.5).name('turn / yaw (°)');
 camF.add(P, 'gcFov', 15, 90, 0.5).name('field of view (° vertical)'); camF.add(P, 'gcAuto').name('auto orbit'); camF.add(P, 'gcAutoSpd', -20, 20, 0.1).name('orbit speed (°/s)');
@@ -961,7 +2160,30 @@ camF.add({ reset: () => { P.gcYaw = 0; P.gcView = 'Eye level'; applyGView('Eye l
 camF.add({ tip: 'drag = orbit · wheel = zoom · right/shift-drag = pan' }, 'tip').name('mouse').disable();
 const ex = gui.addFolder('Export'); ex.close();
 const wsU = () => gui.controllersRecursive().forEach(c => c.updateDisplay());
-function wallDefaults() { P.lightPreset = 'C4D Studio Softbox'; applyLightPreset(P.lightPreset); P.toneMap = 'Filmic (AgX-style)'; P.bloom = 0.18; P.ao = 1.4; P.ssaoRadius = 0.3; P.shadowSoft = 1.4; P.shadowBias = 0.003; P.lsFloorCol = '#9a9a9a'; P.lsFloorRough = 0.6; P.fog = 0; P.lsCount = 32768; P.lsRadius = 0.04; P.fold = 0.32; P.warp = 0.45; P.iridescence = 0.15; }
+function wallDefaults() { 
+  // DJ visualizer defaults - striking look
+  P.lightPreset = 'Dramatic Rim Light'; 
+  applyLightPreset(P.lightPreset); 
+  P.toneMap = 'ACES'; 
+  P.bloom = 0.35; 
+  P.ao = 0.8; 
+  P.ssaoRadius = 0.4; 
+  P.shadowSoft = 2.0; 
+  P.shadowBias = 0.002; 
+  P.lsFloorCol = '#1a1a1a'; 
+  P.lsFloorRough = 0.3; 
+  P.fog = 0.05; 
+  P.lsCount = 65536; 
+  P.lsRadius = 0.045; 
+  P.fold = 0.48; 
+  P.warp = 0.62; 
+  P.frequency = 0.7; 
+  P.iridescence = 0.35;
+  P.wcAuto = true; // Auto-orbit camera
+  P.wcDist = 2.8; // Pull back slightly
+  P.lsFlowU = 0.08; // Add motion
+  P.lsFlowV = 0.05;
+}
 const wMatF = gui.addFolder('Material');
 wMatF.add(P, 'wMat', WMATS).name('wall material'); wMatF.addColor(P, 'wColor').name('color'); wMatF.add(P, 'wPatch').name('palette patchwork (no objects)');
 wMatF.add(P, 'wRough', 0, 0.6, 0.01).name('glass frost'); wMatF.add(P, 'wAbsorb', 0, 4, 0.01).name('absorption / thickness'); wMatF.add(P, 'wDisp', 0, 0.1, 0.001).name('glass dispersion');
@@ -974,7 +2196,185 @@ wCamF.add(P, 'wcYaw', -50, 50, 0.5).name('orbit (deg)'); wCamF.add(P, 'wcPitch',
 wCamF.add(P, 'wcPanX', -2, 2, 0.01).name('pan X'); wCamF.add(P, 'wcPanY', -2, 2, 0.01).name('pan Y'); wCamF.add(P, 'wcAuto').name('gentle auto orbit');
 wCamF.add({ r: () => { applyWView('Front'); wsU(); } }, 'r').name('reset camera');
 wCamF.add(P, 'cycOn').name('cyclorama'); wCamF.addColor(P, 'cycA').name('cyc top'); wCamF.addColor(P, 'cycB').name('cyc bottom'); wCamF.add(P, 'grain', 0, 0.1, 0.001).name('film grain');
-function updateFolders() { const g = P.mode === 'Grass Field', w = isW(); for (const f of [f3, gf, lsf, pf, lf, sim_, look, col, pre]) f.show(!g && !w); for (const f of [gF, wF, glF, camF]) f.show(g); for (const f of [wMatF, wObjF, wCamF]) f.show(w); if (w) { f3.show(true); lf.show(true); f3.title('Wall'); lf.title('Lighting'); } else { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); } cf.show(true); ex.show(true); if (g || w) cf.close(); }
+wCamF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral', 'None']).name('tonemap');
+function updateFolders() { 
+  const w = isW(), fr = P.mode === '3D Fractal';
+  // Fixed: pre (Presets) folder should always be visible like cf and ex
+  for (const f of [f3, gf, lsf, pf, lf, sim_, look, col]) f.show(!w && !fr);
+  for (const f of [wMatF, wObjF, wCamF]) f.show(w);
+  frF.show(fr);
+  if (w) { f3.show(true); lf.show(true); f3.title('Wall'); lf.title('Lighting'); } 
+  else if (!fr) { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); }
+  cf.show(true); pre.show(true); ex.show(true); // Always show Color, Presets, Export
+  audioF.show(true); modF.show(true); // Always show Audio and Modulation
+  if (w) cf.close();
+}
+
+// ---------- MIDI Manager (after P is defined) ----------
+const midiManager = new MidiManager(P, 
+  (param, value) => {
+    // MIDI param change callback
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+  },
+  (action) => {
+    // MIDI action callback
+    if (action === 'action:milkdrop-next') milkDropNext();
+    else if (action === 'action:milkdrop-prev') milkDropPrev();
+    else if (action === 'action:milkdrop-random') milkDropRandom();
+    else if (action === 'action:preset-next') presetGallery.nextPreset();
+    else if (action === 'action:preset-prev') presetGallery.prevPreset();
+    else if (action === 'action:preset-random') presetGallery.randomPreset();
+    else if (action === 'action:tap-tempo') audioAnalyzer.tapTempo();
+  }
+);
+
+// ---------- Remote Sync (declare early, connect later) ----------
+let remoteSync: RemoteSync;
+
+// Create the new MainControlPanel
+const panel = new MainControlPanel({
+  params: P,
+  audioState: audioAnalyzer.state,
+  modulationSystem,
+  midiManager,
+  get remoteSync() { return remoteSync; },
+  onModeChange: () => { setMode(P.mode); wsU(); },
+  onReset: () => recover('button', true),
+  onRandomize: randomize,
+  onSavePreset: () => {
+    const name = prompt('Preset name', 'my-preset');
+    if (name) {
+      const all = JSON.parse(localStorage.getItem('flow-presets') || '{}');
+      all[name] = snapshot();
+      localStorage.setItem('flow-presets', JSON.stringify(all));
+    }
+  },
+  onExportJSON: () => {
+    const name = prompt('Export filename', 'flow-preset') || 'flow-preset';
+    const b = new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = name + '.json';
+    a.click();
+  },
+  onImportJSON: () => {
+    const i = document.createElement('input');
+    i.type = 'file';
+    i.accept = '.json';
+    i.onchange = async () => {
+      if (i.files && i.files[0]) {
+        load(JSON.parse(await i.files[0].text()));
+      }
+    };
+    i.click();
+  },
+  onExportMidi: () => {
+    const json = midiManager.exportMappings();
+    const b = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'flow-midi-mappings.json';
+    a.click();
+  },
+  onImportMidi: () => {
+    const i = document.createElement('input');
+    i.type = 'file';
+    i.accept = '.json';
+    i.onchange = async () => {
+      if (i.files && i.files[0]) {
+        const json = await i.files[0].text();
+        if (midiManager.importMappings(json)) {
+          alert('MIDI mappings imported successfully');
+        } else {
+          alert('Failed to import MIDI mappings');
+        }
+      }
+    };
+    i.click();
+  },
+});
+
+// ---------- Remote Sync (WebSocket) ----------
+remoteSync = new RemoteSync(P, 
+  (action) => {
+    // Handle actions from remote
+    if (action === 'next') {
+      if (P.mode === 'MilkDrop') milkDropNext();
+      else presetGallery.nextPreset();
+    }
+    else if (action === 'prev') {
+      if (P.mode === 'MilkDrop') milkDropPrev();
+      else presetGallery.prevPreset();
+    }
+    else if (action === 'random') {
+      if (P.mode === 'MilkDrop') milkDropRandom();
+      else presetGallery.randomPreset();
+    }
+    else if (action === 'tap') audioAnalyzer.tapTempo();
+    else if (action === 'pause') P.paused = !P.paused;
+    else if (action === 'reset') recover('remote', true);
+    else if (action === 'blackout') {
+      P.exposure = P.exposure > 0.1 ? 0 : 1.0;
+    }
+  },
+  (presetName) => {
+    // Handle preset selection from remote
+    const preset = PRESET_GALLERY.find(p => p.name === presetName);
+    if (preset) {
+      loadPresetFromGallery(preset);
+      presetGallery.setCurrentPreset(preset.name);
+    }
+  },
+  () => {
+    // Refresh remote section when QR code is ready
+    panel.refreshRemote();
+  },
+  (param, value) => {
+    // Handle parameter changes from remote
+    if (param === 'mode') {
+      setMode(value);
+    }
+  }
+);
+
+// Preset loading function with beat-link support
+function loadPresetFromGallery(preset: any) {
+  load(preset.params, true);
+  P.mode = preset.mode;
+  
+  // Apply beat links if present
+  if (preset.beatLinks && Array.isArray(preset.beatLinks)) {
+    modulationSystem.clearAllMappings();
+    for (const link of preset.beatLinks) {
+      const baseValue = P[link.target] || 0;
+      modulationSystem.addMapping(link.target, link.source as any, baseValue);
+    }
+  }
+  
+  // Don't call wallDefaults() - preset params must win
+  reset();
+  updateFolders();
+  
+  // Re-apply preset params after reset/updateFolders to ensure they win
+  // Fixes Round 10 issue: Kaleido showed exposure 1.8, feedbackKaleido 0
+  // but preset defined exposure 1.0, feedbackKaleido 8
+  Object.assign(P, preset.params);
+  
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+  panel.update();
+  
+  // Sync to remotes
+  remoteSync.syncState();
+}
+
+// Create the preset gallery
+const presetGallery = new PresetGallery({
+  onLoadPreset: loadPresetFromGallery,
+  currentPreset: null
+});
+
+// Hide the legacy GUI by default (toggle with 'G' key)
+gui.domElement.style.display = 'none';
 P.stillMeshMul = 2;
 ex.add(P, 'exportPreset', PRESETS.map(p => p.name)).name('preset').onChange((v: string) => { if (DEFAULT_ORIENT[v]) P.orientation = DEFAULT_ORIENT[v]; applyPreset(); ex.controllersRecursive().forEach(c => c.updateDisplay()); layout(); });
 ex.add(P, 'orientation', ['landscape', 'portrait']).name('orientation (boards)').onChange(() => { applyPreset(); ex.controllersRecursive().forEach(c => c.updateDisplay()); layout(); });
@@ -988,10 +2388,37 @@ ex.add({ v() { renderVideo(6); } }, 'v').name('🎞 Render MP4 1080p60 6s (3D mo
 const listEl = document.createElement('pre'); listEl.textContent = 'Export presets:\n' + PRESETS.map(p => `• ${p.name}${p.board ? ' [board, orientable]' : ''}${p.pdf ? ' +PDF' : ''}`).join('\n'); listEl.style.cssText = 'margin:4px 8px;font-size:10px;color:#aaa;white-space:pre-wrap';
 (ex as any).$children.appendChild(listEl);
 
-function snapshot() { const { paused, ...rest } = P; return JSON.parse(JSON.stringify({ ...rest, stops })); }
+function snapshot() { 
+  const { paused, ...rest } = P; 
+  return JSON.parse(JSON.stringify({ 
+    ...rest, 
+    stops, 
+    modulationMappings: modulationSystem.toJSON()
+  })); 
+}
 function load(o: any, quiet = false) {
-  const pc = o.particles !== P.particles || (o.pCount && o.pCount !== P.pCount); const lights = o.lights, wells = o.wells; o = { ...o }; delete o.lights; delete o.wells; if (Array.isArray(wells)) wells.forEach((w: any, i: number) => P.wells[i] && Object.assign(P.wells[i], w)); Object.assign(P, o); if (Array.isArray(lights)) lights.forEach((l: any, i: number) => P.lights[i] && Object.assign(P.lights[i], l)); if (o.stops) stops = o.stops; rebuildStops(); buildPalette();
-  gui.controllersRecursive().forEach(c => c.updateDisplay()); if (!quiet) pc ? reset() : layout();
+  const pc = o.particles !== P.particles || (o.pCount && o.pCount !== P.pCount); 
+  const lights = o.lights, wells = o.wells, modMappings = o.modulationMappings;
+  o = { ...o }; 
+  
+  // Migrate removed modes to Wall Studio
+  if (o.mode === 'Grass Field' || o.mode === '2D Fractal') {
+    o.mode = 'Wall Studio';
+  }
+  
+  delete o.lights; delete o.wells; delete o.modulationMappings;
+  if (Array.isArray(wells)) wells.forEach((w: any, i: number) => P.wells[i] && Object.assign(P.wells[i], w)); 
+  Object.assign(P, o); 
+  if (Array.isArray(lights)) lights.forEach((l: any, i: number) => P.lights[i] && Object.assign(P.lights[i], l)); 
+  if (o.stops) {
+    stops = o.stops;
+    if (!o.frColor1 && o.stops[0]) P.frColor1 = o.stops[0][1];
+    if (!o.frColor2 && o.stops[o.stops.length - 1]) P.frColor2 = o.stops[o.stops.length - 1][1];
+  }
+  if (modMappings) modulationSystem.fromJSON(modMappings);
+  rebuildStops(); buildPalette();
+  gui.controllersRecursive().forEach(c => c.updateDisplay()); 
+  if (!quiet) pc ? reset() : layout();
 }
 function randomize() {
   const r = (a: number, b: number) => a + Math.random() * (b - a); P.seed = Math.floor(Math.random() * 999999);
@@ -1001,17 +2428,104 @@ function randomize() {
   stops = PALETTES[P.palette].map(s => [s[0], s[1]] as Stop); rebuildStops(); buildPalette(); gui.controllersRecursive().forEach(c => c.updateDisplay()); reset();
 }
 addEventListener('resize', layout);
-addEventListener('keydown', e => { if ((e.target as HTMLElement)?.tagName === 'INPUT') return; if (e.key === ' ') P.paused = !P.paused; if (e.key === 'r') randomize(); if (e.key === 'Escape') recover('Esc'); });
+// Performance mode functions
+function enterPerformanceMode() {
+  P.performanceMode = true;
+  
+  // Request fullscreen
+  if (document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+  
+  // Hide UI elements
+  panel.hide();
+  presetGallery.hide();
+  gui.domElement.style.display = 'none';
+  
+  // Hide cursor
+  document.body.style.cursor = 'none';
+  canvas.style.cursor = 'none';
+  
+  log('Performance mode: ON (press Esc to exit)');
+}
+
+function exitPerformanceMode() {
+  P.performanceMode = false;
+  
+  // Exit fullscreen
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+  
+  // Show UI elements (leave them in their previous state)
+  panel.show();
+  // presetGallery stays hidden unless user toggles it
+  
+  // Show cursor
+  document.body.style.cursor = '';
+  canvas.style.cursor = '';
+  
+  log('Performance mode: OFF');
+}
+
+addEventListener('keydown', (e: KeyboardEvent) => { 
+  if ((e.target as HTMLElement)?.tagName === 'INPUT') return; 
+  
+  // Performance mode toggle (F key) or exit (Escape)
+  if (e.key === 'f' || e.key === 'F') {
+    if (!P.performanceMode) {
+      enterPerformanceMode();
+    }
+    return;
+  }
+  
+  if (e.key === 'Escape') {
+    if (P.performanceMode) {
+      exitPerformanceMode();
+    } else {
+      recover('Esc', true);
+    }
+    return;
+  }
+  
+  // All other shortcuts work in both modes
+  if (e.key === ' ') P.paused = !P.paused; 
+  if (e.key === 'r') randomize(); 
+  if (e.key === 'g') gui.domElement.style.display = gui.domElement.style.display === 'none' ? '' : 'none';
+  if (e.key === 'p') presetGallery.toggle();
+});
 
 // ---------- boot + automation via URL params ----------
 const q = new URLSearchParams(location.search);
 const rec = sessionStorage.getItem('flow-recover'); if (rec) { sessionStorage.removeItem('flow-recover'); Object.assign(P, JSON.parse(rec)); }
-if (q.get('mode') === '2d') P.mode = '2D flow';
-if (q.get('mode') === 'particles') P.mode = 'Particle Fabric';
-if (q.get('mode') === 'spheres') P.mode = 'Liquid Spheres';
-if (q.get('mode') === 'grass') P.mode = 'Grass Field';
-if (q.get('mode') === 'spheres') P.mode = 'Liquid Spheres';
-if (isW()) wallDefaults();
+
+// Accept any real mode name, case-insensitive, plus legacy aliases
+const VALID_MODES = ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
+const MODE_ALIASES: Record<string, string> = {
+  '2d': '2D flow',
+  'particles': 'Particle Fabric',
+  'spheres': 'Liquid Spheres',
+  '3d': '3D fabric'
+};
+
+if (q.has('mode')) {
+  const modeParam = q.get('mode')!;
+  let targetMode: string | null = null;
+  
+  // Check aliases first
+  if (MODE_ALIASES[modeParam.toLowerCase()]) {
+    targetMode = MODE_ALIASES[modeParam.toLowerCase()];
+  } else {
+    // Check for exact mode name (case-insensitive)
+    targetMode = VALID_MODES.find(m => m.toLowerCase() === modeParam.toLowerCase()) || null;
+  }
+  
+  if (targetMode) {
+    setMode(targetMode);
+  }
+} else if (isW()) {
+  wallDefaults();
+}
 if (q.get('wmat')) P.wMat = q.get('wmat')!; if (q.get('wobj')) P.wObj = q.get('wobj') === '1'; if (q.get('omat')) P.wObjMat = q.get('omat')!; if (q.get('wview')) applyWView(q.get('wview')!);
 if (q.get('wlight')) { P.lightPreset = q.get('wlight')!; applyLightPreset(P.lightPreset); }
 if (q.get('mode') === '3d') P.mode = '3D fabric';
@@ -1042,19 +2556,125 @@ if (q.get('pcount')) P.pCount = +q.get('pcount')!;
 if (q.get('grav')) P.gStrength = +q.get('grav')!;
 if (q.get('under')) P.fabricUnder = +q.get('under')!;
 if (q.get('preset')) { P.exportPreset = PRESETS.find(p => p.name.startsWith(q.get('preset')!))?.name ?? P.exportPreset; if (DEFAULT_ORIENT[P.exportPreset]) P.orientation = DEFAULT_ORIENT[P.exportPreset]; }
+// Gallery preset selection via URL (use galleryPreset or gallery param)
+if (q.get('galleryPreset') || q.get('gallery')) {
+  const gpName = q.get('galleryPreset') || q.get('gallery');
+  const gp = PRESET_GALLERY.find(p => p.name.toLowerCase().includes(gpName!.toLowerCase()));
+  if (gp) {
+    loadPresetFromGallery(gp);
+    presetGallery.setCurrentPreset(gp.name);
+  }
+}
 if (q.get('orient')) P.orientation = q.get('orient');
 if (q.get('particles')) P.particles = +q.get('particles')!;
 if (q.get('seed')) P.seed = +q.get('seed')!;
+// Phase 3: Feedback URL parameters
+if (q.get('feedback')) P.feedbackEnabled = q.get('feedback') === '1';
+if (q.get('fbmix')) P.feedbackMix = +q.get('fbmix')!;
+if (q.get('fbdecay')) P.feedbackDecay = +q.get('fbdecay')!;
 if (q.get('palette')) { P.palette = q.get('palette'); stops = PALETTES[P.palette].map(s => [s[0], s[1]] as Stop); }
 if (q.get('hue')) P.hueShift = +q.get('hue')!;
 if (q.get('cmyk')) P.cmykSafe = true;
 if (q.get('light')) { P.lightPreset = Object.keys(LIGHT_PRESETS).find(k => k.toLowerCase().startsWith(q.get('light')!.toLowerCase())) ?? P.lightPreset; applyLightPreset(P.lightPreset); }
 if (q.get('nolight')) { P.lights.forEach((x: Light) => x.shadow = false); P.ao = 0; }
 applyPreset(); SMOOTH.forEach(k => L[k] = P[k]); rebuildStops(); buildPalette(); reset(); gui.controllersRecursive().forEach(c => c.updateDisplay());
-updateFolders(); requestAnimationFrame(tick);
+updateFolders();
+
+// Load startup preset if no URL params override
+// Skip if galleryPreset was already loaded via URL param
+if (!q.get('mode') && !q.get('galleryPreset') && !q.get('gallery') && !rec) {
+  const startupPreset = PRESET_GALLERY.find(p => p.name === 'Deep House Wall') || PRESET_GALLERY[0];
+  loadPresetFromGallery(startupPreset);
+  presetGallery.setCurrentPreset(startupPreset.name);
+  log(`Loaded startup preset: ${startupPreset.name}`);
+}
+
+// Initialize MIDI
+midiManager.init().then(success => {
+  if (success) {
+    log('MIDI initialized successfully');
+    panel.rebuild(); // Rebuild to show MIDI devices
+  }
+});
+
+// Initialize Remote Sync
+remoteSync.connect();
+log(`Remote URL: ${remoteSync.state.remoteUrl}`);
+
+requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
-(window as any).engine = { P, renderStill, reset, recover, renderVideo };
+(window as any).engine = { P, renderStill, reset, recover, renderVideo,
+  buildPalette,
+  getStops: () => stops,
+  setStops: (s: Stop[], paletteName?: string) => { 
+    stops = s; 
+    // buildPalette() uploads texture and rebuilds layers (like UI select path)
+    buildPalette(); 
+    // Update P.palette if name provided (for UI consistency)
+    if (paletteName) {
+      P.palette = paletteName;
+    }
+  },
+  setMode,  // Expose for e2e tests
+  loadPresetFromGallery,
+  gui,
+  PALETTES,
+  // Expose readPixelsLDR for e2e tests (reads from default FB after tonemap, same frame)
+  // Note: Must be called in the same frame after render, before browser presents
+  readPixelsLDR: (x: number, y: number, w: number, h: number) => {
+    const pixels = new Uint8Array(w * h * 4);
+    const prevFB = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, prevFB);
+    return pixels;
+  },
+};
+(window as any).__PRESET_GALLERY = PRESET_GALLERY;
+
+// Expose for testing and console debugging (after P is declared)
+(window as any).__audioAnalyzer = audioAnalyzer;
+(window as any).__milkDropNext = milkDropNext;
+(window as any).__milkDropPrev = milkDropPrev;
+(window as any).__milkDropRandom = milkDropRandom;
+(window as any).P = P; // Also expose at top level for convenience
+(window as any).setMode = setMode;
+
+// ---------- 2D Fractal mouse controls ----------
+let fr2Dragging = false;
+let fr2LastX = 0, fr2LastY = 0;
+
+canvas.addEventListener('mousedown', e => {
+  if (P.mode === '2D Fractal') {
+    fr2Dragging = true;
+    fr2LastX = e.clientX;
+    fr2LastY = e.clientY;
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (P.mode === '2D Fractal' && fr2Dragging) {
+    const dx = (e.clientX - fr2LastX) / canvas.width;
+    const dy = (e.clientY - fr2LastY) / canvas.height;
+    const aspect = canvas.width / canvas.height;
+    // 2D fractal panning removed
+    fr2LastX = e.clientX;
+    fr2LastY = e.clientY;
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  fr2Dragging = false;
+});
+
+canvas.addEventListener('wheel', e => {
+  if (P.mode === '2D Fractal') {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+    // 2D fractal zoom removed
+  }
+}, { passive: false });
 
 // ---------- scripted slider sweep test (?test=sweep) ----------
 const waitFrames = (n: number) => new Promise<void>(res => { const f0 = frame; const t0 = performance.now(); const iv = setInterval(() => { if (frame - f0 >= n || performance.now() - t0 > 8000) { clearInterval(iv); res(); } }, 16); });
@@ -1078,7 +2698,7 @@ async function sweep() {
   P[k] = NaN; L[k] = NaN; await waitMs(2500); const inj = probe();
   const r2 = { prop: 'inject-NaN:' + k, ...inj, paramNow: P[k], recovered: Number.isFinite(P[k]) && inj.lum > bgLum() + 3 }; res.push(r2); log(`SWEEP[${P.mode}] ` + JSON.stringify(r2));
   // Esc / button recovery
-  P.exposure = 0.4; P.brightness = 0.3; recover('test-Esc'); await waitFrames(60); const esc = probe();
+  P.exposure = 0.4; P.brightness = 0.3; recover('test-Esc', false); await waitFrames(60); const esc = probe();
   const r3 = { prop: 'esc-recover', ...esc, recovered: esc.lum > bgLum() + 3 }; res.push(r3); log(`SWEEP[${P.mode}] ` + JSON.stringify(r3));
   const fails = res.filter(r => !r.recovered || r.nanOrLost).map(r => r.prop);
   log(`SWEEP[${P.mode}] DONE ${res.length} checks, failures=[${fails.join(',')}] worstLumOverall=${Math.min(...res.filter(r => r.worstLum !== undefined).map(r => r.worstLum))}`);

@@ -1,0 +1,26 @@
+[
+  {
+    "error": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n  - taking page screenshot\n"
+  },
+  {
+    "error": "page.goto: net::ERR_ABORTED; maybe frame was detached?\nCall log:\n  - navigating to \"http://127.0.0.1:8080/?mode=Wall+Studio\", waiting until \"load\"\n"
+  },
+  {
+    "error": "page.goto: Target page, context or browser has been closed\nCall log:\n  - navigating to \"http://127.0.0.1:8080/?mode=3D+Fractal&preset=Fractal+Dreams&measureMAD=true\", waiting until \"load\"\n"
+  },
+  {
+    "error": "page.goto: Target page, context or browser has been closed"
+  },
+  {
+    "error": "page.goto: Target page, context or browser has been closed"
+  },
+  {
+    "error": "page.goto: Target page, context or browser has been closed"
+  },
+  {
+    "error": "page.goto: Target page, context or browser has been closed"
+  },
+  {
+    "error": "page.goto: Target page, context or browser has been closed"
+  }
+]

@@ -1,0 +1,13 @@
+# Bun configuration
+# https://bun.sh/docs/runtime/bunfig
+
+[test]
+# Only run unit tests in tests/ directory
+# Playwright smoke tests are in e2e/ and run via `npm run test:smoke`
+
+# Exclude e2e directory and any *.spec.ts files
+exclude = [
+  "e2e/**",
+  "**/*.spec.ts",
+  "**/smoke-*.ts"
+]
