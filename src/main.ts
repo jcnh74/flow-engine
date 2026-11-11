@@ -1584,26 +1584,40 @@ async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
 const DEFAULTS = JSON.parse(JSON.stringify(P)); const DEFAULT_STOPS = JSON.parse(JSON.stringify(stops));
 let lastGood: any = null, badTicks = 0, recoverMsg = '', lastGoodAt = 0;
 function probe() {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); let s = 0, n = 0, maxLum = 0;
-  for (const [fx, fy] of [[.5, .5], [.25, .25], [.75, .25], [.25, .75], [.75, .75]]) {
-    const w = 16, px = new Uint8Array(w * w * 4);
-    gl.readPixels(Math.floor(frameRect[0] + frameRect[2] * fx) - 8, Math.floor(frameRect[1] + frameRect[3] * fy) - 8, w, w, gl.RGBA, gl.UNSIGNED_BYTE, px);
-    for (let i = 0; i < px.length; i += 4) { 
-      s += px[i] + px[i + 1] + px[i + 2]; 
-      n += 3; 
-      const pixelLum = (px[i] + px[i + 1] + px[i + 2]) / 3;
-      maxLum = Math.max(maxLum, pixelLum);
-    }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  
+  // Sample downscaled full frame (64x64) to avoid missing sparse bright pixels
+  const sampleW = 64, sampleH = 64;
+  const px = new Uint8Array(sampleW * sampleH * 4);
+  
+  // Read from center of frame, scaled down
+  const fx = frameRect[0] + frameRect[2] / 2 - sampleW / 2;
+  const fy = frameRect[1] + frameRect[3] / 2 - sampleH / 2;
+  gl.readPixels(Math.floor(fx), Math.floor(fy), sampleW, sampleH, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  
+  let s = 0, n = 0, maxLum = 0, allZero = true;
+  for (let i = 0; i < px.length; i += 4) { 
+    const pixelLum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+    s += px[i] + px[i + 1] + px[i + 2]; 
+    n += 3;
+    maxLum = Math.max(maxLum, pixelLum);
+    if (pixelLum > 0.1) allZero = false;
   }
-  const lum = s / n; let nan = false;
+  
+  const lum = s / n;
+  let nan = false;
+  
+  // Check for NaN in state buffers (throttled separately)
   if (isLS()) { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, ss[0].f); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
   else if (P.mode === 'Particle Fabric') { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, ps[0].f); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
   else if (P.mode !== '3D fabric') { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, st[0].f); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
+  
   const bad = SMOOTH.some(k => !Number.isFinite(L[k]));
-  return { lum: +lum.toFixed(1), maxLum: +maxLum.toFixed(1), nan: nan || bad, lost: gl.isContextLost() };
+  return { lum: +lum.toFixed(1), maxLum: +maxLum.toFixed(1), allZero, nan: nan || bad, lost: gl.isContextLost() };
 }
 const bgLum = () => hex(P.background).reduce((a, b) => a + b, 0) / 3 * 255;
-function recover(why: string) {
+let blackStartTime = 0;
+function recover(why: string, clearFeedback: boolean = false) {
   const src = lastGood || { ...DEFAULTS, stops: DEFAULT_STOPS };
   const currentMode = P.mode; // Preserve user's selected mode
   
@@ -1624,27 +1638,70 @@ function recover(why: string) {
   // Restore preserved params - recovery should fix NaN/black, not change user settings
   Object.assign(P, preserved);
   
-  SMOOTH.forEach(k => L[k] = P[k]); reset(); badTicks = 0;
+  SMOOTH.forEach(k => L[k] = P[k]);
+  
+  // Only clear feedback buffers if truly necessary (NaN or all zeros for >1s)
+  if (clearFeedback) {
+    reset();
+  }
+  
+  badTicks = 0;
+  blackStartTime = 0;
   recoverMsg = `⚠ recovered (${why})`; setTimeout(() => recoverMsg = '', 6000); 
-  log('RECOVER ' + why + ' mode=' + currentMode);
-  console.warn(`Flow Engine: Auto-recovered from ${why}, kept mode ${currentMode}`);
+  log('RECOVER ' + why + ' mode=' + currentMode + ' clearFB=' + clearFeedback);
+  console.warn(`Flow Engine: Auto-recovered from ${why}, kept mode ${currentMode}, clearFB=${clearFeedback}`);
 }
+
+// Throttle watchdog to ~2/sec for performance
+let lastProbeTime = 0;
 setInterval(() => {
   if (busy || P.paused || gl.isContextLost() || frame < 30) return;
+  
+  // Throttle probe to ~2/sec
+  const now = performance.now();
+  if (now - lastProbeTime < 500) return;
+  lastProbeTime = now;
+  
   const p = probe();
+  
   // Use maxLum (not mean lum) to avoid false positives on sparse-on-black scenes
-  // Sparse scenes like Spiral Dreams have low mean but high max
+  // Sparse scenes like Kaleido have low mean but high max
   const black = p.maxLum <= bgLum() + 5;
-  if (black || p.nan) { if (++badTicks >= 3) recover(p.nan ? 'NaN' : 'black frame'); }
-  else { badTicks = 0; if (p.maxLum > bgLum() + 10 && performance.now() - lastGoodAt > 2000) { lastGood = snapshot(); lastGoodAt = performance.now(); } }
-}, 400);
+  
+  if (p.nan) {
+    // NaN detected - immediate recovery with FB clear
+    recover('NaN', true);
+    return;
+  }
+  
+  if (black && p.allZero) {
+    // Truly all zeros - track duration
+    if (blackStartTime === 0) {
+      blackStartTime = now;
+    } else if (now - blackStartTime > 1000) {
+      // All zeros for >1s - recover with FB clear
+      recover('black >1s', true);
+      return;
+    }
+  } else {
+    // Not black or has some pixels
+    blackStartTime = 0;
+    badTicks = 0;
+    
+    // Save good state periodically
+    if (p.maxLum > bgLum() + 10 && now - lastGoodAt > 2000) {
+      lastGood = snapshot();
+      lastGoodAt = now;
+    }
+  }
+}, 100);
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); sessionStorage.setItem('flow-recover', JSON.stringify(lastGood || snapshot())); log('CONTEXT LOST'); });
 canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
 gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); if (P.mode === 'MilkDrop') initMilkDrop(); reset(); updateFolders(); wsU(); });
-gui.add({ r() { recover('button'); } }, 'r').name('⛑ Reset / Recover (Esc)');
+gui.add({ r() { recover('button', true); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
 gui.add(P, 'paused').name('pause (Space)'); gui.add(P, 'smoothing', 0, 0.5, 0.01).name('slider easing');
@@ -1983,7 +2040,7 @@ const panel = new MainControlPanel({
   midiManager,
   get remoteSync() { return remoteSync; },
   onModeChange: () => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); },
-  onReset: () => recover('button'),
+  onReset: () => recover('button', true),
   onRandomize: randomize,
   onSavePreset: () => {
     const name = prompt('Preset name', 'my-preset');
@@ -2056,7 +2113,7 @@ remoteSync = new RemoteSync(P,
     }
     else if (action === 'tap') audioAnalyzer.tapTempo();
     else if (action === 'pause') P.paused = !P.paused;
-    else if (action === 'reset') recover('remote');
+    else if (action === 'reset') recover('remote', true);
     else if (action === 'blackout') {
       P.exposure = P.exposure > 0.1 ? 0 : 1.0;
     }
@@ -2217,7 +2274,7 @@ addEventListener('keydown', (e: KeyboardEvent) => {
     if (P.performanceMode) {
       exitPerformanceMode();
     } else {
-      recover('Esc');
+      recover('Esc', true);
     }
     return;
   }
@@ -2232,11 +2289,27 @@ addEventListener('keydown', (e: KeyboardEvent) => {
 // ---------- boot + automation via URL params ----------
 const q = new URLSearchParams(location.search);
 const rec = sessionStorage.getItem('flow-recover'); if (rec) { sessionStorage.removeItem('flow-recover'); Object.assign(P, JSON.parse(rec)); }
-if (q.get('mode') === '2d') P.mode = '2D flow';
-if (q.get('mode') === 'particles') P.mode = 'Particle Fabric';
-if (q.get('mode') === 'spheres') P.mode = 'Liquid Spheres';
-// Grass mode removed
-if (q.get('mode') === 'spheres') P.mode = 'Liquid Spheres';
+
+// Accept any real mode name, case-insensitive, plus legacy aliases
+const VALID_MODES = ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
+const MODE_ALIASES: Record<string, string> = {
+  '2d': '2D flow',
+  'particles': 'Particle Fabric',
+  'spheres': 'Liquid Spheres',
+  '3d': '3D fabric'
+};
+
+if (q.has('mode')) {
+  const modeParam = q.get('mode')!;
+  // Check aliases first
+  if (MODE_ALIASES[modeParam.toLowerCase()]) {
+    P.mode = MODE_ALIASES[modeParam.toLowerCase()];
+  } else {
+    // Check for exact mode name (case-insensitive)
+    const matchedMode = VALID_MODES.find(m => m.toLowerCase() === modeParam.toLowerCase());
+    if (matchedMode) P.mode = matchedMode;
+  }
+}
 if (isW()) wallDefaults();
 if (q.get('wmat')) P.wMat = q.get('wmat')!; if (q.get('wobj')) P.wObj = q.get('wobj') === '1'; if (q.get('omat')) P.wObjMat = q.get('omat')!; if (q.get('wview')) applyWView(q.get('wview')!);
 if (q.get('wlight')) { P.lightPreset = q.get('wlight')!; applyLightPreset(P.lightPreset); }
@@ -2375,7 +2448,7 @@ async function sweep() {
   P[k] = NaN; L[k] = NaN; await waitMs(2500); const inj = probe();
   const r2 = { prop: 'inject-NaN:' + k, ...inj, paramNow: P[k], recovered: Number.isFinite(P[k]) && inj.lum > bgLum() + 3 }; res.push(r2); log(`SWEEP[${P.mode}] ` + JSON.stringify(r2));
   // Esc / button recovery
-  P.exposure = 0.4; P.brightness = 0.3; recover('test-Esc'); await waitFrames(60); const esc = probe();
+  P.exposure = 0.4; P.brightness = 0.3; recover('test-Esc', false); await waitFrames(60); const esc = probe();
   const r3 = { prop: 'esc-recover', ...esc, recovered: esc.lum > bgLum() + 3 }; res.push(r3); log(`SWEEP[${P.mode}] ` + JSON.stringify(r3));
   const fails = res.filter(r => !r.recovered || r.nanOrLost).map(r => r.prop);
   log(`SWEEP[${P.mode}] DONE ${res.length} checks, failures=[${fails.join(',')}] worstLumOverall=${Math.min(...res.filter(r => r.worstLum !== undefined).map(r => r.worstLum))}`);
