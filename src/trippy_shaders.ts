@@ -99,6 +99,10 @@ vec3 applyColorTransforms(vec3 col) {
   // Apply hue rotation (moves dominant hue bin)
   col = rotateHue(col, uHueShift * 360.0);
   
+  // DIAGNOSTIC: Red tint to verify this path is used for displayed pixels
+  // If Kaleido doesn't turn red on GPU, this is the wrong path
+  col = vec3(1.0, 0.0, 0.0);
+  
   return col;
 }
 

@@ -144,14 +144,24 @@ export function applyColorPreset(preset: ColorPreset, params: any, mode: string)
   }
   const engine = (typeof window !== 'undefined') ? (window as any).engine : null;
   if (engine?.setStops) {
+    // Save the color preset as a palette so P.palette can reference it
+    if (engine.PALETTES && !engine.PALETTES[preset.name]) {
+      engine.PALETTES[preset.name] = newStops.map(([pos, color]) => [pos, color]);
+    }
+    
+    // Set stops and update palette name
     engine.setStops(newStops);
-    // Force palette name update so UI and engine state match
     if (engine.P) {
       engine.P.palette = preset.name;
-      // Force GUI to update displayed value
-      if (engine.gui) {
-        const palCtl = engine.gui.controllersRecursive().find((c: any) => c.property === 'palette');
-        if (palCtl) palCtl.updateDisplay();
+    }
+    
+    // Force GUI to update and rebuild palette dropdown options
+    if (engine.gui) {
+      const palCtl = engine.gui.controllersRecursive().find((c: any) => c.property === 'palette');
+      if (palCtl) {
+        // Update dropdown options to include new preset
+        (palCtl as any).options(Object.keys(engine.PALETTES));
+        palCtl.updateDisplay();
       }
     }
   }
