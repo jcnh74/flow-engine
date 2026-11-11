@@ -189,6 +189,9 @@ vec3 renderKaleido(vec2 uv) {
   // Clamp to avoid clipping to white before tonemap
   col = min(col, vec3(8.0));
   
+  // TEMPORARY RED TINT TEST: If this tints the screen red, renderKaleido is the live path
+  col = mix(col, vec3(2.0, 0.0, 0.0), 0.3);
+  
   return col;
 }
 

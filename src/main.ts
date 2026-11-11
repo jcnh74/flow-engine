@@ -158,12 +158,18 @@ async function initMilkDrop(): Promise<void> {
           // Load a default preset (pick a visually strong one)
           const presets = milkDropRenderer.getPresetList();
           if (presets.length > 0) {
-            // Pick a preset with strong visuals - curated list, fallback to Flexi, fallback to first
-            const curated = ['martin - cubetrace', 'Geiss & Sperl - Feedback (chaos disorder mix)', 
-                            'Rovastar - Hallucinogen (Star Of Annon Mix)', 'Unchained & Rovastar - Wormhole Pillows'];
-            let defaultPreset = presets.find(p => curated.some(c => p.name.includes(c)));
-            if (!defaultPreset) defaultPreset = presets.find(p => p.name.includes('Flexi'));
+            // Pick a preset with strong visuals - curated list with case-insensitive substring matching
+            // Log available presets for debugging
+            if (frame < 5) console.log(`MilkDrop: ${presets.length} presets available, first 10:`, presets.slice(0, 10).map(p => p.name));
+            
+            const curated = ['alien fish pond', 'area 51', 'martin - cubetrace', 'Geiss & Sperl - Feedback'];
+            let defaultPreset = presets.find(p => 
+              curated.some(c => p.name.toLowerCase().includes(c.toLowerCase()))
+            );
+            if (!defaultPreset) defaultPreset = presets.find(p => p.name.toLowerCase().includes('flexi'));
             if (!defaultPreset) defaultPreset = presets[0];
+            
+            console.log(`MilkDrop: Selected default preset: "${defaultPreset.name}"`);
             milkDropRenderer.loadPreset(defaultPreset.name);
             P.milkDropPreset = defaultPreset.name;
             updateMilkDropPresetDisplay(defaultPreset.name);
@@ -1560,6 +1566,12 @@ function tick(now: number) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
   tonemapPass([0, 0, canvas.width, canvas.height]);
   
+  // Probe RIGHT AFTER final blit to read actual displayed pixels
+  // Store result for watchdog interval to check (fixes issue where probe() read cleared/wrong buffer)
+  if (frame >= 30) { // Skip early frames during warmup
+    lastProbeResult = probe();
+  }
+  
   // Debug: Check final screen output
   if (P.feedbackEnabled && frame % 30 === 0) {
     const x = Math.floor(canvas.width / 2 - 50);
@@ -1726,7 +1738,10 @@ async function renderVideo(seconds = 6, w = 1920, h = 1080, warm = 120) {
 // ---------- recovery: watchdog, last-good settings, context loss ----------
 const DEFAULTS = JSON.parse(JSON.stringify(P)); const DEFAULT_STOPS = JSON.parse(JSON.stringify(stops));
 let lastGood: any = null, badTicks = 0, recoverMsg = '', lastGoodAt = 0;
+let lastProbeResult: any = null; // Cache probe result from render loop for watchdog interval
 function probe() {
+  // This is now called in the render loop RIGHT AFTER final tonemap blit to screen
+  // so it reads the actual displayed pixels, not a cleared/intermediate buffer
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   
   // Sample downscaled full frame (64x64) to avoid missing sparse bright pixels
@@ -1815,12 +1830,14 @@ setInterval(() => {
   // Skip watchdog for MilkDrop mode (it renders into offscreen canvas)
   if (P.mode === 'MilkDrop') return;
   
-  // Throttle probe to ~2/sec
+  // Throttle watchdog checks to ~2/sec
   const now = performance.now();
   if (now - lastProbeTime < 500) return;
   lastProbeTime = now;
   
-  const p = probe();
+  // Use cached probe result from render loop (fixes reading wrong/cleared buffer)
+  if (!lastProbeResult) return;
+  const p = lastProbeResult;
   
   // Use maxLum (not mean lum) to avoid false positives on sparse-on-black scenes
   // Sparse scenes like Kaleido have low mean but high max

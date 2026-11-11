@@ -334,8 +334,9 @@ void main() {
   
   // Lighten blend: compare by luma but carry full RGB of winner
   // This preserves chroma (hue/saturation) instead of per-channel max that desaturates
+  // Boost echo by 1.5x to compensate for luma-select making trails darker (Fractal Echo fix)
   float currLuma = dot(curr, vec3(0.2126, 0.7152, 0.0722));
-  vec3 echoScaled = echo * uMix;
+  vec3 echoScaled = echo * uMix * 1.5;
   float echoLumaScaled = dot(echoScaled, vec3(0.2126, 0.7152, 0.0722));
   vec3 result = echoLumaScaled > currLuma ? echoScaled : curr;
   
