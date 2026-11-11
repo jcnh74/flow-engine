@@ -155,10 +155,15 @@ async function initMilkDrop(): Promise<void> {
             milkDropRenderer.connectAudio(audioAnalyzer.analyserNode);
           }
           
-          // Load a default preset
+          // Load a default preset (pick a visually strong one)
           const presets = milkDropRenderer.getPresetList();
           if (presets.length > 0) {
-            const defaultPreset = presets.find(p => p.name.includes('Flexi')) || presets[0];
+            // Pick a preset with strong visuals - curated list, fallback to Flexi, fallback to first
+            const curated = ['martin - cubetrace', 'Geiss & Sperl - Feedback (chaos disorder mix)', 
+                            'Rovastar - Hallucinogen (Star Of Annon Mix)', 'Unchained & Rovastar - Wormhole Pillows'];
+            let defaultPreset = presets.find(p => curated.some(c => p.name.includes(c)));
+            if (!defaultPreset) defaultPreset = presets.find(p => p.name.includes('Flexi'));
+            if (!defaultPreset) defaultPreset = presets[0];
             milkDropRenderer.loadPreset(defaultPreset.name);
             P.milkDropPreset = defaultPreset.name;
             updateMilkDropPresetDisplay(defaultPreset.name);
@@ -395,6 +400,13 @@ const caDistort = prog(POST.POST_VS, POST.CA_DISTORT_FS);
 const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
 const blit = prog(POST.POST_VS, POST.BLIT_FS);
 const lumaKey = prog(POST.POST_VS, POST.LUMA_KEY_FS);
+// MilkDrop color grade: hue shift + saturation
+const milkDropGrade = prog(POST.POST_VS, `precision highp float;
+uniform sampler2D uInput; uniform float uHueShift; uniform float uSat;
+in vec2 vUv; out vec4 fragColor;
+vec3 rgb2hsv(vec3 c){ vec4 K=vec4(0,-1./3.,2./3.,-1.); vec4 p=mix(vec4(c.bg,K.wz),vec4(c.gb,K.xy),step(c.b,c.g)); vec4 q=mix(vec4(p.xyw,c.r),vec4(c.r,p.yzx),step(p.x,c.r)); float d=q.x-min(q.w,q.y); float e=1e-10; return vec3(abs(q.z+(q.w-q.y)/(6.*d+e)),d/(q.x+e),q.x); }
+vec3 hsv2rgb(vec3 c){ vec4 K=vec4(1,2./3.,1./3.,3.); vec3 p=abs(fract(c.xxx+K.xyz)*6.-K.www); return c.z*mix(K.xxx,clamp(p-K.xxx,0.,1.),c.y); }
+void main(){ vec3 col=texture(uInput,vUv).rgb; vec3 hsv=rgb2hsv(col); hsv.x=fract(hsv.x+uHueShift); hsv.y=clamp(hsv.y*uSat,0.,1.); fragColor=vec4(hsv2rgb(hsv),1); }`);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -1187,7 +1199,8 @@ function tick(now: number) {
   currentTime = (now - startTime) / 1000; // Total elapsed seconds
   frame++; // Frame counter (for compatibility)
   // Rebuild palTex when hueShift moves (custom panel writes P.hueShift but never called buildPalette)
-  if (typeof (globalThis as any).__palHue !== 'number' || (globalThis as any).__palHue !== P.hueShift) {
+  // Use Math.abs check to avoid floating point drift
+  if (typeof (globalThis as any).__palHue !== 'number' || Math.abs((globalThis as any).__palHue - P.hueShift) > 0.001) {
     (globalThis as any).__palHue = P.hueShift;
     buildPalette();
   }
@@ -1259,12 +1272,26 @@ function tick(now: number) {
           gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, milkDropCanvas);
           
-          // Blit texture to trails framebuffer
+          // Apply color grade (hue shift + saturation) to MilkDrop output
+          // Use trails.b as temp buffer for color grading
+          gl.bindFramebuffer(gl.FRAMEBUFFER, T.b.f);
+          gl.viewport(0, 0, T.w, T.h);
+          gl.useProgram(milkDropGrade.p);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+          gl.uniform1i(milkDropGrade.u.uInput, 0);
+          // Convert hue degrees to turns
+          const hueTurns = ((P.hueShift / 360) + (P.cHueCycle / 60) * currentTime);
+          gl.uniform1f(milkDropGrade.u.uHueShift, ((hueTurns % 1) + 1) % 1);
+          gl.uniform1f(milkDropGrade.u.uSat, V.saturation);
+          quad();
+          
+          // Blit color-graded result to trails.a
           gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f);
           gl.viewport(0, 0, T.w, T.h);
           gl.useProgram(blit.p);
           gl.activeTexture(gl.TEXTURE0);
-          gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+          gl.bindTexture(gl.TEXTURE_2D, T.b.t);
           gl.uniform1i(blit.u.uSrc, 0);
           quad();
         }
@@ -1809,8 +1836,14 @@ setInterval(() => {
     if (blackStartTime === 0) {
       blackStartTime = now;
     } else if (now - blackStartTime > 1000) {
-      // All zeros for >1s - but NEVER clear feedback if std > 1 (sparse bright content exists)
-      const shouldClearFeedback = p.std <= 1.0;
+      // All zeros for >1s - but NEVER fire if std > 1 (sparse bright content exists)
+      if (p.std > 1.0) {
+        // Sparse content with variation - not actually frozen, just sparse-on-black
+        console.log(`Watchdog skip (std=${p.std}): mode=${P.mode} lum=${p.lum} maxLum=${p.maxLum} std=${p.std} allZero=${p.allZero}`);
+        blackStartTime = 0; // Reset timer - this is expected behavior
+        return;
+      }
+      const shouldClearFeedback = true; // If we got here, std <= 1.0
       console.warn(`Watchdog fire: mode=${P.mode} lum=${p.lum} maxLum=${p.maxLum} std=${p.std} allZero=${p.allZero} black=${black} clearFB=${shouldClearFeedback}`);
       recover('black >1s', shouldClearFeedback);
       return;

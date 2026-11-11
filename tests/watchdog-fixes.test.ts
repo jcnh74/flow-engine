@@ -111,8 +111,9 @@ describe('Watchdog Sparse Pattern Detection', () => {
 
   test('should never clear feedback while std > 1', () => {
     // Sparse starburst has high std even with low mean luma
-    expect(mainSrc).toContain('p.std <= 1.0');
-    expect(mainSrc).toContain('shouldClearFeedback');
+    // Now we skip recovery entirely when std > 1.0 (not just skip clearing feedback)
+    expect(mainSrc).toContain('p.std > 1.0');
+    expect(mainSrc).toContain('Watchdog skip');
   });
 
   test('sparse starburst pattern should have high std', () => {
