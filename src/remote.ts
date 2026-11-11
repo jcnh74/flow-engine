@@ -141,7 +141,16 @@ export class RemoteSync {
         bloom: this.params.bloom,
         exposure: this.params.exposure,
         speed: this.params.speed || this.params.trippySpeed || 1.0,
-        paused: this.params.paused
+        paused: this.params.paused,
+        // Phase 3: Feedback params
+        feedbackEnabled: this.params.feedbackEnabled,
+        feedbackMix: this.params.feedbackMix,
+        feedbackDecay: this.params.feedbackDecay,
+        feedbackZoom: this.params.feedbackZoom,
+        feedbackRotate: this.params.feedbackRotate,
+        feedbackKaleido: this.params.feedbackKaleido,
+        feedbackNoise: this.params.feedbackNoise,
+        feedbackHueDrift: this.params.feedbackHueDrift
       }
     });
   }
