@@ -419,6 +419,9 @@ vec4 raymarch(vec3 ro, vec3 rd) {
         uCosinePaletteC,
         uCosinePaletteD
       );
+      // Mix in the Color 1 / Color 2 pickers (previously uploaded and unused)
+      vec3 colStops = mix(uColor1, uColor2, fract(trap + uPaletteOffset));
+      col = mix(col, colStops, 0.65);
       
       // Combine lighting
       float light = uAmbient + diffuse * shadow;

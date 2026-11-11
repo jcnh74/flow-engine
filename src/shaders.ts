@@ -194,7 +194,7 @@ vec3 patchCol(int row,vec2 uv){ vec4 f=patchF(uv); float j=(f.w-.5)*uPJit;
   vec3 a=lcol(row,.3+.7*(f.x+.1)), b=lcol(row,.3+.7*(f.y+.1)); vec3 c=mix(a,b,f.z); c=hueR(c,j*.12); return c*(1.+j*.5); }
 `;
 export const LIGHTING = `uniform sampler2D uPal; uniform vec3 uEye; uniform mat4 uView;
-uniform float uGloss,uSpec,uIrid,uRim,uFog,uFogStart,uSat,uBright,uPalOff,uPx;
+uniform float uGloss,uSpec,uIrid,uRim,uFog,uFogStart,uSat,uBright,uPalOff,uPx,uPalMix;
 uniform int uNL; uniform int uLType[4]; uniform vec3 uLPos[4]; uniform vec3 uLCol[4]; uniform float uLCos[4]; uniform int uLSh[4]; uniform mat4 uLVP[4];
 uniform sampler2DShadow uSC0,uSC1,uSC2,uSC3; uniform sampler2D uSD0,uSD1,uSD2,uSD3; uniform float uShSoft,uShBias,uShTexel[4];
 uniform float uEnvI,uEnvRot;
@@ -273,7 +273,7 @@ void main(){
   if(uGrad==1) t=uPalOff+length(uEye-vW)*.22+vL*.19; else if(uGrad==2) t=uPalOff+vW.y*.35+.5+vL*.19; else if(uGrad==3) t=uPalOff+.5+.5*dot(N,normalize(vec3(.4,.7,.5)));
   vec3 alb=lcol(0,t); if(vL>.5){ vec3 top=lcol(1,t); alb=mix(top,blendM(uMix1,alb,top),uMixA1); }
   if(uPFab>0.) alb=mix(alb,patchCol(vL>.5?1:0,vUV+vec2(uPOff)),uPFab);
-  if(uMat>0){ alb=uWallPatch==1?patchCol(0,vUV):uMatCol; }
+  if(uMat>0){ vec3 matC=uWallPatch==1?patchCol(0,vUV):uMatCol; alb=mix(matC,alb,uPalMix); }
   float l=dot(alb,vec3(.299,.587,.114)); alb=max(mix(vec3(l),alb,uSat),0.)*uBright;
   if(uMat>0){ vec3 col; float dd=length(uEye-vW); float fg=1.-exp(-max(dd-uFogStart,0.)*uFog);
     if(uMat==1){ // water

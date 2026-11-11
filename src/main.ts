@@ -56,22 +56,43 @@ function hueRot(c: number[], deg: number) { // YIQ rotation
 
 // Inigo Quilez cosine palette parameters
 // https://iquilezles.org/articles/palettes/
+function cosineFromStops(st: Stop[], hueShiftDeg: number) {
+  const cols = st.map(s => hex(s[1]));
+  const a = [0, 0, 0], b = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    const ch = cols.map(c => c[i]);
+    const mn = Math.min(...ch), mx = Math.max(...ch);
+    a[i] = (mn + mx) / 2;
+    b[i] = Math.max(0.15, (mx - mn) / 2);
+  }
+  const shift = ((hueShiftDeg / 360) % 1 + 1) % 1;
+  return {
+    a: new Float32Array(a),
+    b: new Float32Array(b),
+    c: new Float32Array([1, 1, 1]),
+    d: new Float32Array([shift, shift + 0.33, shift + 0.67])
+  };
+}
 function getCosinePaletteParams(paletteName: string, hueShift: number) {
+  // Prefer the live stop ramp (gallery presets and the Color dropdown write stops,
+  // not P.palette). Hue shift is in degrees in the UI; previous code added the
+  // raw degree value and then `% 1`, which is a no-op for integer slider steps.
+  if (typeof stops !== 'undefined' && Array.isArray(stops) && stops.length >= 2) {
+    return cosineFromStops(stops, hueShift);
+  }
   const palettes: Record<string, { a: number[], b: number[], c: number[], d: number[] }> = {
     'Liquid Spectrum': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 1.0, 1.0], d: [0.0, 0.33, 0.67] },
     'Electric': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 1.0, 0.5], d: [0.8, 0.9, 0.3] },
     'Glacier': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 0.7, 0.4], d: [0.0, 0.15, 0.2] },
     'Sunset': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 0.5, 0.4], d: [0.0, 0.2, 0.5] },
+    'Neon Bloom': { a: [0.55, 0.4, 0.5], b: [0.45, 0.5, 0.5], c: [1.0, 1.0, 1.0], d: [0.0, 0.33, 0.67] },
     'Neon Dreams': { a: [0.8, 0.5, 0.4], b: [0.2, 0.4, 0.2], c: [2.0, 1.0, 1.0], d: [0.0, 0.25, 0.25] },
     'Cyberpunk': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [2.0, 1.0, 0.0], d: [0.5, 0.2, 0.25] },
     'Deep Space': { a: [0.3, 0.3, 0.5], b: [0.3, 0.3, 0.3], c: [0.5, 0.5, 1.0], d: [0.0, 0.1, 0.2] }
   };
-  
   const pal = palettes[paletteName] || palettes['Liquid Spectrum'];
-  
-  // Apply hue shift by rotating the d parameter
-  const shiftedD = pal.d.map((v, i) => (v + hueShift + i * 0.0) % 1.0);
-  
+  const shift = ((hueShift / 360) % 1 + 1) % 1;
+  const shiftedD = pal.d.map((v) => (v + shift) % 1.0);
   return {
     a: new Float32Array(pal.a),
     b: new Float32Array(pal.b),
@@ -283,11 +304,11 @@ const P: any = {
   pCount: 1048576, cohesion: 0.6, gBlend: 0.35, stream: 1.0, pLife: 0.12, vmax: 6, pTurb: 0.25, wellG: 1, pWidth: 1.1, streak: 0.06, pGain: 0.05, dof: 0, fabricUnder: 0, pColorBySpeed: 0.45,
   wells: [] as any[], particles: 1048576, noiseScale: 1.6, octaves: 3, evolution: 0.12, curl: 1.0, turbulence: 0.25,
   speed: 1.0, flowBias: 0.0, stretch: 1.6, life: 0.18, decay: 0.965, pointSize: 1.4, gain: 0.045, colorBySpeed: 0.7,
-  palette: 'Glacier', hueShift: 0, paletteOffset: 0, blend: 'additive', exposure: 1.0, bloom: 0.35, bloomThreshold: 0.25,
+  palette: 'Neon Bloom', hueShift: 0, paletteOffset: 0, blend: 'additive', exposure: 1.0, bloom: 0.35, bloomThreshold: 0.25,
   background: '#020208', densityComp: true, smoothing: 0.08,
   fold: 0.55, warp: 0.6, layers: 2, layerSep: 0.45, detail: 2, meshRes: 512, scale3d: 0.6, gloss: 70, spec: 1.0, iridescence: 0.5, rim: 0.7, saturation: 1.3, brightness: 0.6, ao: 0.7, evolution3d: 0.08,
   orbitSpeed: 0.05, camDist: 4.2, fov: 40, lightAngle: 35, fog: 0.5,
-  lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, tonemapMode: 'AgX', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
+  lightPreset: 'Studio 3-point', envIntensity: 0.8, envRot: 0, followCam: false, tonemapMode: 'ACES', shadowSoft: 0.35, shadowBias: 0.0015, shadowResLive: 2048, shadowResExport: 4096, ssaoRadius: 0.25,
   // Post FX (Phase 1)
   bloomStrength: 0.12, bloomThreshold2: 1.5, kickBloomAmount: 0.3, caStrength: 0.0, distortion: 0.0,
   // Quality governor (Issue 8)
@@ -296,7 +317,7 @@ const P: any = {
   feedbackEnabled: false, feedbackDecay: 0.95, feedbackZoom: 1.0, feedbackRotate: 0.0,
   feedbackTranslateX: 0.0, feedbackTranslateY: 0.0, feedbackMix: 0.5,
   feedbackKaleido: 0, feedbackNoise: 0.0, feedbackHueDrift: 0.0,
-  lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.0, vibrance: 0.0,
+  lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.15, vibrance: 0.1, wallPaletteMix: 0.65,
   vignetteStrength: 0.0, vignetteRadius: 1.2, grainStrength: 0.0,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
   exportPreset: '4K UHD 3840×2160', orientation: 'landscape', width: 3840, height: 2160, dpi: 300, tiff: false, pdf: false, frameToExport: true,
@@ -310,7 +331,7 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos','frFogDensity','frFogStart','frAOStrength','frAORadius','frShadowSharpness',
   'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
-  'bloomStrength','bloomThreshold2','kickBloomAmount','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength'];
+  'bloomStrength','bloomThreshold2','kickBloomAmount','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength','wallPaletteMix'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
 function easeParams() { for (const k of SMOOTH) { const d = P[k] - L[k]; L[k] = Math.abs(d) < 1e-6 ? P[k] : L[k] + d * Math.min(1, P.smoothing <= 0 ? 1 : P.smoothing * 2); } }
@@ -567,8 +588,8 @@ function tonemapPass(vp: number[]) {
   gl.uniform1i(tonemap.u.uSrc, 0);
   gl.uniform1f(tonemap.u.uExposure, V.exposure);
   
-  // tonemapMode: 0=AgX, 1=ACES, 2=Khronos Neutral
-  const tonemapModeVal = P.tonemapMode === 'ACES' ? 1 : P.tonemapMode === 'Khronos Neutral' ? 2 : 0;
+  // tonemapMode: 0=AgX, 1=ACES, 2=Khronos Neutral, 3=None
+  const tonemapModeVal = P.tonemapMode === 'ACES' ? 1 : P.tonemapMode === 'Khronos Neutral' ? 2 : P.tonemapMode === 'None' ? 3 : 0;
   gl.uniform1i(tonemap.u.uTonemapMode, tonemapModeVal);
   gl.uniform1f(tonemap.u.uFrame, frame);
   gl.uniform2f(tonemap.u.uResolution, canvas.width, canvas.height);
@@ -725,7 +746,7 @@ function render3D(T: Trails, aspect: number, t3: number, tO: number, subr: numbe
   const applyL = (pr: any) => { gl.useProgram(pr.p); const u = pr.u; if (u.uView) gl.uniformMatrix4fv(u.uView, false, View);
   gl.uniform3f(u.uEye, eye[0], eye[1], eye[2]);
   gl.uniform1f(u.uGloss, V.gloss); gl.uniform1f(u.uSpec, V.spec); gl.uniform1f(u.uIrid, V.iridescence); { const mi = isW() ? WMATS.indexOf(P.wMat) : 0; gl.uniform1i(u.uMat, Math.max(0, mi)); gl.uniform1i(u.uWallPatch, P.wPatch && !P.wObj ? 1 : 0); const mc = hex(P.wColor); gl.uniform3f(u.uMatCol, mc[0], mc[1], mc[2]); gl.uniform1f(u.uWT2, t3); gl.uniform1f(u.uFurDens, P.wFurDens); gl.uniform1f(u.uRough2, P.wRough); gl.uniform1f(u.uAbsorb2, P.wAbsorb); gl.uniform1f(u.uDisp, P.wDisp); } gl.uniform1f(u.uRim, V.rim); gl.uniform1f(u.uFog, V.fog); gl.uniform1f(u.uFogStart, dist * 0.6);
-  gl.uniform1f(u.uSat, V.saturation); gl.uniform1f(u.uBright, V.brightness); gl.uniform1f(u.uPalOff, V.paletteOffset); gl.uniform1f(u.uPx, pxScale); colorUniforms(u);
+  gl.uniform1f(u.uSat, V.saturation); gl.uniform1f(u.uBright, V.brightness); gl.uniform1f(u.uPalOff, V.paletteOffset); if (u.uPalMix !== undefined) gl.uniform1f(u.uPalMix, V.wallPaletteMix ?? 0.65); gl.uniform1f(u.uPx, pxScale); colorUniforms(u);
   gl.uniform1i(u.uNL, act.length); gl.uniform1iv(u['uLType[0]'], pad(LT, 4)); gl.uniform3fv(u['uLPos[0]'], pad(LP, 12)); gl.uniform3fv(u['uLCol[0]'], pad(LC, 12));
   gl.uniform1fv(u['uLCos[0]'], pad(LCos, 4)); gl.uniform1iv(u['uLSh[0]'], pad(LSh, 4)); gl.uniformMatrix4fv(u['uLVP[0]'], false, LVP); if (u['uShTexel[0]']) gl.uniform1fv(u['uShTexel[0]'], STx);
   gl.uniform1f(u.uShSoft, P.shadowSoft); gl.uniform1f(u.uShBias, P.shadowBias); gl.uniform1f(u.uEnvI, P.envIntensity); gl.uniform1f(u.uEnvRot, P.envRot * Math.PI / 180);
@@ -1113,7 +1134,9 @@ function renderTrippy(T: Trails, modeIndex: number) {
   gl.uniform3f(u.uColor1, c1[0], c1[1], c1[2]);
   gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
   gl.uniform3f(u.uColor3, c3[0], c3[1], c3[2]);
-  gl.uniform1f(u.uHueShift, (frame * 0.001) % 1.0);
+  const hueTurns = ((P.hueShift / 360) + (P.cHueCycle / 60) * currentTime);
+  gl.uniform1f(u.uHueShift, ((hueTurns % 1) + 1) % 1);
+  if (u.uSat !== undefined) gl.uniform1f(u.uSat, V.saturation);
   
   // VJ Controls
   if (u.uTunnelTwist !== undefined) gl.uniform1f(u.uTunnelTwist, L.tunnelTwist);
@@ -1163,6 +1186,11 @@ function tick(now: number) {
   dt = deltaNow / 1000; // Convert to seconds
   currentTime = (now - startTime) / 1000; // Total elapsed seconds
   frame++; // Frame counter (for compatibility)
+  // Rebuild palTex when hueShift moves (custom panel writes P.hueShift but never called buildPalette)
+  if (typeof (globalThis as any).__palHue !== 'number' || (globalThis as any).__palHue !== P.hueShift) {
+    (globalThis as any).__palHue = P.hueShift;
+    buildPalette();
+  }
   
   // FPS tracking
   fpsAcc += deltaNow; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
@@ -1459,7 +1487,7 @@ function tick(now: number) {
   gl.uniform3f(colorGrade.u.uLift, lift[0], lift[1], lift[2]);
   gl.uniform3f(colorGrade.u.uGamma, gamma[0], gamma[1], gamma[2]);
   gl.uniform3f(colorGrade.u.uGain, gain[0], gain[1], gain[2]);
-  gl.uniform1f(colorGrade.u.uSaturation, P.saturationPost);
+  gl.uniform1f(colorGrade.u.uSaturation, P.saturationPost * (V.saturation / 1.3));
   gl.uniform1f(colorGrade.u.uVibrance, P.vibrance);
   gl.uniform1f(colorGrade.u.uVignetteStrength, P.vignetteStrength);
   gl.uniform1f(colorGrade.u.uVignetteRadius, P.vignetteRadius);
@@ -1871,7 +1899,7 @@ sim_.add(P, 'driftX', -0.1, 0.1, 0.001).name('field drift X'); sim_.add(P, 'drif
 sim_.add(P, 'densityComp').name('density compensation');
 const look = gui.addFolder('Look');
 look.add(P, 'exposure', 0.4, 4, 0.01); look.add(P, 'bloom', 0, 2, 0.01).name('bloom strength'); look.add(P, 'bloomThreshold', 0, 0.8, 0.01);
-look.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral']).name('tonemap');
+look.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral', 'None']).name('tonemap');
 look.addColor(P, 'background');
 const col = gui.addFolder('Palette');
 col.add(P, 'palette', Object.keys(PALETTES)).onChange((v: string) => { stops = PALETTES[v].map(s => [s[0], s[1]] as Stop); syncStops(); rebuildStops(); buildPalette(); });
@@ -2057,7 +2085,7 @@ const glF = gui.addFolder('Lighting'); glF.add(P, 'gLight', Object.keys(G_LIGHTS
 glF.add(P, 'gSunAz', 0, 360, 1).name('sun direction (°)'); glF.add(P, 'gSunEl', 1, 89, 0.5).name('sun height (°)'); glF.add(P, 'gSunI', 0, 3, 0.01).name('sun intensity'); glF.add(P, 'gSkyI', 0, 3, 0.01).name('sky fill');
 glF.add(P, 'gShSoft', 0.5, 6, 0.1).name('shadow softness'); glF.add(P, 'gTrans', 0, 3, 0.01).name('translucency / backlight'); glF.add(P, 'gSpec', 0, 2, 0.01).name('blade sheen'); glF.add(P, 'gAO', 0, 1, 0.01).name('root darkness (min AO)'); glF.add(P, 'gHaze', 0, 4, 0.01).name('haze');
 glF.add(P, 'exposure', 0.2, 4, 0.01).name('exposure');
-glF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral']).name('tonemap');
+glF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral', 'None']).name('tonemap');
 const camF = gui.addFolder('Camera'); camF.add(P, 'gcView', Object.keys(G_VIEWS)).name('preset view').onChange((v: string) => { applyGView(v); gui.controllersRecursive().forEach(c => c.updateDisplay()); });
 camF.add(P, 'gcHeight', 0, 3, 0.01).name('look-at height (m)'); camF.add(P, 'gcDist', 0.3, 7, 0.01).name('distance (m)'); camF.add(P, 'gcPitch', -2, 89, 0.5).name('angle / pitch (°)'); camF.add(P, 'gcYaw', -180, 180, 0.5).name('turn / yaw (°)');
 camF.add(P, 'gcFov', 15, 90, 0.5).name('field of view (° vertical)'); camF.add(P, 'gcAuto').name('auto orbit'); camF.add(P, 'gcAutoSpd', -20, 20, 0.1).name('orbit speed (°/s)');
@@ -2101,7 +2129,7 @@ wCamF.add(P, 'wcYaw', -50, 50, 0.5).name('orbit (deg)'); wCamF.add(P, 'wcPitch',
 wCamF.add(P, 'wcPanX', -2, 2, 0.01).name('pan X'); wCamF.add(P, 'wcPanY', -2, 2, 0.01).name('pan Y'); wCamF.add(P, 'wcAuto').name('gentle auto orbit');
 wCamF.add({ r: () => { applyWView('Front'); wsU(); } }, 'r').name('reset camera');
 wCamF.add(P, 'cycOn').name('cyclorama'); wCamF.addColor(P, 'cycA').name('cyc top'); wCamF.addColor(P, 'cycB').name('cyc bottom'); wCamF.add(P, 'grain', 0, 0.1, 0.001).name('film grain');
-wCamF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral']).name('tonemap');
+wCamF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral', 'None']).name('tonemap');
 function updateFolders() { 
   const w = isW(), fr = P.mode === '3D Fractal';
   // Fixed: pre (Presets) folder should always be visible like cf and ex
@@ -2315,7 +2343,11 @@ function load(o: any, quiet = false) {
   if (Array.isArray(wells)) wells.forEach((w: any, i: number) => P.wells[i] && Object.assign(P.wells[i], w)); 
   Object.assign(P, o); 
   if (Array.isArray(lights)) lights.forEach((l: any, i: number) => P.lights[i] && Object.assign(P.lights[i], l)); 
-  if (o.stops) stops = o.stops;
+  if (o.stops) {
+    stops = o.stops;
+    if (!o.frColor1 && o.stops[0]) P.frColor1 = o.stops[0][1];
+    if (!o.frColor2 && o.stops[o.stops.length - 1]) P.frColor2 = o.stops[o.stops.length - 1][1];
+  }
   if (modMappings) modulationSystem.fromJSON(modMappings);
   rebuildStops(); buildPalette();
   gui.controllersRecursive().forEach(c => c.updateDisplay()); 
@@ -2505,7 +2537,13 @@ log(`Remote URL: ${remoteSync.state.remoteUrl}`);
 requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
-(window as any).engine = { P, renderStill, reset, recover, renderVideo };
+(window as any).engine = { P, renderStill, reset, recover, renderVideo,
+  buildPalette,
+  getStops: () => stops,
+  setStops: (s: Stop[]) => { stops = s; buildPalette(); },
+  loadPresetFromGallery,
+};
+(window as any).__PRESET_GALLERY = PRESET_GALLERY;
 
 // Expose for testing and console debugging (after P is declared)
 (window as any).__audioAnalyzer = audioAnalyzer;

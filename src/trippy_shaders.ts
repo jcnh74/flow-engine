@@ -33,6 +33,7 @@ uniform vec3 uColor1;
 uniform vec3 uColor2;
 uniform vec3 uColor3;
 uniform float uHueShift;
+uniform float uSat;
 uniform int uPaletteSize;
 uniform vec3 uPalette[8];
 
@@ -271,6 +272,9 @@ void main() {
     col = renderMorph(vUv);
   }
   
+  // Apply scene saturation (trippy modes previously ignored the Color slider)
+  float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = max(mix(vec3(luma), col, uSat), 0.0);
   fragColor = vec4(col, 1.0);
 }
 `;

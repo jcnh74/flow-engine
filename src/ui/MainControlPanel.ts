@@ -713,6 +713,9 @@ export class MainControlPanel {
         
         this.config.params[param] = value;
         this.updateValueDisplay(param, value);
+        if (param === 'hueShift' && (window as any).engine?.buildPalette) {
+          (window as any).engine.buildPalette();
+        }
         
         // Apply per-type defaults for 3D fractals
         if (param === 'frType') {

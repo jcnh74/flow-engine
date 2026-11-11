@@ -86,7 +86,7 @@ export const COLOR_PRESETS: Record<string, ColorPreset> = {
 
 // Apply a color preset to the current mode's parameters
 export function applyColorPreset(preset: ColorPreset, params: any, mode: string): void {
-  const { primary, secondary, accent, background, cycle } = preset;
+  const { primary, secondary, accent, background, cycle, gradient } = preset;
   
   // Universal
   params.exposure = 1.0;
@@ -131,4 +131,18 @@ export function applyColorPreset(preset: ColorPreset, params: any, mode: string)
   
   // Color cycling
   params.cHueCycle = cycle;
+
+  // Build actual engine stops from the preset swatches and push them
+  // through the live palette hook. Previously this function never touched
+  // `stops` / palTex / trippy uPalette, so the UI "Preset" dropdown was cosmetic.
+  const newStops: [number, string][] = gradient
+    ? [[0, primary], [0.5, secondary], [1, accent]]
+    : [[0, primary], [0.5, secondary], [1, primary]];
+  params.background = background;
+  if (mode === 'Wall Studio') {
+    params.wColor = primary;
+  }
+  const engine = (typeof window !== 'undefined') ? (window as any).engine : null;
+  if (engine?.setStops) engine.setStops(newStops);
+  if (engine?.P) engine.P.palette = preset.name;
 }
