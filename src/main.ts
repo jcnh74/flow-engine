@@ -401,7 +401,8 @@ const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
 const blit = prog(POST.POST_VS, POST.BLIT_FS);
 const lumaKey = prog(POST.POST_VS, POST.LUMA_KEY_FS);
 // MilkDrop color grade: hue shift + saturation
-const milkDropGrade = prog(POST.POST_VS, `precision highp float;
+const milkDropGrade = prog(POST.POST_VS, `#version 300 es
+precision highp float;
 uniform sampler2D uInput; uniform float uHueShift; uniform float uSat;
 in vec2 vUv; out vec4 fragColor;
 vec3 rgb2hsv(vec3 c){ vec4 K=vec4(0,-1./3.,2./3.,-1.); vec4 p=mix(vec4(c.bg,K.wz),vec4(c.gb,K.xy),step(c.b,c.g)); vec4 q=mix(vec4(p.xyw,c.r),vec4(c.r,p.yzx),step(p.x,c.r)); float d=q.x-min(q.w,q.y); float e=1e-10; return vec3(abs(q.z+(q.w-q.y)/(6.*d+e)),d/(q.x+e),q.x); }
