@@ -129,6 +129,8 @@ Frame 40+ (after stabilization):
 3. **0ee9cfb**: feat: Add URL parameters for feedback control
 4. **29c7c9b**: fix: Energy-conserving feedback composite + bloom after feedback
 5. **701a342**: fix: Render harness null modeName and exit codes
+6. **3d3a82a**: docs: Add comprehensive proof document
+7. **a8b5c44**: fix: Critical regression - bloomPass type error causing black canvas
 
 ## What Tried / What Failed
 
@@ -144,14 +146,36 @@ Frame 40+ (after stabilization):
 
 **Energy-conserving composite**: Changed from additive to mix-based, ensuring steady-state gain < 1.0. This is the canonical solution for temporal feedback systems (MilkDrop, video feedback, recursive filters).
 
+## Round 6 Regression and Fix
+
+**CRITICAL REGRESSION** (commit 3d3a82a): All modes rendered BLACK canvas.
+
+**Problem**: Changed `bloomPass(T)` to `bloomPass(hdrComp)` but:
+- `bloomPass` signature: `bloomPass(T: Trails)` expects Trails type
+- Accesses `T.a.t` internally (line 313)
+- `hdrComp` is `FB` type with only `.t` property
+- Result: `Cannot read properties of undefined (reading 't')` × 12,906/sec
+- Tick died before HUD, no rendering
+
+**Fix** (commit a8b5c44):
+1. **Reverted bloomPass to use T**: Bloom operates on scene buffer (Trails type)
+2. **Bloom still after feedback conceptually**: Bloom pyramid built from original scene, composited into hdrComp (which has feedback result). Bloom computed from scene but added to feedback output, so bloom not fed back.
+3. **Render harness filename**: Use `displayName` not `modeName` (can be null)
+4. **Smoke test**: `tests/smoke-headless.test.ts` detects black canvas and errors
+
+**TypeScript verification**: `tsc --noEmit` now passes (was failing with TS2740).
+
 ## Verification Checklist
 
 - [x] Energy-conserving composite implemented
-- [x] Bloom moved after feedback
+- [x] Bloom computed from scene, composited after feedback
 - [x] Pre-tonemap HDR values stay bounded (<2.0)
 - [x] Values vary over time (not constant)
 - [x] Render harness null modeName fixed
 - [x] Render harness exit nonzero on failure
+- [x] Render harness filename fixed for presets
+- [x] TypeScript compilation passes (tsc --noEmit)
+- [x] Smoke test added for black canvas detection
 - [x] Debug logging preserved for future diagnosis
 - [x] Commits pushed to cursor/fractal-audio-modulation-fe7d
 
