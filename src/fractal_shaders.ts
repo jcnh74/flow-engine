@@ -48,6 +48,18 @@ uniform int uMaxSteps;
 uniform float uMaxDist;
 uniform float uSurfDist;
 
+// IQ lighting enhancements
+uniform float uFogDensity;
+uniform float uFogStart;
+uniform float uAOStrength;
+uniform float uAORadius;
+uniform float uShadowSharpness;
+uniform vec3 uCosinePaletteA;
+uniform vec3 uCosinePaletteB;
+uniform vec3 uCosinePaletteC;
+uniform vec3 uCosinePaletteD;
+uniform float uPaletteOffset;
+
 // Animation
 uniform float uRotSpeed;
 uniform float uMorphAmt;
@@ -63,6 +75,12 @@ float hash(vec3 p) {
   p = fract(p * vec3(443.897, 441.423, 437.195));
   p += dot(p, p.yzx + 19.19);
   return fract((p.x + p.y) * p.z);
+}
+
+// Inigo Quilez cosine palette
+// https://iquilezles.org/articles/palettes/
+vec3 cosinePalette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+  return a + b * cos(6.28318 * (c * t + d));
 }
 
 // Mandelbulb distance estimator
@@ -315,30 +333,56 @@ vec3 calcNormal(vec3 p) {
   );
 }
 
-// Ambient occlusion from iteration count approximation
+// Inigo Quilez ambient occlusion
+// https://iquilezles.org/articles/nvscene2008/rwwtt.pdf
 float calcAO(vec3 p, vec3 n) {
   float ao = 0.0;
   float scale = 1.0;
+  
+  // Adaptive sample count for performance
+  int samples = uMaxSteps > 96 ? 5 : 3;
+  
   for (int i = 0; i < 5; i++) {
-    float h = 0.01 + 0.12 * float(i) / 4.0;
+    if (i >= samples) break;
+    
+    float h = uAORadius * (0.01 + 0.15 * float(i) / float(samples - 1));
     float d = map(p + n * h);
     ao += (h - d) * scale;
-    scale *= 0.95;
+    scale *= 0.85;
   }
-  return clamp(1.0 - 3.0 * ao, 0.0, 1.0);
+  
+  float occlusion = 1.0 - clamp(ao * uAOStrength, 0.0, 1.0);
+  return occlusion;
 }
 
-// Soft shadow via cone tracing
-float calcShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
+// Inigo Quilez soft shadows with penumbra
+// https://iquilezles.org/articles/rmshadows/
+float calcShadow(vec3 ro, vec3 rd, float mint, float maxt) {
   float res = 1.0;
   float t = mint;
+  float ph = 1e10;
+  
+  // Adaptive step count for performance
+  int maxShadowSteps = uMaxSteps > 96 ? 24 : 16;
+  
   for (int i = 0; i < 32; i++) {
+    if (i >= maxShadowSteps) break;
+    
     float h = map(ro + rd * t);
+    
+    // Hard shadow check
     if (h < 0.001) return 0.0;
-    res = min(res, k * h / t);
+    
+    // Soft shadow penumbra
+    float y = h * h / (2.0 * ph);
+    float d = sqrt(h * h - y * y);
+    res = min(res, uShadowSharpness * d / max(0.0, t - y));
+    ph = h;
+    
     t += h;
     if (t > maxt) break;
   }
+  
   return clamp(res, 0.0, 1.0);
 }
 
@@ -363,12 +407,18 @@ vec4 raymarch(vec3 ro, vec3 rd) {
       // Lighting
       float diffuse = max(dot(n, uLightDir), 0.0) * uDiffuse;
       float ao = calcAO(p, n);
-      float shadow = uShadowStr > 0.0 ? calcShadow(p, uLightDir, 0.02, 2.5, 8.0) : 1.0;
+      float shadow = uShadowStr > 0.0 ? calcShadow(p, uLightDir, 0.02, 2.5) : 1.0;
       shadow = mix(1.0, shadow, uShadowStr);
       
-      // Orbit trap coloring (distance from origin during iteration)
-      float trap = length(p);
-      vec3 col = mix(uColor1, uColor2, sin(trap * uColorMix) * 0.5 + 0.5);
+      // Cosine palette coloring (orbit trap)
+      float trap = length(p) * uColorMix;
+      vec3 col = cosinePalette(
+        trap + uPaletteOffset,
+        uCosinePaletteA,
+        uCosinePaletteB,
+        uCosinePaletteC,
+        uCosinePaletteD
+      );
       
       // Combine lighting
       float light = uAmbient + diffuse * shadow;
@@ -376,6 +426,13 @@ vec4 raymarch(vec3 ro, vec3 rd) {
       
       // Add glow
       col += vec3(0.3, 0.5, 1.0) * glow * uGlow;
+      
+      // Fog (exponential distance-based)
+      if (uFogDensity > 0.0) {
+        float fogAmount = 1.0 - exp(-uFogDensity * max(0.0, t - uFogStart));
+        vec3 fogColor = vec3(0.05, 0.06, 0.08);
+        col = mix(col, fogColor, fogAmount);
+      }
       
       return vec4(col, 1.0);
     }

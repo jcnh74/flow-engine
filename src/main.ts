@@ -53,6 +53,32 @@ function hueRot(c: number[], deg: number) { // YIQ rotation
   const i2 = i * ca - q * sa, q2 = i * sa + q * ca;
   return [y + .956 * i2 + .621 * q2, y - .272 * i2 - .647 * q2, y - 1.106 * i2 + 1.703 * q2].map(v => Math.min(1, Math.max(0, v)));
 }
+
+// Inigo Quilez cosine palette parameters
+// https://iquilezles.org/articles/palettes/
+function getCosinePaletteParams(paletteName: string, hueShift: number) {
+  const palettes: Record<string, { a: number[], b: number[], c: number[], d: number[] }> = {
+    'Liquid Spectrum': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 1.0, 1.0], d: [0.0, 0.33, 0.67] },
+    'Electric': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 1.0, 0.5], d: [0.8, 0.9, 0.3] },
+    'Glacier': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 0.7, 0.4], d: [0.0, 0.15, 0.2] },
+    'Sunset': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 0.5, 0.4], d: [0.0, 0.2, 0.5] },
+    'Neon Dreams': { a: [0.8, 0.5, 0.4], b: [0.2, 0.4, 0.2], c: [2.0, 1.0, 1.0], d: [0.0, 0.25, 0.25] },
+    'Cyberpunk': { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [2.0, 1.0, 0.0], d: [0.5, 0.2, 0.25] },
+    'Deep Space': { a: [0.3, 0.3, 0.5], b: [0.3, 0.3, 0.3], c: [0.5, 0.5, 1.0], d: [0.0, 0.1, 0.2] }
+  };
+  
+  const pal = palettes[paletteName] || palettes['Liquid Spectrum'];
+  
+  // Apply hue shift by rotating the d parameter
+  const shiftedD = pal.d.map((v, i) => (v + hueShift + i * 0.0) % 1.0);
+  
+  return {
+    a: new Float32Array(pal.a),
+    b: new Float32Array(pal.b),
+    c: new Float32Array(pal.c),
+    d: new Float32Array(shiftedD)
+  };
+}
 function cmykSafe(c: number[]) {
   const l = .299 * c[0] + .587 * c[1] + .114 * c[2]; const d = c.map(v => v - l); const m = Math.max(...d.map(Math.abs));
   const lim = .42 * (1 - Math.abs(l - .5) * .9); const k = m > lim ? lim / m : 1;
@@ -167,6 +193,7 @@ const P: any = {
   frShadow: 0.6, frMaxSteps: 128, frMaxDist: 20, frSurfDist: 0.6, frLightAz: 45, frLightEl: 35,
   frJuliaOrbit: false, frJuliaSpeed: 0.2, frFoldRot: 0, frCamOrbit: true, frCamOrbitSpeed: 0.3,
   frSlicePlane: false, frSlicePos: 0,
+  frFogDensity: 0.1, frFogStart: 5.0, frAOStrength: 3.0, frAORadius: 0.15, frShadowSharpness: 8.0,
   gcView: 'Eye level', gcYaw: 0, gcPitch: 10, gcDist: 4.5, gcHeight: 0.9, gcFov: 45, gcPanX: 0, gcPanZ: 0, gcAuto: false, gcAutoSpd: 3,
   lsCam: 0.85, lsPrim: 'sphere', lsRotRand: 1, lsSizeRand: 0.15, lsFlow: false, lsDetach: false, lsFlowU: 0.03, lsFlowV: -0.04, lsSSS: 1, cL0Pal: '(main)', cL1Pal: '(main)', cOPal: 'Liquid Spectrum', cL0H: 0, cL0S: 1, cL0C: 1, cL1H: 0.08, cL1S: 1, cL1C: 1, cOH: 0, cOS: 1.3, cOC: 1.05, cMix1: 'normal', cMixA1: 1, cMixO: 'normal', cMixAO: 0, cHueCycle: 0, cGrad: 'folds', beadMode: 'patchwork', pShape: 'voronoi', pScale: 4, pSoft: 0.15, pSeed: 3, pJit: 0.35, pDrift: 0, pFab: 0, pOff: 0, beadSolid: '#ffd27a', lsDripLen: 0.35, lsDripAmt: 0.25, lsStyle: 'Beads', lsCount: 32768, lsRadius: 0.0375, lsRand: 0.1, lsVisc: 0.08, lsCoh: 0.25, lsCohR: 0.3, lsBounce: 0.25, lsFric: 0.7, lsDamp: 0.4, lsDrip: 300, lsTurn: 0, lsFloor: -1.25, lsBoxX: 4, lsBoxZ: 2.5, lsTank: false, lsSlide: 0.15, lsSub: 2,
   lsFabric: true, lsHem: -5, lsFloorOn: true, lsFloorCol: '#4a505c', lsFloorRough: 0.42, lsAbsorb: 3, lsInflate: 1.3, lsGain: 1.6,
@@ -927,6 +954,23 @@ function renderFractal(T: Trails, vp: number[]) {
   gl.uniform3fv(u.uLightDir, lightDir);
   gl.uniform1f(u.uGlow, V.frGlow);
   gl.uniform1f(u.uShadowStr, V.frShadow);
+  
+  // IQ lighting enhancements
+  if (u.uFogDensity !== undefined) gl.uniform1f(u.uFogDensity, P.frFogDensity || 0.0);
+  if (u.uFogStart !== undefined) gl.uniform1f(u.uFogStart, P.frFogStart || 0.0);
+  if (u.uAOStrength !== undefined) gl.uniform1f(u.uAOStrength, P.frAOStrength || 3.0);
+  if (u.uAORadius !== undefined) gl.uniform1f(u.uAORadius, P.frAORadius || 0.15);
+  if (u.uShadowSharpness !== undefined) gl.uniform1f(u.uShadowSharpness, P.frShadowSharpness || 8.0);
+  
+  // Cosine palette (tied to unified palette system)
+  if (u.uCosinePaletteA !== undefined) {
+    const pal = getCosinePaletteParams(P.palette, P.hueShift);
+    gl.uniform3fv(u.uCosinePaletteA, pal.a);
+    gl.uniform3fv(u.uCosinePaletteB, pal.b);
+    gl.uniform3fv(u.uCosinePaletteC, pal.c);
+    gl.uniform3fv(u.uCosinePaletteD, pal.d);
+    gl.uniform1f(u.uPaletteOffset, P.paletteOffset || 0.0);
+  }
   
   // Reduce max steps for Auto mode
   const maxSteps = P.autoQuality ? Math.max(32, Math.floor(P.frMaxSteps * qualityScale)) : P.frMaxSteps;
