@@ -1,0 +1,14 @@
+[
+  {
+    "error": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n  - taking page screenshot\n"
+  },
+  {
+    "error": "page.goto: net::ERR_ABORTED at http://localhost:5193/?mode=Wall+Studio\nCall log:\n  - navigating to \"http://localhost:5193/?mode=Wall+Studio\", waiting until \"load\"\n"
+  },
+  {
+    "error": "page.goto: Target page, context or browser has been closed"
+  },
+  {
+    "error": "page.goto: Target page, context or browser has been closed"
+  }
+]

@@ -114,7 +114,7 @@ const P: any = {
   // Post FX (Phase 1)
   bloomStrength: 0.15, bloomThreshold2: 0.8, kickBloomAmount: 0.3, caStrength: 0.0, distortion: 0.0,
   // Quality governor (Issue 8)
-  resolutionScale: 1.0, autoQuality: false,
+  resolutionScale: 1.0, autoQuality: true,
   // Phase 3: MilkDrop-style feedback layer
   feedbackEnabled: false, feedbackDecay: 0.95, feedbackZoom: 1.0, feedbackRotate: 0.0,
   feedbackTranslateX: 0.0, feedbackTranslateY: 0.0, feedbackMix: 0.5,
@@ -761,6 +761,9 @@ let frame = 0; // Frame counter (for compatibility, but timing uses currentTime)
 let trails: Trails | undefined, frameRect = [0, 0, 1, 1], previewAspect = 16 / 9;
 let feedbackA: FB | null = null, feedbackB: FB | null = null, feedbackCurrent = 0;
 let tSim = 0, off2d = [0, 0], t3 = 0, tOrbit = 0;
+// Auto quality governor state
+let frameTimeEMA = 16.67; // Target: 60fps = 16.67ms
+let lastQualityAdjust = 0;
 function layout() {
   const dpr = Math.min(2, devicePixelRatio || 1);
   canvas.width = Math.floor(innerWidth * dpr); canvas.height = Math.floor(innerHeight * dpr);
@@ -947,6 +950,32 @@ function tick(now: number) {
   
   // FPS tracking
   fpsAcc += deltaNow; fpsN++; if (fpsAcc > 500) { fps = 1000 * fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
+  
+  // Auto quality governor with EMA + hysteresis
+  if (P.autoQuality) {
+    frameTimeEMA = frameTimeEMA * 0.9 + deltaNow * 0.1;
+    const now_ms = performance.now();
+    if (now_ms - lastQualityAdjust > 2000) { // Adjust every 2s max
+      const TARGET_HIGH = 14.5; // 68fps - scale up threshold
+      const TARGET_LOW = 18.0;  // 55fps - scale down threshold
+      const currentScale = P.resolutionScale;
+      let newScale = currentScale;
+      
+      if (frameTimeEMA > TARGET_LOW && currentScale > 0.5) {
+        // Too slow, reduce quality
+        newScale = Math.max(0.5, currentScale - 0.05);
+      } else if (frameTimeEMA < TARGET_HIGH && currentScale < 1.0) {
+        // Fast enough, increase quality
+        newScale = Math.min(1.0, currentScale + 0.05);
+      }
+      
+      if (newScale !== currentScale) {
+        P.resolutionScale = newScale;
+        layout(); // Reallocate buffers
+        lastQualityAdjust = now_ms;
+      }
+    }
+  }
   
   // Update audio analysis
   audioAnalyzer.update();
