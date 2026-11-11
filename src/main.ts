@@ -1098,6 +1098,22 @@ function tick(now: number) {
     const prevFB = feedbackCurrent === 0 ? feedbackA : feedbackB;
     const nextFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
     
+    // Debug: Sample feedback texture to find where contrast collapses
+    if (import.meta.env.DEV && frame % 30 === 0) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, prevFB.f);
+      const samples = new Float32Array(100 * 100 * 4);
+      gl.readPixels(0, 0, 100, 100, gl.RGBA, gl.FLOAT, samples);
+      let min = Infinity, max = -Infinity, sum = 0;
+      for (let i = 0; i < samples.length; i += 4) {
+        const luma = 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+        min = Math.min(min, luma);
+        max = Math.max(max, luma);
+        sum += luma;
+      }
+      const mean = sum / (samples.length / 4);
+      console.log(`Feedback texture - Min: ${min.toFixed(3)}, Max: ${max.toFixed(3)}, Mean: ${mean.toFixed(3)}`);
+    }
+    
     gl.bindFramebuffer(gl.FRAMEBUFFER, nextFB.f);
     gl.viewport(0, 0, nextFB.w, nextFB.h);
     gl.useProgram(feedback.p);

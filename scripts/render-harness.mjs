@@ -156,8 +156,9 @@ async function run() {
   console.log(`Launching Chrome with ${useGpu ? 'real GPU' : 'SwiftShader'}...`);
   
   const browser = await chromium.launch({
-    headless: true, // Use new headless mode
-    args: [...launchArgs, '--headless=new']
+    channel: useGpu ? 'chrome' : undefined,
+    headless: !useGpu, // Headed for --gpu (real GPU needs visible window)
+    args: useGpu ? launchArgs : [...launchArgs, '--headless=new']
   });
   
   const context = await browser.newContext({

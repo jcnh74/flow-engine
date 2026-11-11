@@ -295,15 +295,21 @@ void main() {
   
   uv += 0.5;
   
+  // Clamp UV to [0,1] to avoid sampling CLAMP_TO_EDGE gray borders
+  uv = clamp(uv, vec2(0.0), vec2(1.0));
+  
   // Sample previous frame with warp and apply decay
   vec3 echo = texture(uPrev, uv).rgb;
   
   // Apply decay to echo only (not to current frame)
   echo *= uDecay;
   
-  // Gamma boost on echo for contrast (like MilkDrop gammaadj)
-  // Boost low values more, keeps bright areas bright
-  echo = pow(echo, vec3(0.8));
+  // Gamma boost on echo for contrast, but only where there's content
+  // Threshold at 0.01 to avoid boosting noise floor to mid-gray
+  float echoLuma = dot(echo, vec3(0.2126, 0.7152, 0.0722));
+  if (echoLuma > 0.01) {
+    echo = pow(echo, vec3(0.85));  // Gentler boost (was 0.8)
+  }
   
   // Apply hue drift to echo
   if (abs(uHueDrift) > 0.001) {
