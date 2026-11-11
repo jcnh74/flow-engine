@@ -2612,6 +2612,16 @@ if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const i
   loadPresetFromGallery,
   gui,
   PALETTES,
+  // Expose readPixelsFromHDR for e2e tests (reads from HDR target before tonemap)
+  readPixelsFromHDR: (x: number, y: number, w: number, h: number) => {
+    if (!hdrComp) return null;
+    const pixels = new Uint8Array(w * h * 4);
+    const prevFB = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, prevFB);
+    return pixels;
+  },
 };
 (window as any).__PRESET_GALLERY = PRESET_GALLERY;
 

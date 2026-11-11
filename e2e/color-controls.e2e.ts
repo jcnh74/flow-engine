@@ -248,13 +248,30 @@ async function waitFrames(page: any, frames: number): Promise<void> {
 async function capturePixelStats(page: any): Promise<PixelStats> {
   return await page.evaluate(() => {
     const canvas = document.getElementById('c') as HTMLCanvasElement;
-    const gl = canvas.getContext('webgl2');
-    if (!gl) throw new Error('No WebGL2 context');
+    const engine = (window as any).engine;
     
+    // Use engine.readPixelsFromHDR to read from HDR target before tonemap
+    // This avoids the preserveDrawingBuffer=false issue where default FB is cleared after present
     const w = Math.min(canvas.width, 256);
     const h = Math.min(canvas.height, 256);
-    const pixels = new Uint8Array(w * h * 4);
-    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    let pixels: Uint8Array;
+    
+    if (engine && engine.readPixelsFromHDR) {
+      pixels = engine.readPixelsFromHDR(0, 0, w, h);
+      if (!pixels) {
+        // Fallback to default FB if HDR target not available
+        const gl = canvas.getContext('webgl2');
+        if (!gl) throw new Error('No WebGL2 context');
+        pixels = new Uint8Array(w * h * 4);
+        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      }
+    } else {
+      // Fallback for old code
+      const gl = canvas.getContext('webgl2');
+      if (!gl) throw new Error('No WebGL2 context');
+      pixels = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    }
     
     let sumR = 0, sumG = 0, sumB = 0, sumLuma = 0;
     let maxLuma = 0;
