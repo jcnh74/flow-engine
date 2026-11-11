@@ -165,6 +165,9 @@ float lum3(vec3 c){ return dot(c,vec3(.299,.587,.114)); }
 vec3 hueR(vec3 c,float h){ float a=h*6.2831853; vec3 k=vec3(.57735); float ca=cos(a); return c*ca+cross(k,c)*sin(a)+k*dot(k,c)*(1.-ca); }
 vec3 lcol(int row,float t){ vec4 k=row==0?uLC0:(row==1?uLC1:uLC2); vec3 c=texture(uPalL,vec2(fract(t),(float(row)+.5)/3.)).rgb;
   c=hueR(c,k.x+uHueT); float l=lum3(c); c=mix(vec3(l),c,k.y); c=(c-.5)*k.z+.5; return clamp(c,0.,4.); }
+// OKLab RGB-to-Lab for perceptual saturation (R26: fix Wall sat=2)
+vec3 rgbToOklab(vec3 rgb){ float l=.4122*rgb.r+.5363*rgb.g+.0514*rgb.b, m=.2119*rgb.r+.6807*rgb.g+.1074*rgb.b, s=.0883*rgb.r+.2817*rgb.g+.6300*rgb.b; l=pow(l,1./3.); m=pow(m,1./3.); s=pow(s,1./3.); return vec3(.2105*l+.7936*m-.0041*s, 1.9780*l-2.4286*m+.4506*s, .0259*l+.7828*m-.8087*s); }
+vec3 oklabToRgb(vec3 lab){ float l=lab.x+.3963*lab.y+.2158*lab.z, m=lab.x-.1056*lab.y-.0639*lab.z, s=lab.x-.0895*lab.y-1.2915*lab.z; l=l*l*l; m=m*m*m; s=s*s*s; return vec3(4.0767*l-3.3077*m+.2310*s, -1.2684*l+2.6098*m-.3413*s, -.0042*l-.7034*m+1.7076*s); }
 vec3 setLum(vec3 c,float l){ return clamp(c+(l-lum3(c)),0.,1.); }
 float sat3(vec3 c){ return max(c.r,max(c.g,c.b))-min(c.r,min(c.g,c.b)); }
 vec3 blendM(int m,vec3 b,vec3 s){
@@ -274,7 +277,8 @@ void main(){
   vec3 alb=lcol(0,t); if(vL>.5){ vec3 top=lcol(1,t); alb=mix(top,blendM(uMix1,alb,top),uMixA1); }
   if(uPFab>0.) alb=mix(alb,patchCol(vL>.5?1:0,vUV+vec2(uPOff)),uPFab);
   if(uMat>0){ vec3 matC=uWallPatch==1?patchCol(0,vUV):uMatCol; alb=mix(matC,alb,uPalMix); }
-  float l=dot(alb,vec3(.299,.587,.114)); alb=max(mix(vec3(l),alb,uSat),0.)*uBright;
+  // R26: OKLab chroma scaling for uSat > 1.0 (fixes Wall sat=2 weak response)
+  if(uSat>1.01){ vec3 lab=rgbToOklab(max(alb,vec3(0))); float chroma=sqrt(lab.y*lab.y+lab.z*lab.z); if(chroma>.001){ float chromaScale=pow(uSat,1.5); float newChroma=chroma*chromaScale; lab.y*=newChroma/chroma; lab.z*=newChroma/chroma; } alb=max(oklabToRgb(lab),vec3(0)); } else { float l=dot(alb,vec3(.299,.587,.114)); alb=max(mix(vec3(l),alb,uSat),0.); } alb*=uBright;
   if(uMat>0){ vec3 col; float dd=length(uEye-vW); float fg=1.-exp(-max(dd-uFogStart,0.)*uFog);
     if(uMat==1){ // water
       vec2 q=vUV*38.+vec2(uWT2*.6,uWT2*.4); float e=.05; float h0=mn(q)+mn(q*2.3+3.)*.5; vec2 gr=vec2(mn(q+vec2(e,0))+mn((q+vec2(e,0))*2.3+3.)*.5-h0, mn(q+vec2(0,e))+mn((q+vec2(0,e))*2.3+3.)*.5-h0)/e;

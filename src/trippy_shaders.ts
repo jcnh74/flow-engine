@@ -250,22 +250,23 @@ vec3 renderKaleido(vec2 uv) {
   // This gives the luma key dark regions to contrast against
   float fb = uKaleidoFeedback * (1.0 + uMidEnv * 0.3);
   
-  // Radial lines (bright spokes) - softer falloff for more coverage
+  // Much softer pattern for 25%+ coverage and full palette span
+  // R26: Gentler falloff (pow 4) and wider base to cover more pixels
   float spokeAngle = mod(a * segments * 2.0, 6.28318);
-  float spokes = pow(1.0 - abs(sin(spokeAngle * 0.5)), 8.0);  // Was 12.0, now 8.0 for wider spokes
+  float spokes = pow(1.0 - abs(sin(spokeAngle * 0.5)), 4.0);  // Was 8.0, now 4.0 for much wider spokes
   
-  // Concentric rings (bright circles) - softer falloff
-  float rings = pow(1.0 - abs(sin(r * 8.0 * fb - uTime * 2.0)), 6.0);  // Was 8.0, now 6.0 for wider rings
+  // Rings with gentler falloff for continuous coverage
+  float rings = pow(1.0 - abs(sin(r * 8.0 * fb - uTime * 2.0)), 4.0);  // Was 6.0, now 4.0 for wider rings
   
-  // Combine: softer pattern for better base coverage
-  float pattern = max(spokes * 0.8, rings * 0.6);  // Increased from 0.7/0.5 to 0.8/0.6
+  // Combine with higher floor to ensure 25%+ lit pixels
+  float pattern = max(spokes * 0.9, rings * 0.7);  // Increased from 0.8/0.6 to 0.9/0.7
   
-  // Animated modulation - gentler for more stable base
-  pattern *= (0.6 + 0.4 * sin(kp.x * 5.0 * fb + uTime)) * (0.6 + 0.4 * sin(kp.y * 5.0 * fb - uTime * 0.7));  // Was 0.5+0.5, now 0.6+0.4
+  // Less aggressive modulation to maintain base coverage
+  pattern *= (0.7 + 0.3 * sin(kp.x * 5.0 * fb + uTime)) * (0.7 + 0.3 * sin(kp.y * 5.0 * fb - uTime * 0.7));
   
-  // Sample palette by angle and radius (with hueShift applied)
-  // This colors the lines BEFORE feedback so they aren't white
-  float paletteCoord = fract(a / 6.28318 + r * 0.3 + uTime * 0.05);
+  // Sample palette across FULL 0..1 range using multiple varying coords
+  // R26: Use both angle AND radius to sweep entire palette, not just narrow band
+  float paletteCoord = fract(a / 6.28318 * 2.0 + r * 0.5 + uTime * 0.1);  // Doubled angle influence, increased radius
   vec3 paletteColor = getPaletteColor(paletteCoord);
   
   // DO NOT apply saturation here - applyColorTransforms does it at the end
