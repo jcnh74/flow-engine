@@ -12,6 +12,7 @@ const args = process.argv.slice(2);
 const urlArg = args.find(a => a.startsWith('--url='));
 const url = urlArg ? urlArg.split('=')[1] : 'http://127.0.0.1:5193';
 const outDir = './proof-screenshots';
+const useGpu = args.includes('--gpu');
 
 mkdirSync(outDir, { recursive: true });
 
@@ -135,11 +136,14 @@ async function captureMode(page, modeName, params = {}) {
 }
 
 async function run() {
-  console.log('🚀 Render Harness with SwiftShader\n');
+  console.log(`🚀 Render Harness ${useGpu ? 'with Real GPU' : 'with SwiftShader'}\n`);
   console.log(`URL: ${url}`);
   console.log(`Output: ${outDir}\n`);
   
-  const launchArgs = [
+  const launchArgs = useGpu ? [
+    '--no-sandbox',
+    '--disable-setuid-sandbox'
+  ] : [
     '--use-angle=swiftshader',
     '--enable-unsafe-swiftshader',
     '--ignore-gpu-blocklist',
@@ -149,7 +153,7 @@ async function run() {
     '--disable-dev-shm-usage'
   ];
   
-  console.log('Launching Chrome with SwiftShader...');
+  console.log(`Launching Chrome with ${useGpu ? 'real GPU' : 'SwiftShader'}...`);
   
   const browser = await chromium.launch({
     headless: true, // Use new headless mode

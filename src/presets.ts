@@ -314,20 +314,21 @@ export const PRESET_GALLERY: Preset[] = [
     }
   },
   
-  // Phase 3: MilkDrop-style feedback presets
+  // Phase 3: MilkDrop-style feedback presets (tuned for std > 10, MAD > 0.5)
   {
     name: 'Feedback: Spiral Dreams',
     mode: 'Tunnel',
     description: 'Classic spiral feedback with rotation (homage to Rovastar)',
     params: {
-      trippySpeed: 0.8,
+      trippySpeed: 1.2,
       feedbackEnabled: true,
-      feedbackMix: 0.7,
-      feedbackDecay: 0.98,
-      feedbackZoom: 0.995,
-      feedbackRotate: 0.02,
-      feedbackHueDrift: 0.01,
-      exposure: 1.2,
+      feedbackMix: 0.85,        // More echo blend
+      feedbackDecay: 0.96,      // More decay for shorter trails
+      feedbackZoom: 0.99,       // Stronger zoom out
+      feedbackRotate: 0.035,    // More rotation
+      feedbackHueDrift: 0.015,  // More color shift
+      exposure: 1.4,
+      bloomStrength: 0.2,
       stops: [[0, '#ff0080'], [0.5, '#8000ff'], [1, '#00ffff']]
     }
   },
@@ -336,14 +337,16 @@ export const PRESET_GALLERY: Preset[] = [
     mode: 'Kaleido',
     description: 'Kaleidoscopic feedback trails (homage to Geiss)',
     params: {
-      trippySpeed: 1.0,
+      trippySpeed: 1.4,
       feedbackEnabled: true,
-      feedbackMix: 0.6,
-      feedbackDecay: 0.96,
-      feedbackZoom: 1.002,
-      feedbackKaleido: 6,
-      feedbackNoise: 0.02,
-      exposure: 1.3,
+      feedbackMix: 0.75,        // Strong echo
+      feedbackDecay: 0.94,      // More decay for visibility
+      feedbackZoom: 1.005,      // Zoom in
+      feedbackKaleido: 8,       // More folds
+      feedbackNoise: 0.035,     // More displacement
+      feedbackRotate: 0.02,     // Add rotation
+      exposure: 1.5,
+      bloomStrength: 0.25,
       stops: [[0, '#ffff00'], [0.33, '#ff00ff'], [0.66, '#00ffff'], [1, '#ffff00']]
     }
   },
@@ -352,14 +355,16 @@ export const PRESET_GALLERY: Preset[] = [
     mode: 'Plasma',
     description: 'Noise-displaced feedback (homage to Flexi)',
     params: {
-      trippySpeed: 1.2,
+      trippySpeed: 1.5,
       feedbackEnabled: true,
-      feedbackMix: 0.8,
-      feedbackDecay: 0.97,
-      feedbackZoom: 0.998,
-      feedbackNoise: 0.04,
-      feedbackHueDrift: 0.005,
-      exposure: 1.1,
+      feedbackMix: 0.9,         // Very strong echo
+      feedbackDecay: 0.93,      // Faster decay
+      feedbackZoom: 0.995,      // Zoom out
+      feedbackNoise: 0.06,      // Strong noise displacement
+      feedbackHueDrift: 0.012,
+      feedbackRotate: 0.015,
+      exposure: 1.3,
+      bloomStrength: 0.2,
       stops: [[0, '#ff4400'], [0.5, '#ff00ff'], [1, '#4400ff']]
     }
   },
@@ -370,14 +375,17 @@ export const PRESET_GALLERY: Preset[] = [
     params: {
       frType: 0,
       frPower: 8,
-      frRotSpeed: 0.3,
+      frRotSpeed: 0.4,
+      frCamOrbit: true,
       feedbackEnabled: true,
-      feedbackMix: 0.65,
-      feedbackDecay: 0.985,
-      feedbackZoom: 1.001,
-      feedbackRotate: 0.01,
-      feedbackKaleido: 4,
-      exposure: 1.0,
+      feedbackMix: 0.8,         // Strong echo
+      feedbackDecay: 0.95,      // More decay
+      feedbackZoom: 1.003,      // Zoom in
+      feedbackRotate: 0.018,
+      feedbackKaleido: 6,       // More folds
+      feedbackNoise: 0.025,
+      exposure: 1.2,
+      bloomStrength: 0.18,
       stops: [[0, '#0033ff'], [0.5, '#ff00aa'], [1, '#ffaa00']]
     }
   }

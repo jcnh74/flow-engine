@@ -296,17 +296,25 @@ void main() {
   uv += 0.5;
   
   // Sample previous frame with warp and apply decay
-  vec3 prev = texture(uPrev, uv).rgb * uDecay;
+  vec3 echo = texture(uPrev, uv).rgb;
   
-  // Apply hue drift to feedback
+  // Apply decay to echo only (not to current frame)
+  echo *= uDecay;
+  
+  // Gamma boost on echo for contrast (like MilkDrop gammaadj)
+  // Boost low values more, keeps bright areas bright
+  echo = pow(echo, vec3(0.8));
+  
+  // Apply hue drift to echo
   if (abs(uHueDrift) > 0.001) {
-    prev = hueShift(prev, uHueDrift);
+    echo = hueShift(echo, uHueDrift);
   }
   
   vec3 curr = texture(uCurrent, vUv).rgb;
   
-  // Mix feedback with current frame
-  vec3 result = mix(curr, curr + prev, uMix);
+  // Additive composite: fresh scene on top, echo added underneath
+  // This keeps contrast and saturation like MilkDrop
+  vec3 result = curr + echo * uMix;
   
   fragColor = vec4(result, 1.0);
 }
