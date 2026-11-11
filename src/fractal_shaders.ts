@@ -400,9 +400,7 @@ void main() {
   // Raymarch
   vec4 col = raymarch(ro, rd);
   
-  // Gamma correction
-  col.rgb = pow(col.rgb, vec3(0.4545));
-  
+  // Output linear HDR (no gamma - tonemap handles it in Phase 1)
   fragColor = col;
 }`;
 

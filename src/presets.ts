@@ -312,6 +312,74 @@ export const PRESET_GALLERY: Preset[] = [
       trippySpeed: 1.0,
       stops: [[0, '#000000'], [0.5, '#330066'], [1, '#660099']]
     }
+  },
+  
+  // Phase 3: MilkDrop-style feedback presets
+  {
+    name: 'Feedback: Spiral Dreams',
+    mode: 'Tunnel',
+    description: 'Classic spiral feedback with rotation (homage to Rovastar)',
+    params: {
+      trippySpeed: 0.8,
+      feedbackEnabled: true,
+      feedbackMix: 0.7,
+      feedbackDecay: 0.98,
+      feedbackZoom: 0.995,
+      feedbackRotate: 0.02,
+      feedbackHueDrift: 0.01,
+      exposure: 1.2,
+      stops: [[0, '#ff0080'], [0.5, '#8000ff'], [1, '#00ffff']]
+    }
+  },
+  {
+    name: 'Feedback: Kaleidoscope Echo',
+    mode: 'Kaleido',
+    description: 'Kaleidoscopic feedback trails (homage to Geiss)',
+    params: {
+      trippySpeed: 1.0,
+      feedbackEnabled: true,
+      feedbackMix: 0.6,
+      feedbackDecay: 0.96,
+      feedbackZoom: 1.002,
+      feedbackKaleido: 6,
+      feedbackNoise: 0.02,
+      exposure: 1.3,
+      stops: [[0, '#ffff00'], [0.33, '#ff00ff'], [0.66, '#00ffff'], [1, '#ffff00']]
+    }
+  },
+  {
+    name: 'Feedback: Plasma Warp',
+    mode: 'Plasma',
+    description: 'Noise-displaced feedback (homage to Flexi)',
+    params: {
+      trippySpeed: 1.2,
+      feedbackEnabled: true,
+      feedbackMix: 0.8,
+      feedbackDecay: 0.97,
+      feedbackZoom: 0.998,
+      feedbackNoise: 0.04,
+      feedbackHueDrift: 0.005,
+      exposure: 1.1,
+      stops: [[0, '#ff4400'], [0.5, '#ff00ff'], [1, '#4400ff']]
+    }
+  },
+  {
+    name: 'Feedback: Fractal Echo',
+    mode: '3D Fractal',
+    description: 'Deep fractal feedback trails (homage to Mstress)',
+    params: {
+      frType: 0,
+      frPower: 8,
+      frRotSpeed: 0.3,
+      feedbackEnabled: true,
+      feedbackMix: 0.65,
+      feedbackDecay: 0.985,
+      feedbackZoom: 1.001,
+      feedbackRotate: 0.01,
+      feedbackKaleido: 4,
+      exposure: 1.0,
+      stops: [[0, '#0033ff'], [0.5, '#ff00aa'], [1, '#ffaa00']]
+    }
   }
 ];
 

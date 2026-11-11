@@ -118,6 +118,7 @@ const P: any = {
   // Phase 3: MilkDrop-style feedback layer
   feedbackEnabled: false, feedbackDecay: 0.95, feedbackZoom: 1.0, feedbackRotate: 0.0,
   feedbackTranslateX: 0.0, feedbackTranslateY: 0.0, feedbackMix: 0.5,
+  feedbackKaleido: 0, feedbackNoise: 0.0, feedbackHueDrift: 0.0,
   lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.0, vibrance: 0.0,
   vignetteStrength: 0.0, vignetteRadius: 1.2, grainStrength: 0.0,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
@@ -128,7 +129,7 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'gStrength','gAz','gEl','mass','stiffness','damping','wind','windAz','floor','cohesion','gBlend','stream','pLife','vmax','pTurb','wellG','pWidth','streak','pGain','dof','fabricUnder','pColorBySpeed',
   'gH','gW','gCurv','gDensity','gWind','gWindAz','gGustK','gGustSpeed','gcDist','gcHeight','gcFov','gDry','hueShift','cHueCycle',
   'lsRadius','lsDrip','lsVisc','lsCoh',
-  'feedbackMix','feedbackDecay','feedbackZoom','feedbackRotate','feedbackTranslateX','feedbackTranslateY',
+  'feedbackMix','feedbackDecay','feedbackZoom','feedbackRotate','feedbackTranslateX','feedbackTranslateY','feedbackKaleido','feedbackNoise','feedbackHueDrift',
   'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos',
   'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
@@ -1100,9 +1101,11 @@ function tick(now: number) {
     gl.bindTexture(gl.TEXTURE_2D, hdrComp.t);
     gl.uniform1i(feedback.u.uCurrent, 1);
     
-    // Audio-driven modulation
+    // Audio-driven modulation (kick→zoom, bass→warp, onset→hue)
     const kickZoom = audioAnalyzer.state.kickEnv * 0.1;
     const bassWarp = audioAnalyzer.state.bassEnv * 0.02;
+    const bassNoise = audioAnalyzer.state.bassEnv * 0.03;
+    const onsetHue = audioAnalyzer.state.onset * Math.PI;
     
     gl.uniform1f(feedback.u.uDecay, P.feedbackDecay);
     gl.uniform1f(feedback.u.uZoom, P.feedbackZoom + kickZoom);
@@ -1110,16 +1113,26 @@ function tick(now: number) {
     gl.uniform2f(feedback.u.uTranslate, P.feedbackTranslateX, P.feedbackTranslateY);
     gl.uniform1f(feedback.u.uMix, P.feedbackMix);
     gl.uniform1f(feedback.u.uTime, currentTime);
+    gl.uniform1f(feedback.u.uKaleido, P.feedbackKaleido);
+    gl.uniform1f(feedback.u.uNoiseAmt, P.feedbackNoise + bassNoise);
+    gl.uniform1f(feedback.u.uHueDrift, P.feedbackHueDrift + onsetHue);
     
     quad();
     
     // Swap buffers
     feedbackCurrent = 1 - feedbackCurrent;
     
-    // Replace hdrComp with feedback result
-    const oldComp3 = hdrComp;
-    hdrComp = nextFB;
-    // Don't delete oldComp3 - it's tempGrade which we need to keep
+    // Blit feedback result back to full-canvas hdrComp (don't replace it to avoid letterboxing)
+    // This ensures scaled renders still fill the canvas
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    gl.viewport(0, 0, hdrComp.w, hdrComp.h);
+    gl.useProgram(tonemap.p); // Reuse tonemap for simple blit
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, nextFB.t);
+    gl.uniform1i(tonemap.u.uSrc, 0);
+    gl.uniform1f(tonemap.u.uExposure, 1.0);
+    gl.uniform1i(tonemap.u.uMode, 0); // AgX
+    quad();
   }
   
   // Final tonemap to screen

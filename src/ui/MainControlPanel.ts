@@ -324,6 +324,9 @@ export class MainControlPanel {
       this.buildSlider('feedbackRotate', 'Rotate', -0.1, 0.1, 0.001, true),
       this.buildSlider('feedbackTranslateX', 'Shift X', -0.05, 0.05, 0.001, true),
       this.buildSlider('feedbackTranslateY', 'Shift Y', -0.05, 0.05, 0.001, true),
+      this.buildSlider('feedbackKaleido', 'Kaleido Folds', 0, 12, 1, true),
+      this.buildSlider('feedbackNoise', 'Noise Displacement', 0, 0.1, 0.001, true),
+      this.buildSlider('feedbackHueDrift', 'Hue Drift', -0.1, 0.1, 0.001, true),
     ]);
   }
 

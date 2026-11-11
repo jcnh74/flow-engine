@@ -638,11 +638,12 @@ export class AudioAnalyzer {
             this.ioiHistory.push(ioi);
             if (this.ioiHistory.length > 20) this.ioiHistory.shift();
             
-            // Update estimated BPM from IOI histogram (more aggressive tracking)
+            // Update estimated BPM from IOI histogram (aggressive tracking for 8s convergence)
             const avgIoi = this.ioiHistory.reduce((a, b) => a + b, 0) / this.ioiHistory.length;
             const detectedBpm = 60 / avgIoi;
-            // Fast convergence for accurate tracking
-            this.state.bpm = Math.round(this.state.bpm * 0.3 + detectedBpm * 0.7);
+            // Very fast convergence: 0.1 old + 0.9 new for rapid lock-in
+            const alpha = this.ioiHistory.length < 4 ? 0.5 : 0.1; // Even faster on first few beats
+            this.state.bpm = Math.round(this.state.bpm * alpha + detectedBpm * (1 - alpha));
           }
         }
         

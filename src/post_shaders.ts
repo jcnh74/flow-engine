@@ -208,7 +208,7 @@ void main() {
 
 // Composite bloom layers
 // MilkDrop-style feedback/warp shader (inspired by Butterchurn MIT licensed)
-// Per-pixel UV warp with decay, zoom, rotation, and audio modulation
+// Per-pixel UV warp with decay, zoom, rotation, kaleido fold, and noise displacement
 export const FEEDBACK_FS = `#version 300 es
 precision highp float;
 in vec2 vUv;
@@ -222,9 +222,65 @@ uniform float uRotate;
 uniform vec2 uTranslate;
 uniform float uMix;
 uniform float uTime;
+uniform float uKaleido;     // Kaleidoscope fold count
+uniform float uNoiseAmt;    // Displacement noise amount
+uniform float uHueDrift;    // Hue shift per frame
+
+// FBM noise for displacement (from IQ techniques)
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), f.x),
+    mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x),
+    f.y
+  );
+}
+
+vec2 fbm(vec2 p) {
+  float a = 1.0, f = 1.0;
+  vec2 d = vec2(0.0);
+  for (int i = 0; i < 3; i++) {
+    d += a * vec2(noise(p * f), noise(p * f + 100.0));
+    a *= 0.5;
+    f *= 2.0;
+  }
+  return d;
+}
+
+// Hue shift
+vec3 hueShift(vec3 color, float shift) {
+  const vec3 k = vec3(0.57735, 0.57735, 0.57735);
+  float cosAngle = cos(shift);
+  return color * cosAngle + cross(k, color) * sin(shift) + k * dot(k, color) * (1.0 - cosAngle);
+}
 
 void main() {
   vec2 uv = vUv - 0.5;
+  
+  // Kaleidoscope fold
+  if (uKaleido > 0.5) {
+    float angle = atan(uv.y, uv.x);
+    float folds = floor(uKaleido);
+    float sector = 6.28318 / folds;
+    angle = mod(angle, sector);
+    if (mod(floor(angle / sector * folds), 2.0) > 0.5) {
+      angle = sector - angle;
+    }
+    float r = length(uv);
+    uv = vec2(cos(angle), sin(angle)) * r;
+  }
+  
+  // Displacement noise
+  if (uNoiseAmt > 0.001) {
+    vec2 displacement = fbm(uv * 3.0 + uTime * 0.2) - 0.5;
+    uv += displacement * uNoiseAmt;
+  }
   
   // Apply zoom
   uv /= uZoom;
@@ -241,6 +297,12 @@ void main() {
   
   // Sample previous frame with warp and apply decay
   vec3 prev = texture(uPrev, uv).rgb * uDecay;
+  
+  // Apply hue drift to feedback
+  if (abs(uHueDrift) > 0.001) {
+    prev = hueShift(prev, uHueDrift);
+  }
+  
   vec3 curr = texture(uCurrent, vUv).rgb;
   
   // Mix feedback with current frame

@@ -49,7 +49,8 @@ describe('Phase 2 Audio Analysis', () => {
         // Update BPM from IOI
         const avgIoi = (analyzer as any).ioiHistory.reduce((a: number, b: number) => a + b, 0) / (analyzer as any).ioiHistory.length;
         const detectedBpm = 60 / avgIoi;
-        analyzer.state.bpm = Math.round(analyzer.state.bpm * 0.3 + detectedBpm * 0.7);
+        const alpha = (analyzer as any).ioiHistory.length < 4 ? 0.5 : 0.1;
+        analyzer.state.bpm = Math.round(analyzer.state.bpm * alpha + detectedBpm * (1 - alpha));
       }
     }
     
@@ -81,7 +82,8 @@ describe('Phase 2 Audio Analysis', () => {
         
         const avgIoi = (analyzer as any).ioiHistory.reduce((a: number, b: number) => a + b, 0) / (analyzer as any).ioiHistory.length;
         const detectedBpm = 60 / avgIoi;
-        analyzer.state.bpm = Math.round(analyzer.state.bpm * 0.3 + detectedBpm * 0.7);
+        const alpha = (analyzer as any).ioiHistory.length < 4 ? 0.5 : 0.1;
+        analyzer.state.bpm = Math.round(analyzer.state.bpm * alpha + detectedBpm * (1 - alpha));
       }
     }
     
@@ -113,7 +115,8 @@ describe('Phase 2 Audio Analysis', () => {
         
         const avgIoi = (analyzer as any).ioiHistory.reduce((a: number, b: number) => a + b, 0) / (analyzer as any).ioiHistory.length;
         const detectedBpm = 60 / avgIoi;
-        analyzer.state.bpm = Math.round(analyzer.state.bpm * 0.3 + detectedBpm * 0.7);
+        const alpha = (analyzer as any).ioiHistory.length < 4 ? 0.5 : 0.1;
+        analyzer.state.bpm = Math.round(analyzer.state.bpm * alpha + detectedBpm * (1 - alpha));
       }
     }
     
