@@ -339,17 +339,17 @@ export const PRESET_GALLERY: Preset[] = [
     mode: 'Kaleido',
     description: 'Kaleidoscopic feedback trails (homage to Geiss)',
     params: {
-      trippySpeed: 1.5,
+      trippySpeed: 1.4,
       feedbackEnabled: true,
-      feedbackMix: 0.82,        // Strong echo with lighten blend
-      feedbackDecay: 0.96,      // Slower decay for visibility
-      feedbackZoom: 1.008,      // More zoom in for kaleidoscope effect
-      feedbackKaleido: 6,       // Fewer folds (cleaner structure)
-      feedbackNoise: 0.028,     // Less displacement (preserve structure)
-      feedbackRotate: 0.025,    // Rotation for dynamics
-      exposure: 1.9,            // Higher exposure for luma key
-      bloomStrength: 0.15,      // Reduced bloom
-      bloomThreshold2: 1.6,     // Higher threshold
+      feedbackMix: 0.90,        // Higher mix like Spiral
+      feedbackDecay: 0.97,      // Match Spiral's decay
+      feedbackZoom: 1.01,       // Moderate zoom in
+      feedbackKaleido: 8,       // More folds for structure
+      feedbackNoise: 0.02,      // Minimal noise
+      feedbackRotate: 0.035,    // Match Spiral's rotation
+      exposure: 1.8,            // Match Spiral
+      bloomStrength: 0.12,      // Match Spiral
+      bloomThreshold2: 1.8,     // Match Spiral
       stops: [[0, '#ffff00'], [0.33, '#ff00ff'], [0.66, '#00ffff'], [1, '#ffff00']]
     }
   },
@@ -358,17 +358,17 @@ export const PRESET_GALLERY: Preset[] = [
     mode: 'Plasma',
     description: 'Noise-displaced feedback (homage to Flexi)',
     params: {
-      trippySpeed: 1.6,
+      trippySpeed: 1.5,
       feedbackEnabled: true,
-      feedbackMix: 0.92,        // Very strong echo with lighten
-      feedbackDecay: 0.95,      // Moderate decay for trails
-      feedbackZoom: 0.992,      // Zoom out for energy
-      feedbackNoise: 0.055,     // Strong noise displacement
-      feedbackHueDrift: 0.018,  // More hue shift for psychedelia
-      feedbackRotate: 0.022,    // More rotation
-      exposure: 2.0,            // High exposure for bright plasma
-      bloomStrength: 0.14,      // Reduced bloom
-      bloomThreshold2: 1.7,     // Higher threshold
+      feedbackMix: 0.88,        // Match Spiral
+      feedbackDecay: 0.97,      // Higher decay prevents decay to 0
+      feedbackZoom: 0.985,      // Match Spiral's zoom
+      feedbackNoise: 0.045,     // Moderate noise
+      feedbackHueDrift: 0.02,   // Match Spiral
+      feedbackRotate: 0.04,     // Slightly more rotation
+      exposure: 1.8,            // Match Spiral
+      bloomStrength: 0.12,      // Match Spiral
+      bloomThreshold2: 1.8,     // Match Spiral
       stops: [[0, '#ff4400'], [0.5, '#ff00ff'], [1, '#4400ff']]
     }
   },
@@ -379,18 +379,18 @@ export const PRESET_GALLERY: Preset[] = [
     params: {
       frType: 0,
       frPower: 8,
-      frRotSpeed: 0.5,          // Faster rotation for dynamics
+      frRotSpeed: 0.6,          // Fast rotation for dynamics
       frCamOrbit: true,
       feedbackEnabled: true,
-      feedbackMix: 0.85,        // Strong echo with lighten
-      feedbackDecay: 0.97,      // Slower decay for persistent trails
-      feedbackZoom: 1.005,      // More zoom in for depth
-      feedbackRotate: 0.025,    // More rotation
-      feedbackKaleido: 4,       // Fewer folds (preserve fractal detail)
-      feedbackNoise: 0.018,     // Less noise (keep structure clean)
-      exposure: 1.7,            // Higher exposure
-      bloomStrength: 0.11,      // Reduced bloom
-      bloomThreshold2: 1.9,     // High threshold (only fractal peaks)
+      feedbackMix: 0.88,        // Match Spiral
+      feedbackDecay: 0.97,      // Match Spiral
+      feedbackZoom: 0.985,      // Match Spiral (zoom out, not in)
+      feedbackRotate: 0.045,    // Match Spiral
+      feedbackKaleido: 0,       // No kaleido (preserve fractal structure)
+      feedbackNoise: 0.01,      // Minimal noise
+      exposure: 1.8,            // Match Spiral
+      bloomStrength: 0.12,      // Match Spiral
+      bloomThreshold2: 1.8,     // Match Spiral
       stops: [[0, '#0033ff'], [0.5, '#ff00aa'], [1, '#ffaa00']]
     }
   }

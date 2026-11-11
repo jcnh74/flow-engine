@@ -830,7 +830,8 @@ function renderFractal(T: Trails, vp: number[]) {
   gl.uniform1f(u.uPower, V.frPower);
   
   // Reduce quality for Auto mode to hit 60fps
-  const qualityScale = P.autoQuality ? Math.max(0.7, P.resolutionScale) : 1.0;
+  // More aggressive reduction when scale hits floor (0.5)
+  const qualityScale = P.autoQuality ? Math.max(0.5, P.resolutionScale) : 1.0;
   const iterations = Math.max(1, Math.min(32, Math.floor(P.frIter * qualityScale)));
   gl.uniform1i(u.uIterations, iterations);
   
