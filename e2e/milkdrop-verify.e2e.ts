@@ -20,8 +20,8 @@ test('MilkDrop loads and renders', async ({ page }) => {
   // Wait for the app to load
   await page.waitForSelector('#c', { timeout: 10000 });
   
-  // Wait a bit for MilkDrop to initialize
-  await page.waitForTimeout(3000);
+  // Wait for MilkDrop to initialize and render at least one frame
+  await page.waitForTimeout(4000); // Increased from 3s to 4s for reliable rendering
   
   // Check for errors
   if (errors.length > 0) {

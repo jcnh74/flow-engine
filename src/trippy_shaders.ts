@@ -62,6 +62,32 @@ vec3 hsv2rgb(vec3 c) {
   return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
+// YIQ hue rotation (proper hue shift that moves color bins)
+vec3 rotateHue(vec3 col, float degrees) {
+  if (abs(degrees) < 0.001) return col;
+  float angle = radians(degrees);
+  float s = sin(angle);
+  float c = cos(angle);
+  
+  // RGB to YIQ
+  float y = dot(col, vec3(0.299, 0.587, 0.114));
+  float i = dot(col, vec3(0.596, -0.274, -0.322));
+  float q = dot(col, vec3(0.211, -0.523, 0.312));
+  
+  // Rotate I and Q
+  float i2 = i * c - q * s;
+  float q2 = i * s + q * c;
+  
+  // YIQ to RGB
+  vec3 result = vec3(
+    y + 0.956 * i2 + 0.621 * q2,
+    y - 0.272 * i2 - 0.647 * q2,
+    y - 1.106 * i2 + 1.703 * q2
+  );
+  
+  return max(result, vec3(0.0)); // Clamp negative values
+}
+
 // Palette lookup with cycling
 vec3 getPaletteColor(float t) {
   if (uPaletteSize < 1) return vec3(0.5);
@@ -127,6 +153,9 @@ vec3 renderTunnel(vec2 uv) {
   glowColor = max(mix(vec3(luma), glowColor, uSat), 0.0);
   col += glow * glowColor * structure * (0.5 + uOnset * 1.0);
   
+  // Apply hue rotation to final color (moves dominant hue bin)
+  col = rotateHue(col, uHueShift * 360.0);
+  
   return col;
 }
 
@@ -189,8 +218,10 @@ vec3 renderKaleido(vec2 uv) {
   // Clamp to avoid clipping to white before tonemap
   col = min(col, vec3(8.0));
   
-  // TEMPORARY RED TINT TEST: If this tints the screen red, renderKaleido is the live path
-  col = mix(col, vec3(2.0, 0.0, 0.0), 0.3);
+  // RED TINT REMOVED after GPU verification confirmed renderKaleido is live path
+  
+  // Apply hue rotation to final color (moves dominant hue bin)
+  col = rotateHue(col, uHueShift * 360.0);
   
   return col;
 }
@@ -238,6 +269,9 @@ vec3 renderPlasma(vec2 uv) {
   
   // HDR boost (lower, exposure will be ~1.0)
   vec3 col = paletteColor * ridges * (1.0 + uMidEnv * 1.0 + uHighEnv * 1.0);
+  
+  // Apply hue rotation to final color (moves dominant hue bin)
+  col = rotateHue(col, uHueShift * 360.0);
   
   return col;
 }
@@ -290,6 +324,9 @@ vec3 renderMorph(vec2 uv) {
   
   // Kick pulse (HDR boost)
   col *= (1.2 + uKickEnv * 1.5 + uSnareEnv * 0.8);
+  
+  // Apply hue rotation to final color (moves dominant hue bin)
+  col = rotateHue(col, uHueShift * 360.0);
   
   return col;
 }

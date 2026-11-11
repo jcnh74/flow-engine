@@ -242,12 +242,15 @@ function updateMilkDropPresetDisplay(name: string) {
 
 // Track active mode separately from P.mode to detect actual changes
 let activeMode: string = 'Wall Studio';
+let lastModeChangeTime: number = 0;
 
 // Centralized mode switching - handles init/dispose and UI rebuild
 function setMode(newMode: string) {
   const oldMode = activeMode;
   activeMode = newMode;
   P.mode = newMode;
+  lastModeChangeTime = performance.now(); // Track mode change for watchdog grace period
+  recoverMsg = ''; // Clear any existing recovery banner
   console.log(`setMode: ${oldMode} -> ${newMode}`);
   
   // Initialize MilkDrop if entering that mode
@@ -1218,8 +1221,8 @@ function tick(now: number) {
   // Auto quality governor with EMA + hysteresis
   if (P.autoQuality) {
     frameTimeEMA = frameTimeEMA * 0.9 + deltaNow * 0.1;
-    const now_ms = performance.now();
-    if (now_ms - lastQualityAdjust > 2000) { // Adjust every 2s max
+    const nowQuality = performance.now();
+    if (nowQuality - lastQualityAdjust > 2000) { // Adjust every 2s max
       const TARGET_HIGH = 14.5; // 68fps - scale up threshold
       const TARGET_LOW = 18.0;  // 55fps - scale down threshold
       const currentScale = P.resolutionScale;
@@ -1236,7 +1239,7 @@ function tick(now: number) {
       if (newScale !== currentScale) {
         P.resolutionScale = newScale;
         layout(); // Reallocate buffers
-        lastQualityAdjust = now_ms;
+        lastQualityAdjust = nowQuality;
       }
     }
   }
@@ -1566,10 +1569,12 @@ function tick(now: number) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
   tonemapPass([0, 0, canvas.width, canvas.height]);
   
-  // Probe RIGHT AFTER final blit to read actual displayed pixels
-  // Store result for watchdog interval to check (fixes issue where probe() read cleared/wrong buffer)
-  if (frame >= 30) { // Skip early frames during warmup
+  // Probe RIGHT AFTER final blit, but throttle to ~1/sec to avoid stalling GPU pipeline
+  // Synchronous readPixels every frame dropped FPS from 60 to 52
+  const nowProbe = performance.now();
+  if (frame >= 30 && nowProbe - lastProbeTime > 1000) { // Throttle to ~1/sec
     lastProbeResult = probe();
+    // Note: lastProbeTime is updated in the watchdog interval when it checks, not here
   }
   
   // Debug: Check final screen output
@@ -1742,10 +1747,11 @@ let lastProbeResult: any = null; // Cache probe result from render loop for watc
 function probe() {
   // This is now called in the render loop RIGHT AFTER final tonemap blit to screen
   // so it reads the actual displayed pixels, not a cleared/intermediate buffer
+  // Throttled to ~1/sec to avoid stalling GPU pipeline (was dropping FPS from 60 to 52)
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   
-  // Sample downscaled full frame (64x64) to avoid missing sparse bright pixels
-  const sampleW = 64, sampleH = 64;
+  // Sample tiny downscaled area (16x16) to minimize GPU stall
+  const sampleW = 16, sampleH = 16;
   const px = new Uint8Array(sampleW * sampleH * 4);
   
   // Read from center of frame, scaled down
@@ -1826,12 +1832,15 @@ function recover(why: string, clearFeedback: boolean = false) {
 let lastProbeTime = 0;
 setInterval(() => {
   if (busy || P.paused || gl.isContextLost() || frame < 30) return;
+  const now = performance.now();
+  
+  // Grace period after mode switch (2.5s) to avoid false fires during init
+  if (now - lastModeChangeTime < 2500) return;
   
   // Skip watchdog for MilkDrop mode (it renders into offscreen canvas)
   if (P.mode === 'MilkDrop') return;
   
   // Throttle watchdog checks to ~2/sec
-  const now = performance.now();
   if (now - lastProbeTime < 500) return;
   lastProbeTime = now;
   

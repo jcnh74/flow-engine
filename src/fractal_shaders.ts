@@ -451,6 +451,32 @@ vec4 raymarch(vec3 ro, vec3 rd) {
   return vec4(bg, 0.0);
 }
 
+// YIQ hue rotation (proper hue shift that moves color bins)
+vec3 rotateHue(vec3 col, float degrees) {
+  if (abs(degrees) < 0.001) return col;
+  float angle = radians(degrees);
+  float s = sin(angle);
+  float c = cos(angle);
+  
+  // RGB to YIQ
+  float y = dot(col, vec3(0.299, 0.587, 0.114));
+  float i = dot(col, vec3(0.596, -0.274, -0.322));
+  float q = dot(col, vec3(0.211, -0.523, 0.312));
+  
+  // Rotate I and Q
+  float i2 = i * c - q * s;
+  float q2 = i * s + q * c;
+  
+  // YIQ to RGB
+  vec3 result = vec3(
+    y + 0.956 * i2 + 0.621 * q2,
+    y - 0.272 * i2 - 0.647 * q2,
+    y - 1.106 * i2 + 1.703 * q2
+  );
+  
+  return max(result, vec3(0.0)); // Clamp negative values
+}
+
 // Camera setup
 mat3 camera(vec3 ro, vec3 ta, float roll) {
   vec3 cw = normalize(ta - ro);
@@ -471,6 +497,10 @@ void main() {
   
   // Raymarch
   vec4 col = raymarch(ro, rd);
+  
+  // Apply hue rotation to final color (moves dominant hue bin)
+  // Need to pass hueShift via uniform - for now, this is a placeholder
+  // The actual hueShift will need to be added as a uniform to this shader
   
   // Output linear HDR (no gamma - tonemap handles it in Phase 1)
   fragColor = col;
