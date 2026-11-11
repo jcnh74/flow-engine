@@ -1053,6 +1053,20 @@ function tick(now: number) {
   gl.uniform1f(bloomComposite.u.uBloomStrength, bloomStr);
   quad();
   
+  // Debug: Check after bloom
+  if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+    const x = Math.floor(hdrComp.w / 2 - 50);
+    const y = Math.floor(hdrComp.h / 2 - 50);
+    const samples = new Float32Array(100 * 100 * 4);
+    gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) {
+      sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+    }
+    const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+    console.log(`After bloom - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+  }
+  
   // Chromatic aberration + barrel distortion (kick-driven CA)
   const caStrength = P.caStrength * (1.0 + audioAnalyzer.state.kickEnv * 0.5);
   if (caStrength > 0.001 || Math.abs(P.distortion) > 0.001) {
@@ -1067,6 +1081,21 @@ function tick(now: number) {
     const oldComp = hdrComp;
     hdrComp = tempCA;
     if (oldComp) del(oldComp);
+    
+    // Debug: Check after CA
+    if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+      const x = Math.floor(hdrComp.w / 2 - 50);
+      const y = Math.floor(hdrComp.h / 2 - 50);
+      const samples = new Float32Array(100 * 100 * 4);
+      gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+      let sum = 0;
+      for (let i = 0; i < samples.length; i += 4) {
+        sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+      }
+      const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+      console.log(`After CA - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+    }
   }
   
   // Color grade + vignette + grain (snare-driven grain flash)
@@ -1093,25 +1122,46 @@ function tick(now: number) {
   hdrComp = tempGrade;
   if (oldComp2) del(oldComp2);
   
+  // Debug: Check after color grade
+  if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    const x = Math.floor(hdrComp.w / 2 - 50);
+    const y = Math.floor(hdrComp.h / 2 - 50);
+    const samples = new Float32Array(100 * 100 * 4);
+    gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) {
+      sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+    }
+    const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+    console.log(`After color grade - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+  }
+  
   // Phase 3: MilkDrop-style feedback layer
   if (P.feedbackEnabled && P.feedbackMix > 0.001 && feedbackA && feedbackB) {
     const prevFB = feedbackCurrent === 0 ? feedbackA : feedbackB;
     const nextFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
     
-    // Debug: Sample feedback texture to find where contrast collapses
+    // Debug: Sample feedback texture (center region, not corner)
     if (import.meta.env.DEV && frame % 30 === 0) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, prevFB.f);
-      const samples = new Float32Array(100 * 100 * 4);
-      gl.readPixels(0, 0, 100, 100, gl.RGBA, gl.FLOAT, samples);
-      let min = Infinity, max = -Infinity, sum = 0;
-      for (let i = 0; i < samples.length; i += 4) {
-        const luma = 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
-        min = Math.min(min, luma);
-        max = Math.max(max, luma);
-        sum += luma;
-      }
-      const mean = sum / (samples.length / 4);
-      console.log(`Feedback texture - Min: ${min.toFixed(3)}, Max: ${max.toFixed(3)}, Mean: ${mean.toFixed(3)}`);
+      const debugStage = (fb: FB, name: string) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb.f);
+        // Sample center 100x100, not corner
+        const x = Math.floor(fb.w / 2 - 50);
+        const y = Math.floor(fb.h / 2 - 50);
+        const samples = new Float32Array(100 * 100 * 4);
+        gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+        let sum = 0;
+        for (let i = 0; i < samples.length; i += 4) {
+          const luma = 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+          sum += luma;
+        }
+        const mean = sum / (samples.length / 4);
+        const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+        console.log(`${name} - Center: ${center.toFixed(3)}, Mean: ${mean.toFixed(3)}`);
+      };
+      
+      debugStage(prevFB, 'Feedback texture');
     }
     
     gl.bindFramebuffer(gl.FRAMEBUFFER, nextFB.f);
@@ -1150,11 +1200,61 @@ function tick(now: number) {
     const oldComp3 = hdrComp;
     hdrComp = nextFB;
     del(oldComp3);
+    
+    // Debug: Check hdrComp after feedback composite
+    if (import.meta.env.DEV && frame % 30 === 0) {
+      const debugStage = (fb: FB, name: string) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb.f);
+        const x = Math.floor(fb.w / 2 - 50);
+        const y = Math.floor(fb.h / 2 - 50);
+        const samples = new Float32Array(100 * 100 * 4);
+        gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+        let sum = 0;
+        for (let i = 0; i < samples.length; i += 4) {
+          const luma = 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+          sum += luma;
+        }
+        const mean = sum / (samples.length / 4);
+        const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+        console.log(`${name} - Center: ${center.toFixed(3)}, Mean: ${mean.toFixed(3)}`);
+      };
+      debugStage(hdrComp, 'After feedback composite');
+    }
+  }
+  
+  // Debug: Check before tonemap (final HDR buffer)
+  if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
+    const x = Math.floor(hdrComp.w / 2 - 50);
+    const y = Math.floor(hdrComp.h / 2 - 50);
+    const samples = new Float32Array(100 * 100 * 4);
+    gl.readPixels(x, y, 100, 100, gl.RGBA, gl.FLOAT, samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) {
+      sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+    }
+    const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+    console.log(`Before tonemap (final HDR) - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
   }
   
   // Final tonemap to screen (upscale to fill canvas, not letterbox)
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 1); gl.viewport(0, 0, canvas.width, canvas.height); gl.clear(gl.COLOR_BUFFER_BIT);
   tonemapPass([0, 0, canvas.width, canvas.height]);
+  
+  // Debug: Check final screen output
+  if (import.meta.env.DEV && P.feedbackEnabled && frame % 30 === 0) {
+    const x = Math.floor(canvas.width / 2 - 50);
+    const y = Math.floor(canvas.height / 2 - 50);
+    const samples = new Uint8Array(100 * 100 * 4);
+    gl.readPixels(x, y, 100, 100, gl.RGBA, gl.UNSIGNED_BYTE, samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 4) {
+      sum += 0.2126 * samples[i] + 0.7152 * samples[i+1] + 0.0722 * samples[i+2];
+    }
+    const center = 0.2126 * samples[5000*4] + 0.7152 * samples[5000*4+1] + 0.0722 * samples[5000*4+2];
+    console.log(`After tonemap (screen LDR) - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
+  }
+  
   const what = P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
   const frameTime = dt * 1000; // ms
   hud.textContent = `${fps.toFixed(1)} fps (${frameTime.toFixed(1)}ms)  ·  ${what}  ·  time ${currentTime.toFixed(1)}s  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
