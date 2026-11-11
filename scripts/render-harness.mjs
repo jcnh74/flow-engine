@@ -17,9 +17,15 @@ const useGpu = args.includes('--gpu');
 mkdirSync(outDir, { recursive: true });
 
 async function captureMode(page, modeName, params = {}) {
-  console.log(`\n📸 Capturing: ${modeName}`);
+  const displayName = modeName || params.preset || 'Unknown';
+  console.log(`\n📸 Capturing: ${displayName}`);
   
-  const urlParams = new URLSearchParams({ mode: modeName, ...params });
+  // Build URL params (skip mode if null)
+  const urlParamsObj = { ...params };
+  if (modeName) {
+    urlParamsObj.mode = modeName;
+  }
+  const urlParams = new URLSearchParams(urlParamsObj);
   const fullUrl = `${url}?${urlParams}`;
   
   try {
@@ -216,9 +222,11 @@ async function run() {
   await browser.close();
   
   console.log('\n\n📋 Summary:');
+  let hasErrors = false;
   for (const result of results) {
     if (result.error) {
       console.log(`   ❌ ${result.error}`);
+      hasErrors = true;
     } else {
       const madStr = result.mad ? ` (MAD: ${result.mad.toFixed(2)})` : '';
       console.log(`   ✅ ${result.path}${madStr}`);
@@ -229,6 +237,12 @@ async function run() {
   const reportPath = join(outDir, 'results.json');
   writeFileSync(reportPath, JSON.stringify(results, null, 2));
   console.log(`\n📄 Report: ${reportPath}`);
+  
+  // Exit with error code if any tests failed
+  if (hasErrors) {
+    console.log('\n❌ Some tests failed');
+    process.exit(1);
+  }
 }
 
 run().catch(err => {
