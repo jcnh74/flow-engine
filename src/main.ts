@@ -2052,6 +2052,10 @@ if (q.get('preset')) { P.exportPreset = PRESETS.find(p => p.name.startsWith(q.ge
 if (q.get('orient')) P.orientation = q.get('orient');
 if (q.get('particles')) P.particles = +q.get('particles')!;
 if (q.get('seed')) P.seed = +q.get('seed')!;
+// Phase 3: Feedback URL parameters
+if (q.get('feedback')) P.feedbackEnabled = q.get('feedback') === '1';
+if (q.get('fbmix')) P.feedbackMix = +q.get('fbmix')!;
+if (q.get('fbdecay')) P.feedbackDecay = +q.get('fbdecay')!;
 if (q.get('palette')) { P.palette = q.get('palette'); stops = PALETTES[P.palette].map(s => [s[0], s[1]] as Stop); }
 if (q.get('hue')) P.hueShift = +q.get('hue')!;
 if (q.get('cmyk')) P.cmykSafe = true;
