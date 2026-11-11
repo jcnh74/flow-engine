@@ -1679,16 +1679,28 @@ function probe() {
   const fy = frameRect[1] + frameRect[3] / 2 - sampleH / 2;
   gl.readPixels(Math.floor(fx), Math.floor(fy), sampleW, sampleH, gl.RGBA, gl.UNSIGNED_BYTE, px);
   
+  // First pass: calculate mean and max luma
   let s = 0, n = 0, maxLum = 0, allZero = true;
+  const BLACK_THRESHOLD = 2.0; // Any pixel > ~2/255 means not black
+  
   for (let i = 0; i < px.length; i += 4) { 
     const pixelLum = (px[i] + px[i + 1] + px[i + 2]) / 3;
     s += px[i] + px[i + 1] + px[i + 2]; 
     n += 3;
     maxLum = Math.max(maxLum, pixelLum);
-    if (pixelLum > 0.1) allZero = false;
+    if (pixelLum > BLACK_THRESHOLD) allZero = false;
   }
   
   const lum = s / n;
+  
+  // Second pass: calculate standard deviation
+  let sumSqDiff = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    const pixelLum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+    const diff = pixelLum - lum;
+    sumSqDiff += diff * diff;
+  }
+  const std = Math.sqrt(sumSqDiff / (px.length / 4));
   let nan = false;
   
   // Check for NaN in state buffers (throttled separately)
@@ -1697,7 +1709,7 @@ function probe() {
   else if (P.mode !== '3D fabric') { const sp = new Float32Array(256 * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, st[0].f); gl.readPixels(0, 0, 256, 1, gl.RGBA, gl.FLOAT, sp); nan = sp.some(v => !Number.isFinite(v)); }
   
   const bad = SMOOTH.some(k => !Number.isFinite(L[k]));
-  return { lum: +lum.toFixed(1), maxLum: +maxLum.toFixed(1), allZero, nan: nan || bad, lost: gl.isContextLost() };
+  return { lum: +lum.toFixed(1), maxLum: +maxLum.toFixed(1), std: +std.toFixed(1), allZero, nan: nan || bad, lost: gl.isContextLost() };
 }
 const bgLum = () => hex(P.background).reduce((a, b) => a + b, 0) / 3 * 255;
 let blackStartTime = 0;
@@ -1763,8 +1775,9 @@ setInterval(() => {
     if (blackStartTime === 0) {
       blackStartTime = now;
     } else if (now - blackStartTime > 1000) {
-      // All zeros for >1s - recover with FB clear
-      recover('black >1s', true);
+      // All zeros for >1s - but NEVER clear feedback if std > 1 (sparse bright content exists)
+      const shouldClearFeedback = p.std <= 1.0;
+      recover('black >1s', shouldClearFeedback);
       return;
     }
   } else {

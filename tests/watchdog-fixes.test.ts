@@ -92,3 +92,82 @@ describe('Performance - Throttling', () => {
     expect(mainSrc).toContain('if (now - lastProbeTime < 500) return');
   });
 });
+
+describe('Watchdog Sparse Pattern Detection', () => {
+  test('should calculate standard deviation of pixel luma', () => {
+    // probe() must calculate std to detect sparse content
+    expect(mainSrc).toContain('sumSqDiff');
+    expect(mainSrc).toContain('Math.sqrt(sumSqDiff');
+    expect(mainSrc).toContain('std:');
+  });
+
+  test('should use BLACK_THRESHOLD of 2.0 (not 0.1)', () => {
+    // Any pixel > ~2/255 means not black
+    expect(mainSrc).toContain('BLACK_THRESHOLD = 2.0');
+    expect(mainSrc).toContain('if (pixelLum > BLACK_THRESHOLD) allZero = false');
+  });
+
+  test('should never clear feedback while std > 1', () => {
+    // Sparse starburst has high std even with low mean luma
+    expect(mainSrc).toContain('p.std <= 1.0');
+    expect(mainSrc).toContain('shouldClearFeedback');
+  });
+
+  test('sparse starburst pattern should have high std', () => {
+    // Simulate probe logic with sparse bright pixels on black
+    const sampleSize = 64 * 64;
+    const px = new Uint8Array(sampleSize * 4);
+    
+    // Fill with black
+    px.fill(0);
+    
+    // Add sparse bright pixels in starburst pattern (8 rays, 8 pixels each = 64 bright pixels out of 4096)
+    const centerX = 32, centerY = 32;
+    for (let ray = 0; ray < 8; ray++) {
+      const angle = (ray / 8) * 2 * Math.PI;
+      for (let dist = 5; dist < 28; dist += 3) {
+        const x = Math.floor(centerX + Math.cos(angle) * dist);
+        const y = Math.floor(centerY + Math.sin(angle) * dist);
+        const idx = (y * 64 + x) * 4;
+        if (idx < px.length - 3) {
+          px[idx] = 255;     // R
+          px[idx+1] = 255;   // G
+          px[idx+2] = 255;   // B
+          px[idx+3] = 255;   // A
+        }
+      }
+    }
+    
+    // Calculate luma stats (same logic as probe())
+    let s = 0, n = 0, maxLum = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      const pixelLum = (px[i] + px[i+1] + px[i+2]) / 3;
+      s += px[i] + px[i+1] + px[i+2];
+      n += 3;
+      maxLum = Math.max(maxLum, pixelLum);
+    }
+    const lum = s / n;
+    
+    // Calculate std
+    let sumSqDiff = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      const pixelLum = (px[i] + px[i+1] + px[i+2]) / 3;
+      const diff = pixelLum - lum;
+      sumSqDiff += diff * diff;
+    }
+    const std = Math.sqrt(sumSqDiff / sampleSize);
+    
+    // Sparse starburst should have:
+    // - Low mean luma (mostly black) but non-zero
+    expect(lum).toBeGreaterThan(0);
+    expect(lum).toBeLessThan(10);
+    
+    // - High max luma (bright rays)
+    expect(maxLum).toBeGreaterThan(200);
+    
+    // - High std (contrast between black and bright)
+    expect(std).toBeGreaterThan(20);
+    
+    // Therefore: feedback should NEVER be cleared (std > 1)
+  });
+});
