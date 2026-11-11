@@ -12,7 +12,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "bun test tests/",
-    "test:smoke": "playwright test e2e/smoke-headless.e2e.ts"
+    "test:smoke": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",

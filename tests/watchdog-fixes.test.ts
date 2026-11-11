@@ -73,12 +73,12 @@ describe('Mode Query Parameter', () => {
 
   test('should check aliases first', () => {
     expect(mainSrc).toContain('if (MODE_ALIASES[modeParam.toLowerCase()])');
-    expect(mainSrc).toContain('P.mode = MODE_ALIASES[modeParam.toLowerCase()]');
+    expect(mainSrc).toContain('targetMode = MODE_ALIASES[modeParam.toLowerCase()]');
   });
 
   test('should do case-insensitive mode matching', () => {
-    expect(mainSrc).toContain('const matchedMode = VALID_MODES.find(m => m.toLowerCase() === modeParam.toLowerCase())');
-    expect(mainSrc).toContain('if (matchedMode) P.mode = matchedMode');
+    expect(mainSrc).toContain('targetMode = VALID_MODES.find(m => m.toLowerCase() === modeParam.toLowerCase())');
+    expect(mainSrc).toContain('setMode(targetMode)');
   });
 });
 

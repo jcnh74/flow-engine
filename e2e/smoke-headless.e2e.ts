@@ -11,8 +11,7 @@
 
 import { test, expect } from '@playwright/test';
 
-const TEST_PORT = process.env.SMOKE_TEST_PORT || '5194';
-const TEST_URL = `http://127.0.0.1:${TEST_PORT}`;
+// Use baseURL from Playwright config instead of hardcoding port
 
 // Configure browser to use chrome channel (not headless_shell)
 // Only configure if test.use is available (Playwright context, not bun)
@@ -42,8 +41,8 @@ test.describe('Headless Smoke Tests', () => {
       pageErrors.push(err.message);
     });
     
-    // Load app with simple mode
-    await page.goto(`${TEST_URL}/?mode=Tunnel`, { 
+    // Load app with simple mode (uses baseURL from config)
+    await page.goto('/?mode=Tunnel', { 
       waitUntil: 'networkidle',
       timeout: 30000 
     });
@@ -130,8 +129,8 @@ test.describe('Headless Smoke Tests', () => {
       pageErrors.push(err.message);
     });
     
-    // Load with feedback enabled
-    await page.goto(`${TEST_URL}/?feedback=1&fbmix=0.85&fbdecay=0.96`, {
+    // Load with feedback enabled (uses baseURL from config)
+    await page.goto('/?feedback=1&fbmix=0.85&fbdecay=0.96', {
       waitUntil: 'networkidle',
       timeout: 30000
     });
