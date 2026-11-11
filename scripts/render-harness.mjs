@@ -99,6 +99,13 @@ async function captureMode(page, modeName, params = {}) {
     console.log(`   ✅ Screenshot: ${path}`);
     if (mad && !mad.error) {
       console.log(`   📊 MAD: ${mad.avgMad.toFixed(2)} (${mad.frames} frames)`);
+      
+      // Regression check: fail if frame is near-uniform (MAD < 0.5)
+      if (mad.avgMad < 0.5) {
+        console.log(`   ❌ REGRESSION: Near-uniform frame (MAD ${mad.avgMad.toFixed(2)} < 0.5)`);
+        return { path, mad: mad.avgMad, error: 'Near-uniform frame', regression: true };
+      }
+      
       return { path, mad: mad.avgMad };
     }
     
