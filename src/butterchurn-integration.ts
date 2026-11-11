@@ -21,38 +21,90 @@
  * copies or substantial portions of the Software.
  */
 
-import butterchurn from 'butterchurn';
-import butterchurnPresets from 'butterchurn-presets';
-
 export interface MilkDropPreset {
   name: string;
   author?: string;
 }
 
+// Lazy-loaded modules (only loaded when MilkDrop mode is first entered)
+let butterchurn: any = null;
+let butterchurnPresets: any = null;
+let loadingPromise: Promise<void> | null = null;
+
+/**
+ * Load butterchurn and presets on demand
+ * Handles UMD/CJS interop: mod.default ?? mod
+ */
+async function ensureButterchurnLoaded(): Promise<void> {
+  if (butterchurn && butterchurnPresets) return;
+  if (loadingPromise) return loadingPromise;
+  
+  loadingPromise = (async () => {
+    console.log('MilkDrop: Loading butterchurn modules...');
+    const [bcMod, bcpMod] = await Promise.all([
+      import('butterchurn'),
+      import('butterchurn-presets')
+    ]);
+    
+    // Handle UMD/CJS default export: mod.default ?? mod
+    butterchurn = (bcMod as any).default ?? bcMod;
+    butterchurnPresets = (bcpMod as any).default ?? bcpMod;
+    
+    console.log('MilkDrop: Modules loaded', {
+      hasCreateVisualizer: !!butterchurn?.createVisualizer,
+      hasGetPresets: !!butterchurnPresets?.getPresets
+    });
+  })();
+  
+  return loadingPromise;
+}
+
 export class ButterchurnRenderer {
   private visualizer: any;
   private canvas: HTMLCanvasElement;
-  private presets: { [name: string]: any };
+  private audioContext: AudioContext;
+  private presets: { [name: string]: any } = {};
   private currentPresetName: string | null = null;
   private searchResults: string[] = [];
+  private isReady: boolean = false;
   
   constructor(canvas: HTMLCanvasElement, audioContext: AudioContext) {
     this.canvas = canvas;
+    this.audioContext = audioContext;
+  }
+  
+  /**
+   * Initialize butterchurn (async, loads modules on first call)
+   */
+  async init(): Promise<void> {
+    if (this.isReady) return;
+    
+    await ensureButterchurnLoaded();
+    
+    // Get presets
     this.presets = butterchurnPresets.getPresets();
     
     // Initialize Butterchurn visualizer
-    this.visualizer = butterchurn.createVisualizer(audioContext, canvas, {
-      width: canvas.width,
-      height: canvas.height,
+    this.visualizer = butterchurn.createVisualizer(this.audioContext, this.canvas, {
+      width: this.canvas.width,
+      height: this.canvas.height,
       pixelRatio: window.devicePixelRatio || 1,
       textureRatio: 1
     });
+    
+    this.isReady = true;
+    console.log('MilkDrop: Renderer initialized', { presetCount: Object.keys(this.presets).length });
   }
   
   /**
    * Load a preset by name
    */
-  loadPreset(name: string) {
+  loadPreset(name: string): boolean {
+    if (!this.isReady) {
+      console.warn('MilkDrop: Renderer not ready, call init() first');
+      return false;
+    }
+    
     const preset = this.presets[name];
     if (preset) {
       this.visualizer.loadPreset(preset, 0); // 0 = no blend transition
@@ -72,25 +124,14 @@ export class ButterchurnRenderer {
         name,
         author: parts.length > 1 ? parts[0] : undefined
       };
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }
   
   /**
-   * Search presets by name or author
-   */
-  searchPresets(query: string): string[] {
-    const lowerQuery = query.toLowerCase();
-    this.searchResults = Object.keys(this.presets).filter(name =>
-      name.toLowerCase().includes(lowerQuery)
-    );
-    return this.searchResults;
-  }
-  
-  /**
-   * Load next preset in search results or full list
+   * Get next preset in list
    */
   nextPreset(): string | null {
-    const list = this.searchResults.length > 0 ? this.searchResults : Object.keys(this.presets);
+    const list = Object.keys(this.presets);
     if (list.length === 0) return null;
     
     const currentIndex = this.currentPresetName ? list.indexOf(this.currentPresetName) : -1;
@@ -102,10 +143,10 @@ export class ButterchurnRenderer {
   }
   
   /**
-   * Load previous preset in search results or full list
+   * Get previous preset in list
    */
   prevPreset(): string | null {
-    const list = this.searchResults.length > 0 ? this.searchResults : Object.keys(this.presets);
+    const list = Object.keys(this.presets);
     if (list.length === 0) return null;
     
     const currentIndex = this.currentPresetName ? list.indexOf(this.currentPresetName) : -1;
@@ -117,7 +158,7 @@ export class ButterchurnRenderer {
   }
   
   /**
-   * Load random preset
+   * Load a random preset
    */
   randomPreset(): string | null {
     const list = Object.keys(this.presets);
@@ -131,6 +172,17 @@ export class ButterchurnRenderer {
   }
   
   /**
+   * Search presets by name (case-insensitive)
+   */
+  searchPresets(query: string): string[] {
+    const lowerQuery = query.toLowerCase();
+    this.searchResults = Object.keys(this.presets)
+      .filter(name => name.toLowerCase().includes(lowerQuery))
+      .sort((a, b) => a.localeCompare(b));
+    return this.searchResults;
+  }
+  
+  /**
    * Get current preset name
    */
   getCurrentPreset(): string | null {
@@ -138,34 +190,29 @@ export class ButterchurnRenderer {
   }
   
   /**
-   * Render frame
+   * Connect audio source
    */
-  render() {
-    this.visualizer.render();
+  connectAudio(analyserNode: AnalyserNode): void {
+    if (this.isReady && this.visualizer) {
+      this.visualizer.connectAudio(analyserNode);
+    }
   }
   
   /**
-   * Connect audio node
+   * Render frame
    */
-  connectAudio(audioNode: AudioNode) {
-    this.visualizer.connectAudio(audioNode);
+  render(): void {
+    if (this.isReady && this.visualizer) {
+      this.visualizer.render();
+    }
   }
   
   /**
    * Resize canvas
    */
-  setRendererSize(width: number, height: number) {
-    this.visualizer.setRendererSize(width, height);
-  }
-  
-  /**
-   * Cleanup
-   */
-  destroy() {
-    if (this.visualizer) {
-      // Butterchurn doesn't have a destroy method, but we can disconnect audio
-      // and clear references
-      this.visualizer = null;
+  setRendererSize(width: number, height: number): void {
+    if (this.isReady && this.visualizer) {
+      this.visualizer.setRendererSize(width, height);
     }
   }
 }

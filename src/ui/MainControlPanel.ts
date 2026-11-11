@@ -65,7 +65,7 @@ export class MainControlPanel {
 
     // Scene section (always visible)
     html += this.buildSection('Scene', [
-      this.buildSelect('mode', 'Mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
+      this.buildSelect('mode', 'Mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
       this.buildSlider('seed', 'Seed', 0, 999999, 1),
       this.buildSlider('resolutionScale', 'Quality / Resolution', 0.5, 1.0, 0.05, false),
       this.buildCheckbox('autoQuality', 'Auto Quality (60fps)'),
@@ -215,6 +215,13 @@ export class MainControlPanel {
         this.buildSlider('camDist', 'Distance', 1.5, 6, 0.01, true),
         this.buildSlider('fov', 'FOV', 20, 80, 0.1, true),
       ]);
+    } else if (mode === 'MilkDrop') {
+      html += this.buildSection('MilkDrop', [
+        this.buildButton('milkdrop-prev', '← Previous', 'action:milkdrop-prev'),
+        this.buildButton('milkdrop-next', 'Next →', 'action:milkdrop-next'),
+        this.buildButton('milkdrop-random', '🎲 Random', 'action:milkdrop-random'),
+        `<div class="preset-name" id="milkdrop-preset-name" style="padding: 8px; font-size: 11px; color: #999; text-align: center; font-family: monospace;"></div>`
+      ]);
     } else if (mode === '3D Fractal') {
       html += this.buildSection('Fractal', [
         this.buildSelect('frType', 'Type', { 
@@ -241,6 +248,12 @@ export class MainControlPanel {
         this.buildSlider('frAmbient', 'Ambient', 0, 1, 0.01, true),
         this.buildSlider('frDiffuse', 'Diffuse', 0, 2, 0.1, true),
         this.buildSlider('frGlow', 'Glow', 0, 2, 0.1, true),
+        this.buildSlider('frShadow', 'Shadow Strength', 0, 1, 0.01, true),
+        this.buildSlider('frShadowSharpness', 'Shadow Sharpness', 1, 16, 0.5, true),
+        this.buildSlider('frAOStrength', 'AO Strength', 0, 5, 0.1, true),
+        this.buildSlider('frAORadius', 'AO Radius', 0.05, 0.5, 0.01, true),
+        this.buildSlider('frFogDensity', 'Fog Density', 0, 0.5, 0.01, true),
+        this.buildSlider('frFogStart', 'Fog Start', 0, 10, 0.5, true),
       ]);
       html += this.buildSection('Motion', [
         this.buildSlider('frMorph', 'Morph Amount', 0, 1, 0.01, true),
@@ -793,6 +806,17 @@ export class MainControlPanel {
         this.config.onExportMidi();
       } else if (action === 'import-midi' && this.config.onImportMidi) {
         this.config.onImportMidi();
+      } else if (action?.startsWith('action:')) {
+        // Handle MIDI-learnable action buttons
+        // Trigger the action via global window functions
+        const actionName = action.replace('action:', '');
+        if (actionName === 'milkdrop-next' && (window as any).__milkDropNext) {
+          (window as any).__milkDropNext();
+        } else if (actionName === 'milkdrop-prev' && (window as any).__milkDropPrev) {
+          (window as any).__milkDropPrev();
+        } else if (actionName === 'milkdrop-random' && (window as any).__milkDropRandom) {
+          (window as any).__milkDropRandom();
+        }
       }
     });
 

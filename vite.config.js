@@ -91,4 +91,10 @@ const helper = () => ({
     });
   }
 });
-export default defineConfig({ plugins: [helper()], server: { port: 5190 } });
+export default defineConfig({
+  plugins: [helper()],
+  server: { port: 5190 },
+  optimizeDeps: {
+    include: ['butterchurn', 'butterchurn-presets']
+  }
+});

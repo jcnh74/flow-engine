@@ -96,59 +96,99 @@ let milkDropTexture: WebGLTexture | null = null;
 const modulationSystem = new ModulationSystem();
 
 // MilkDrop initialization and control
-function initMilkDrop() {
-  if (!milkDropCanvas) {
-    // Create offscreen canvas for Butterchurn
-    milkDropCanvas = document.createElement('canvas');
-    milkDropCanvas.width = canvas.width;
-    milkDropCanvas.height = canvas.height;
-    
-    // Initialize Butterchurn renderer
-    if (audioAnalyzer.context) {
-      milkDropRenderer = new ButterchurnRenderer(milkDropCanvas, audioAnalyzer.context);
+let milkDropInitPromise: Promise<void> | null = null;
+
+async function initMilkDrop(): Promise<void> {
+  if (milkDropInitPromise) return milkDropInitPromise;
+  
+  milkDropInitPromise = (async () => {
+    if (!milkDropCanvas) {
+      // Create offscreen canvas for Butterchurn
+      milkDropCanvas = document.createElement('canvas');
+      milkDropCanvas.width = canvas.width;
+      milkDropCanvas.height = canvas.height;
       
-      // Connect audio
-      if (audioAnalyzer.analyserNode) {
-        milkDropRenderer.connectAudio(audioAnalyzer.analyserNode);
+      // Initialize Butterchurn renderer (lazy-loads modules)
+      if (audioAnalyzer.context) {
+        milkDropRenderer = new ButterchurnRenderer(milkDropCanvas, audioAnalyzer.context);
+        
+        try {
+          await milkDropRenderer.init();
+          
+          // Connect audio
+          if (audioAnalyzer.analyserNode) {
+            milkDropRenderer.connectAudio(audioAnalyzer.analyserNode);
+          }
+          
+          // Load a default preset
+          const presets = milkDropRenderer.getPresetList();
+          if (presets.length > 0) {
+            const defaultPreset = presets.find(p => p.name.includes('Flexi')) || presets[0];
+            milkDropRenderer.loadPreset(defaultPreset.name);
+            P.milkDropPreset = defaultPreset.name;
+            updateMilkDropPresetDisplay(defaultPreset.name);
+          }
+          
+          console.log('MilkDrop initialized successfully');
+        } catch (error) {
+          console.error('MilkDrop initialization failed:', error);
+          throw error;
+        }
       }
       
-      // Load a default preset
-      const presets = milkDropRenderer.getPresetList();
-      if (presets.length > 0) {
-        const defaultPreset = presets.find(p => p.name.includes('Flexi')) || presets[0];
-        milkDropRenderer.loadPreset(defaultPreset.name);
-        P.milkDropPreset = defaultPreset.name;
-      }
+      // Create WebGL texture for Butterchurn output
+      milkDropTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     }
-    
-    // Create WebGL texture for Butterchurn output
-    milkDropTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, milkDropTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  }
+  })();
+  
+  return milkDropInitPromise;
 }
 
 function milkDropNext() {
   if (milkDropRenderer) {
     const name = milkDropRenderer.nextPreset();
-    if (name) P.milkDropPreset = name;
+    if (name) {
+      P.milkDropPreset = name;
+      updateMilkDropPresetDisplay(name);
+    }
   }
 }
 
 function milkDropPrev() {
   if (milkDropRenderer) {
     const name = milkDropRenderer.prevPreset();
-    if (name) P.milkDropPreset = name;
+    if (name) {
+      P.milkDropPreset = name;
+      updateMilkDropPresetDisplay(name);
+    }
   }
 }
 
 function milkDropRandom() {
   if (milkDropRenderer) {
     const name = milkDropRenderer.randomPreset();
-    if (name) P.milkDropPreset = name;
+    if (name) {
+      P.milkDropPreset = name;
+      updateMilkDropPresetDisplay(name);
+    }
+  }
+}
+
+function updateMilkDropPresetDisplay(name: string) {
+  // Update panel display
+  const panelDisplay = document.getElementById('milkdrop-preset-name');
+  if (panelDisplay) {
+    panelDisplay.textContent = name;
+  }
+  
+  // Update remote display via remoteSync
+  if (remoteSync) {
+    remoteSync.syncState();
   }
 }
 
@@ -1700,7 +1740,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); if (P.mode === 'MilkDrop') initMilkDrop(); reset(); updateFolders(); wsU(); });
+gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); if (P.mode === 'MilkDrop') initMilkDrop().catch(e => console.error('MilkDrop init failed:', e)); reset(); updateFolders(); wsU(); });
 gui.add({ r() { recover('button', true); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -2039,7 +2079,7 @@ const panel = new MainControlPanel({
   modulationSystem,
   midiManager,
   get remoteSync() { return remoteSync; },
-  onModeChange: () => { if (isW()) wallDefaults(); reset(); updateFolders(); wsU(); },
+  onModeChange: () => { if (isW()) wallDefaults(); if (P.mode === 'MilkDrop') initMilkDrop().catch(e => console.error('MilkDrop init failed:', e)); reset(); updateFolders(); wsU(); },
   onReset: () => recover('button', true),
   onRandomize: randomize,
   onSavePreset: () => {
