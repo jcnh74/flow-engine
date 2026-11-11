@@ -432,13 +432,15 @@ vec4 raymarch(vec3 ro, vec3 rd) {
       float light = uAmbient + diffuse * shadow;
       col = col * light * ao;
       
-      // Add glow
-      col += vec3(0.3, 0.5, 1.0) * glow * uGlow;
+      // Add glow (neutral gray to not interfere with hue rotation)
+      // R25: Was blue (0.3,0.5,1.0), now neutral to let hueShift control all color
+      col += vec3(0.5) * glow * uGlow;
       
-      // Fog (exponential distance-based)
+      // Fog (exponential distance-based, neutral gray)
+      // R25: Was blue-tinted (0.05,0.06,0.08), now neutral to preserve hue rotation
       if (uFogDensity > 0.0) {
         float fogAmount = 1.0 - exp(-uFogDensity * max(0.0, t - uFogStart));
-        vec3 fogColor = vec3(0.05, 0.06, 0.08);
+        vec3 fogColor = vec3(0.06);  // Neutral gray
         col = mix(col, fogColor, fogAmount);
       }
       
@@ -449,9 +451,10 @@ vec4 raymarch(vec3 ro, vec3 rd) {
     if (t > uMaxDist) break;
   }
   
-  // Background with glow
-  vec3 bg = vec3(0.01, 0.02, 0.03);
-  bg += vec3(0.3, 0.5, 1.0) * glow * uGlow * 0.5;
+  // Background with glow (neutral to not interfere with hue rotation)
+  // R25: Was blue-tinted, now neutral gray to let hueShift control color
+  vec3 bg = vec3(0.02);
+  bg += vec3(0.5) * glow * uGlow * 0.5;
   return vec4(bg, 0.0);
 }
 
@@ -502,17 +505,18 @@ void main() {
   // Raymarch
   vec4 col = raymarch(ro, rd);
   
-  // Apply color transforms (saturation and hue shift)
+  // Output linear HDR (no gamma - tonemap handles it in Phase 1)
+  // Apply color transforms (saturation and hue shift) as FINAL step before output
+  // R25: Moved after all lighting to prevent fog/sky re-tinting
   if (col.a > 0.001) {
     // Apply saturation
     float luma = dot(col.rgb, vec3(0.2126, 0.7152, 0.0722));
     col.rgb = max(mix(vec3(luma), col.rgb, uSat), vec3(0.0));
     
-    // Apply hue shift
+    // Apply hue shift as THE VERY LAST operation before fragColor
     col.rgb = rotateHue(col.rgb, uHueShift * 360.0);
   }
   
-  // Output linear HDR (no gamma - tonemap handles it in Phase 1)
   fragColor = col;
 }`;
 

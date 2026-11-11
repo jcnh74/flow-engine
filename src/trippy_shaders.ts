@@ -133,11 +133,15 @@ vec3 oklabToRgb(vec3 lab) {
 vec3 applyColorTransforms(vec3 col) {
   // Apply scene saturation using OKLab chroma scaling for uSat > 1.0
   // This gives perceptually strong saturation without RGB clamping artifacts
+  // R25: Strengthened scaling (squared) to achieve dS >= 0.08 for sat=2
   if (uSat > 1.01) {
     vec3 lab = rgbToOklab(max(col, vec3(0.0)));
     float chroma = sqrt(lab.y * lab.y + lab.z * lab.z);
     if (chroma > 0.001) {
-      float newChroma = chroma * uSat;
+      // Stronger chroma boost: use uSat^1.5 instead of linear uSat
+      // This gives sat=2.0 → chroma *= 2.83 instead of 2.0
+      float chromaScale = pow(uSat, 1.5);
+      float newChroma = chroma * chromaScale;
       lab.y *= newChroma / chroma;
       lab.z *= newChroma / chroma;
     }
@@ -246,18 +250,18 @@ vec3 renderKaleido(vec2 uv) {
   // This gives the luma key dark regions to contrast against
   float fb = uKaleidoFeedback * (1.0 + uMidEnv * 0.3);
   
-  // Radial lines (bright spokes)
+  // Radial lines (bright spokes) - softer falloff for more coverage
   float spokeAngle = mod(a * segments * 2.0, 6.28318);
-  float spokes = pow(1.0 - abs(sin(spokeAngle * 0.5)), 12.0);
+  float spokes = pow(1.0 - abs(sin(spokeAngle * 0.5)), 8.0);  // Was 12.0, now 8.0 for wider spokes
   
-  // Concentric rings (bright circles)
-  float rings = pow(1.0 - abs(sin(r * 8.0 * fb - uTime * 2.0)), 8.0);
+  // Concentric rings (bright circles) - softer falloff
+  float rings = pow(1.0 - abs(sin(r * 8.0 * fb - uTime * 2.0)), 6.0);  // Was 8.0, now 6.0 for wider rings
   
-  // Combine: sparse bright lines on black
-  float pattern = max(spokes * 0.7, rings * 0.5);
+  // Combine: softer pattern for better base coverage
+  float pattern = max(spokes * 0.8, rings * 0.6);  // Increased from 0.7/0.5 to 0.8/0.6
   
-  // Animated modulation
-  pattern *= (0.5 + 0.5 * sin(kp.x * 5.0 * fb + uTime)) * (0.5 + 0.5 * sin(kp.y * 5.0 * fb - uTime * 0.7));
+  // Animated modulation - gentler for more stable base
+  pattern *= (0.6 + 0.4 * sin(kp.x * 5.0 * fb + uTime)) * (0.6 + 0.4 * sin(kp.y * 5.0 * fb - uTime * 0.7));  // Was 0.5+0.5, now 0.6+0.4
   
   // Sample palette by angle and radius (with hueShift applied)
   // This colors the lines BEFORE feedback so they aren't white
@@ -270,13 +274,13 @@ vec3 renderKaleido(vec2 uv) {
   // Multiply pattern mask by colored palette (lines are now colored, not white)
   vec3 col = paletteColor * pattern;
   
-  // MUCH LOWER HDR boost to prevent tonemap saturation collapse
-  // GPU measured S=0.38 due to near-white values; bring to 0.2-1.5 range for palette colors
-  // Reduced from (1.0 + kick*1.5 + onset*3.0 + high*0.8) which hit 8.0 clamp
-  col *= (0.5 + uKickEnv * 0.5 + uOnset * 0.8 + uHighEnv * 0.3);
+  // HDR boost with visible base at silence (0.9) and audio punch
+  // R23 was too dim at silence (0.5 base), R24 needs 25-60% pixels lit at silence
+  // Base 0.9 ensures visibility, audio can push to 2.5 for punch without white blowout
+  col *= (0.9 + uKickEnv * 0.6 + uOnset * 0.8 + uHighEnv * 0.4);
   
-  // Lower clamp since we're not boosting as hard
-  col = min(col, vec3(2.0));
+  // Clamp to prevent white saturation collapse (tonemap keeps colors vibrant at 2.5)
+  col = min(col, vec3(2.5));
   
   // RED TINT REMOVED after GPU verification confirmed renderKaleido is live path
   

@@ -12,12 +12,11 @@
 # Error details
 
 ```
-Error: Wall Studio: At least one hue shift (90/180/270) should change color significantly
+Test timeout of 120000ms exceeded.
+```
 
-expect(received).toBe(expected) // Object.is equality
-
-Expected: true
-Received: false
+```
+Error: page.evaluate: Test timeout of 120000ms exceeded.
 ```
 
 # Page snapshot
@@ -57,8 +56,8 @@ Received: false
             - generic [ref=e23]: "1977.00"
           - generic [ref=e25]:
             - generic [ref=e26]: Quality / Resolution
-            - slider [ref=e27]: "0.9"
-            - generic [ref=e28]: "0.90"
+            - slider [ref=e27]: "0.5"
+            - generic [ref=e28]: "0.50"
           - generic [ref=e31]:
             - checkbox "Auto Quality (60fps)" [checked] [ref=e32]
             - text: Auto Quality (60fps)
@@ -155,8 +154,8 @@ Received: false
             - button "🔗" [ref=e130] [cursor=pointer]
           - generic [ref=e132]:
             - generic [ref=e133]: Hue Shift
-            - slider [ref=e134]: "0"
-            - generic [ref=e135]: "0.00"
+            - slider [ref=e134]: "180"
+            - generic [ref=e135]: "270.00"
             - button "🔗" [ref=e136] [cursor=pointer]
           - generic [ref=e138]:
             - generic [ref=e139]: Saturation
@@ -440,51 +439,6 @@ Received: false
 # Test source
 
 ```ts
-  90  |       await page.evaluate(() => {
-  91  |         const engine = (window as any).engine;
-  92  |         if (engine && engine.P) {
-  93  |           engine.P.hueShift = 270;
-  94  |         }
-  95  |       });
-  96  |       await waitFrames(page, 20); // Reduced wait time
-  97  |       const hue270 = await capturePixelStats(page);
-  98  |       const hue270Change = Math.max(
-  99  |         Math.abs(hue270.meanR - baseline.meanR),
-  100 |         Math.abs(hue270.meanG - baseline.meanG),
-  101 |         Math.abs(hue270.meanB - baseline.meanB)
-  102 |       );
-  103 |       console.log(`${mode} hue 270: dRGB=${hue270Change.toFixed(1)}, hueBin=${hue270.dominantHueBin}`);
-  104 |       
-  105 |       // Reset hue
-  106 |       await page.evaluate(() => {
-  107 |         const engine = (window as any).engine;
-  108 |         if (engine && engine.P) {
-  109 |           engine.P.hueShift = 0;
-  110 |         }
-  111 |       });
-  112 |       await waitFrames(page, 20); // Reduced wait time
-  113 |       
-  114 |       // Test Color Preset "Magma"
-  115 |       await page.evaluate(() => {
-  116 |         const engine = (window as any).engine;
-  117 |         if (engine && engine.setStops) {
-  118 |           // Magma gradient: red -> orange -> yellow
-  119 |           engine.setStops([[0, '#ff0000'], [0.5, '#ff8c00'], [1, '#ffff00']]);
-  120 |         }
-  121 |       });
-  122 |       await waitFrames(page, 20); // Reduced wait time
-  123 |       const magma = await capturePixelStats(page);
-  124 |       const magmaChange = Math.max(
-  125 |         Math.abs(magma.meanR - baseline.meanR),
-  126 |         Math.abs(magma.meanG - baseline.meanG),
-  127 |         Math.abs(magma.meanB - baseline.meanB)
-  128 |       );
-  129 |       console.log(`${mode} Magma preset: dRGB=${magmaChange.toFixed(1)}, clipped=${magma.clippedPercent.toFixed(1)}%`);
-  130 |       
-  131 |       // Test sat 0.5
-  132 |       await page.evaluate(() => {
-  133 |         const engine = (window as any).engine;
-  134 |         if (engine && engine.V) {
   135 |           engine.V.saturation = 0.5;
   136 |         }
   137 |       });
@@ -540,8 +494,7 @@ Received: false
   187 |         hue180Change >= 15 || hue180.dominantHueBin !== baseline.dominantHueBin ||
   188 |         hue270Change >= 15 || hue270.dominantHueBin !== baseline.dominantHueBin;
   189 |       
-> 190 |       expect(anyHueWorks, `${mode}: At least one hue shift (90/180/270) should change color significantly`).toBe(true);
-      |                                                                                                             ^ Error: Wall Studio: At least one hue shift (90/180/270) should change color significantly
+  190 |       expect(anyHueWorks, `${mode}: At least one hue shift (90/180/270) should change color significantly`).toBe(true);
   191 |       
   192 |       // Magma preset should change color
   193 |       expect(magmaChange, `${mode}: Magma preset should change color by >= 15`).toBeGreaterThanOrEqual(15);
@@ -586,7 +539,8 @@ Received: false
   232 | });
   233 | 
   234 | async function waitFrames(page: any, frames: number): Promise<void> {
-  235 |   await page.evaluate((n: number) => {
+> 235 |   await page.evaluate((n: number) => {
+      |              ^ Error: page.evaluate: Test timeout of 120000ms exceeded.
   236 |     return new Promise<void>((resolve) => {
   237 |       let count = 0;
   238 |       const wait = () => {
@@ -604,16 +558,16 @@ Received: false
   250 |     const canvas = document.getElementById('c') as HTMLCanvasElement;
   251 |     const engine = (window as any).engine;
   252 |     
-  253 |     // Use engine.readPixelsFromHDR to read from HDR target before tonemap
-  254 |     // This avoids the preserveDrawingBuffer=false issue where default FB is cleared after present
+  253 |     // Use engine.readPixelsLDR to read from default FB after tonemap (same frame)
+  254 |     // Must be called in the same animation frame to read before compositor clears
   255 |     const w = Math.min(canvas.width, 256);
   256 |     const h = Math.min(canvas.height, 256);
   257 |     let pixels: Uint8Array;
   258 |     
-  259 |     if (engine && engine.readPixelsFromHDR) {
-  260 |       pixels = engine.readPixelsFromHDR(0, 0, w, h);
+  259 |     if (engine && engine.readPixelsLDR) {
+  260 |       pixels = engine.readPixelsLDR(0, 0, w, h);
   261 |       if (!pixels) {
-  262 |         // Fallback to default FB if HDR target not available
+  262 |         // Fallback to default FB if function not available
   263 |         const gl = canvas.getContext('webgl2');
   264 |         if (!gl) throw new Error('No WebGL2 context');
   265 |         pixels = new Uint8Array(w * h * 4);
@@ -642,4 +596,49 @@ Received: false
   288 |       const g = pixels[i + 1];
   289 |       const b = pixels[i + 2];
   290 |       
+  291 |       sumR += r;
+  292 |       sumG += g;
+  293 |       sumB += b;
+  294 |       
+  295 |       const luma = r * 0.299 + g * 0.587 + b * 0.114;
+  296 |       sumLuma += luma;
+  297 |       maxLuma = Math.max(maxLuma, luma);
+  298 |       
+  299 |       // Count clipped pixels (any channel >= 250)
+  300 |       if (r >= 250 || g >= 250 || b >= 250) {
+  301 |         clippedCount++;
+  302 |       }
+  303 |       
+  304 |       // Determine dominant hue bin
+  305 |       const max = Math.max(r, g, b);
+  306 |       const min = Math.min(r, g, b);
+  307 |       const delta = max - min;
+  308 |       
+  309 |       if (delta > 20) { // Only count pixels with some saturation
+  310 |         if (r === max && g > b) yellowDom++; // yellow
+  311 |         else if (r === max && g < b) magentaDom++; // magenta
+  312 |         else if (r === max) redDom++; // red
+  313 |         else if (g === max && b > r) cyanDom++; // cyan
+  314 |         else if (g === max) greenDom++; // green
+  315 |         else if (b === max) blueDom++; // blue
+  316 |       }
+  317 |     }
+  318 |     
+  319 |     const meanR = sumR / totalPixels;
+  320 |     const meanG = sumG / totalPixels;
+  321 |     const meanB = sumB / totalPixels;
+  322 |     const meanLuma = sumLuma / totalPixels;
+  323 |     const clippedPercent = (clippedCount / totalPixels) * 100;
+  324 |     
+  325 |     // Determine dominant hue bin
+  326 |     const bins = { red: redDom, green: greenDom, blue: blueDom, cyan: cyanDom, magenta: magentaDom, yellow: yellowDom };
+  327 |     const dominantHueBin = Object.entries(bins).reduce((a, b) => bins[a[0] as keyof typeof bins] > bins[b[0] as keyof typeof bins] ? a : b)[0];
+  328 |     
+  329 |     return {
+  330 |       meanR,
+  331 |       meanG,
+  332 |       meanB,
+  333 |       meanLuma,
+  334 |       maxLuma,
+  335 |       dominantHueBin,
 ```

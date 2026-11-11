@@ -347,7 +347,7 @@ export const PRESET_GALLERY: Preset[] = [
       feedbackKaleido: 8,       // More folds for structure
       feedbackNoise: 0.02,      // Minimal noise
       feedbackRotate: 0.035,    // Match Spiral's rotation
-      exposure: 1.0,            // Lower to create dark regions (was 1.8)
+      exposure: 1.8,            // Restored from 1.0 to bring luma back to ~6 (was 1.5 in r25, MAD < 1.0)
       bloomStrength: 0.12,      // Match Spiral
       bloomThreshold2: 1.8,     // Match Spiral
       stops: [[0, '#ffff00'], [0.33, '#ff00ff'], [0.66, '#00ffff'], [1, '#ffff00']]
