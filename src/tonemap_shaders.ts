@@ -46,7 +46,9 @@ vec3 agx(vec3 x) {
   vec3 x4 = x2 * x2;
   vec3 x6 = x4 * x2;
   
-  return -0.76883 * x6 + 2.80726 * x4 - 3.29279 * x2 + 1.76465 * x + 0.0349;
+  // Remove constant term (0.0349) to make true black map to near-zero
+  // Original had 0.0349 constant which lifted blacks to ~52/255
+  return -0.76883 * x6 + 2.80726 * x4 - 3.29279 * x2 + 1.76465 * x;
 }
 
 // ACES filmic tonemap

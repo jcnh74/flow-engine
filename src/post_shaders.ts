@@ -310,11 +310,9 @@ void main() {
   // Only apply where there's content to avoid boosting black floor
   float echoLuma = dot(echo, vec3(0.2126, 0.7152, 0.0722));
   if (echoLuma > 0.01) {
-    // Gamma < 1.0 boosts shadows, increases contrast
-    echo = pow(echo, vec3(0.8));
-    // Mild contrast boost
-    echo = (echo - 0.5) * 1.15 + 0.5;
-    echo = max(echo, vec3(0.0));
+    // Multiplicative contrast: pow(x, >1) darkens shadows, increases contrast
+    // This pivots around 0 (true black), not 0.5 (mid-gray)
+    echo = pow(echo, vec3(1.2));
   }
   
   // Apply hue drift to echo
@@ -328,16 +326,8 @@ void main() {
   // This prevents dimming sparse scenes while allowing bright trails
   vec3 result = max(curr, echo * uMix);
   
-  // Create sparse emissive layer: only feed back bright elements
-  // MilkDrop-style: sparse bright on dark background, not dense full-frame
-  // Apply luma key to result before storing as next feedback
-  float resultLuma = dot(result, vec3(0.2126, 0.7152, 0.0722));
-  
-  // Soft threshold: fade out below 0.3, preserve above 0.5
-  // This creates sparse bright trails on black, not dense gray
-  float key = smoothstep(0.25, 0.65, resultLuma);
-  result *= key;
-  
+  // Output DISPLAY version (unkeyed) - luma key applied separately to feedback buffer
+  // This prevents erasing dark scenes like Fractal Echo and Wall Studio
   fragColor = vec4(result, 1.0);
 }
 `;
@@ -384,5 +374,29 @@ uniform sampler2D uSrc;
 
 void main() {
   fragColor = texture(uSrc, vUv);
+}
+`;
+
+// Luma key shader: creates sparse emissive layer for feedback
+export const LUMA_KEY_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uSrc;
+
+void main() {
+  vec3 color = texture(uSrc, vUv).rgb;
+  
+  // Create sparse emissive layer: only bright elements
+  // MilkDrop-style: sparse bright on dark background, not dense full-frame
+  float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  
+  // Soft threshold: fade out below 0.25, preserve above 0.65
+  // This creates sparse bright trails on black, not dense gray
+  float key = smoothstep(0.25, 0.65, luma);
+  color *= key;
+  
+  fragColor = vec4(color, 1.0);
 }
 `;

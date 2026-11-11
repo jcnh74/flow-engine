@@ -196,6 +196,7 @@ const feedback = prog(POST.POST_VS, POST.FEEDBACK_FS);
 const caDistort = prog(POST.POST_VS, POST.CA_DISTORT_FS);
 const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
 const blit = prog(POST.POST_VS, POST.BLIT_FS);
+const lumaKey = prog(POST.POST_VS, POST.LUMA_KEY_FS);
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 const palTex = gl.createTexture()!;
 const palL = gl.createTexture()!;
@@ -1094,14 +1095,34 @@ function tick(now: number) {
     gl.uniform1f(feedback.u.uHueDrift, P.feedbackHueDrift + onsetHue);
     quad();
     
-    feedbackCurrent = 1 - feedbackCurrent;
-    
-    // Copy feedback result to hdrComp for bloom/post processing
+    // Copy UNkeyed feedback result to hdrComp for display/bloom/post
+    // This shows full scene without luma key erasing dark areas
     gl.bindFramebuffer(gl.FRAMEBUFFER, hdrComp.f);
     gl.viewport(0, 0, hdrComp.w, hdrComp.h);
     gl.useProgram(blit.p);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, nextFB.t); gl.uniform1i(blit.u.uSrc, 0);
     quad();
+    
+    // Now apply luma key to nextFB for storage (sparse emissive layer for next frame)
+    // Use temp buffer since we can't read/write same FB
+    const tempKey = hdrFB(nextFB.w, nextFB.h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, tempKey.f);
+    gl.viewport(0, 0, tempKey.w, tempKey.h);
+    gl.useProgram(lumaKey.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, nextFB.t); gl.uniform1i(lumaKey.u.uSrc, 0);
+    quad();
+    
+    // Swap: tempKey becomes stored feedback, will be prevFB next frame
+    // Store in correct slot (not nextFB, but the slot that will be prevFB next frame)
+    const storageFB = feedbackCurrent === 0 ? feedbackB : feedbackA;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, storageFB.f);
+    gl.viewport(0, 0, storageFB.w, storageFB.h);
+    gl.useProgram(blit.p);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tempKey.t); gl.uniform1i(blit.u.uSrc, 0);
+    quad();
+    del(tempKey);
+    
+    feedbackCurrent = 1 - feedbackCurrent;
     
     // Debug: Check after feedback composite
     if (frame === 10 || frame === 40 || frame === 70) {
