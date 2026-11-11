@@ -15,6 +15,7 @@ export class RemoteSync {
   private onAction?: (action: string) => void;
   private onPreset?: (name: string) => void;
   private onQRReady?: () => void;
+  private onParamChange?: (param: string, value: any) => void;
   
   public state: RemoteState = {
     connected: false,
@@ -22,11 +23,18 @@ export class RemoteSync {
     qrCode: ''
   };
 
-  constructor(params: any, onAction?: (action: string) => void, onPreset?: (name: string) => void, onQRReady?: () => void) {
+  constructor(
+    params: any, 
+    onAction?: (action: string) => void, 
+    onPreset?: (name: string) => void, 
+    onQRReady?: () => void,
+    onParamChange?: (param: string, value: any) => void
+  ) {
     this.params = params;
     this.onAction = onAction;
     this.onPreset = onPreset;
     this.onQRReady = onQRReady;
+    this.onParamChange = onParamChange;
     
     // Fetch LAN IP from server endpoint
     this.fetchLANIP();
@@ -122,7 +130,12 @@ export class RemoteSync {
   private handleMessage(msg: any) {
     if (msg.type === 'param') {
       // Remote changed a parameter
-      Object.assign(this.params, msg.data);
+      for (const [key, value] of Object.entries(msg.data)) {
+        this.params[key] = value;
+        if (this.onParamChange) {
+          this.onParamChange(key, value);
+        }
+      }
     } else if (msg.type === 'preset' && this.onPreset) {
       // Remote selected a preset
       this.onPreset(msg.data.name);

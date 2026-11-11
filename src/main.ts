@@ -102,14 +102,26 @@ async function initMilkDrop(): Promise<void> {
   if (milkDropInitPromise) return milkDropInitPromise;
   
   milkDropInitPromise = (async () => {
+    console.log('initMilkDrop: Starting initialization...');
+    console.log('  audioAnalyzer.context:', audioAnalyzer.context ? 'exists' : 'null');
+    console.log('  milkDropCanvas:', milkDropCanvas ? 'exists' : 'null');
+    
+    // Ensure audio context exists (needed for Butterchurn even in headless mode)
+    if (!audioAnalyzer.context) {
+      console.log('  Ensuring audio context for MilkDrop...');
+      (audioAnalyzer as any).ensureContext();
+    }
+    
     if (!milkDropCanvas) {
       // Create offscreen canvas for Butterchurn
       milkDropCanvas = document.createElement('canvas');
       milkDropCanvas.width = canvas.width;
       milkDropCanvas.height = canvas.height;
+      console.log('  Created milkDropCanvas:', milkDropCanvas.width, 'x', milkDropCanvas.height);
       
       // Initialize Butterchurn renderer (lazy-loads modules)
       if (audioAnalyzer.context) {
+        console.log('  Creating ButterchurnRenderer...');
         milkDropRenderer = new ButterchurnRenderer(milkDropCanvas, audioAnalyzer.context);
         
         try {
@@ -134,6 +146,8 @@ async function initMilkDrop(): Promise<void> {
           console.error('MilkDrop initialization failed:', error);
           throw error;
         }
+      } else {
+        console.warn('  Audio context not available, skipping ButterchurnRenderer creation');
       }
       
       // Create WebGL texture for Butterchurn output
@@ -189,6 +203,36 @@ function updateMilkDropPresetDisplay(name: string) {
   // Update remote display via remoteSync
   if (remoteSync) {
     remoteSync.syncState();
+  }
+}
+
+// Centralized mode switching - handles init/dispose and UI rebuild
+function setMode(newMode: string) {
+  const oldMode = P.mode;
+  P.mode = newMode;
+  console.log(`setMode: ${oldMode} -> ${newMode}`);
+  
+  // Initialize MilkDrop if entering that mode
+  if (newMode === 'MilkDrop' && oldMode !== 'MilkDrop') {
+    console.log('Initializing MilkDrop...');
+    initMilkDrop().catch(e => console.error('MilkDrop init failed:', e));
+  }
+  
+  // Apply mode-specific defaults
+  if (isW()) wallDefaults();
+  
+  // Reset and rebuild UI
+  reset();
+  updateFolders();
+  
+  // Sync with remote
+  if (remoteSync) {
+    remoteSync.syncState();
+  }
+  
+  // Rebuild panel if it exists
+  if ((window as any).panel?.rebuild) {
+    (window as any).panel.rebuild();
   }
 }
 
@@ -265,7 +309,7 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'gH','gW','gCurv','gDensity','gWind','gWindAz','gGustK','gGustSpeed','gcDist','gcHeight','gcFov','gDry','hueShift','cHueCycle',
   'lsRadius','lsDrip','lsVisc','lsCoh',
   'feedbackMix','feedbackDecay','feedbackZoom','feedbackRotate','feedbackTranslateX','feedbackTranslateY','feedbackKaleido','feedbackNoise','feedbackHueDrift',
-  'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos',
+  'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos','frFogDensity','frFogStart','frAOStrength','frAORadius','frShadowSharpness',
   'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
   'bloomStrength','bloomThreshold2','kickBloomAmount','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength'];
@@ -1740,7 +1784,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { if (isW()) wallDefaults(); if (P.mode === 'MilkDrop') initMilkDrop().catch(e => console.error('MilkDrop init failed:', e)); reset(); updateFolders(); wsU(); });
+gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
 gui.add({ r() { recover('button', true); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -2079,7 +2123,7 @@ const panel = new MainControlPanel({
   modulationSystem,
   midiManager,
   get remoteSync() { return remoteSync; },
-  onModeChange: () => { if (isW()) wallDefaults(); if (P.mode === 'MilkDrop') initMilkDrop().catch(e => console.error('MilkDrop init failed:', e)); reset(); updateFolders(); wsU(); },
+  onModeChange: () => { setMode(P.mode); wsU(); },
   onReset: () => recover('button', true),
   onRandomize: randomize,
   onSavePreset: () => {
@@ -2169,6 +2213,12 @@ remoteSync = new RemoteSync(P,
   () => {
     // Refresh remote section when QR code is ready
     panel.refreshRemote();
+  },
+  (param, value) => {
+    // Handle parameter changes from remote
+    if (param === 'mode') {
+      setMode(value);
+    }
   }
 );
 
@@ -2341,16 +2391,22 @@ const MODE_ALIASES: Record<string, string> = {
 
 if (q.has('mode')) {
   const modeParam = q.get('mode')!;
+  let targetMode: string | null = null;
+  
   // Check aliases first
   if (MODE_ALIASES[modeParam.toLowerCase()]) {
-    P.mode = MODE_ALIASES[modeParam.toLowerCase()];
+    targetMode = MODE_ALIASES[modeParam.toLowerCase()];
   } else {
     // Check for exact mode name (case-insensitive)
-    const matchedMode = VALID_MODES.find(m => m.toLowerCase() === modeParam.toLowerCase());
-    if (matchedMode) P.mode = matchedMode;
+    targetMode = VALID_MODES.find(m => m.toLowerCase() === modeParam.toLowerCase()) || null;
   }
+  
+  if (targetMode) {
+    setMode(targetMode);
+  }
+} else if (isW()) {
+  wallDefaults();
 }
-if (isW()) wallDefaults();
 if (q.get('wmat')) P.wMat = q.get('wmat')!; if (q.get('wobj')) P.wObj = q.get('wobj') === '1'; if (q.get('omat')) P.wObjMat = q.get('omat')!; if (q.get('wview')) applyWView(q.get('wview')!);
 if (q.get('wlight')) { P.lightPreset = q.get('wlight')!; applyLightPreset(P.lightPreset); }
 if (q.get('mode') === '3d') P.mode = '3D fabric';

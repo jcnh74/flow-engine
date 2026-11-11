@@ -32,8 +32,32 @@ let butterchurnPresets: any = null;
 let loadingPromise: Promise<void> | null = null;
 
 /**
+ * Resolve a function from a deeply nested UMD/CJS module
+ * Walks mod, mod.default, mod.default.default looking for the function
+ */
+function resolveFunction(mod: any, functionName: string): any {
+  const candidates = [mod, mod?.default, mod?.default?.default];
+  
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate[functionName] === 'function') {
+      console.log(`MilkDrop: Found ${functionName} at`, candidate === mod ? 'mod' : candidate === mod?.default ? 'mod.default' : 'mod.default.default');
+      return candidate;
+    }
+  }
+  
+  // List available keys to help debug
+  const keys = [
+    `mod keys: ${mod ? Object.keys(mod).slice(0, 10).join(', ') : 'null'}`,
+    `mod.default keys: ${mod?.default ? Object.keys(mod.default).slice(0, 10).join(', ') : 'null'}`,
+    `mod.default.default keys: ${mod?.default?.default ? Object.keys(mod.default.default).slice(0, 10).join(', ') : 'null'}`
+  ];
+  
+  throw new Error(`MilkDrop: Could not find ${functionName}. Searched:\n${keys.join('\n')}`);
+}
+
+/**
  * Load butterchurn and presets on demand
- * Handles UMD/CJS interop: mod.default ?? mod
+ * Handles UMD/CJS interop with deep default resolution
  */
 async function ensureButterchurnLoaded(): Promise<void> {
   if (butterchurn && butterchurnPresets) return;
@@ -41,19 +65,26 @@ async function ensureButterchurnLoaded(): Promise<void> {
   
   loadingPromise = (async () => {
     console.log('MilkDrop: Loading butterchurn modules...');
-    const [bcMod, bcpMod] = await Promise.all([
-      import('butterchurn'),
-      import('butterchurn-presets')
-    ]);
-    
-    // Handle UMD/CJS default export: mod.default ?? mod
-    butterchurn = (bcMod as any).default ?? bcMod;
-    butterchurnPresets = (bcpMod as any).default ?? bcpMod;
-    
-    console.log('MilkDrop: Modules loaded', {
-      hasCreateVisualizer: !!butterchurn?.createVisualizer,
-      hasGetPresets: !!butterchurnPresets?.getPresets
-    });
+    try {
+      const [bcMod, bcpMod] = await Promise.all([
+        import('butterchurn'),
+        import('butterchurn-presets')
+      ]);
+      
+      console.log('MilkDrop: Modules imported, resolving functions...');
+      
+      // Resolve createVisualizer and getPresets from deeply nested CJS exports
+      butterchurn = resolveFunction(bcMod, 'createVisualizer');
+      butterchurnPresets = resolveFunction(bcpMod, 'getPresets');
+      
+      console.log('MilkDrop: Modules loaded successfully', {
+        hasCreateVisualizer: typeof butterchurn.createVisualizer === 'function',
+        hasGetPresets: typeof butterchurnPresets.getPresets === 'function'
+      });
+    } catch (err) {
+      console.error('MilkDrop: Failed to load modules:', err);
+      throw err;
+    }
   })();
   
   return loadingPromise;
@@ -128,10 +159,17 @@ export class ButterchurnRenderer {
   }
   
   /**
+   * Get sorted preset list (cached for consistency)
+   */
+  private getSortedPresetNames(): string[] {
+    return Object.keys(this.presets).sort((a, b) => a.localeCompare(b));
+  }
+  
+  /**
    * Get next preset in list
    */
   nextPreset(): string | null {
-    const list = Object.keys(this.presets);
+    const list = this.getSortedPresetNames();
     if (list.length === 0) return null;
     
     const currentIndex = this.currentPresetName ? list.indexOf(this.currentPresetName) : -1;
@@ -146,7 +184,7 @@ export class ButterchurnRenderer {
    * Get previous preset in list
    */
   prevPreset(): string | null {
-    const list = Object.keys(this.presets);
+    const list = this.getSortedPresetNames();
     if (list.length === 0) return null;
     
     const currentIndex = this.currentPresetName ? list.indexOf(this.currentPresetName) : -1;

@@ -748,7 +748,7 @@ export class MainControlPanel {
       });
     });
 
-    // MIDI Learn on right-click
+    // MIDI Learn on right-click for range inputs
     this.container.querySelectorAll('input[data-param][type="range"]').forEach(input => {
       input.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -758,6 +758,20 @@ export class MainControlPanel {
           // Visual feedback
           input.classList.add('midi-learning');
           setTimeout(() => input.classList.remove('midi-learning'), 5000);
+        }
+      });
+    });
+
+    // MIDI Learn on right-click for action buttons
+    this.container.querySelectorAll('button[data-midi-action]').forEach(btn => {
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const action = (btn as HTMLElement).dataset.midiAction!;
+        if (this.config.midiManager) {
+          this.config.midiManager.startLearning(action);
+          // Visual feedback
+          btn.classList.add('midi-learning');
+          setTimeout(() => btn.classList.remove('midi-learning'), 5000);
         }
       });
     });

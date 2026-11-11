@@ -14,8 +14,8 @@ test('MilkDrop loads and renders', async ({ page }) => {
     console.error('Page error:', error);
   });
   
-  // Navigate to the app with MilkDrop mode
-  await page.goto('/?mode=milkdrop');
+  // Navigate to the app with MilkDrop mode (preview server)
+  await page.goto('http://localhost:4173/?mode=milkdrop');
   
   // Wait for the app to load
   await page.waitForSelector('#c', { timeout: 10000 });
