@@ -1,4 +1,5 @@
 // Curated preset gallery for DJ visualizer
+import { STUDIO_LOOKS } from './studio';
 
 export interface Preset {
   name: string;
@@ -11,6 +12,41 @@ export interface Preset {
     depth: number;
   }>;
 }
+
+// ---- Pass 3: C4D studio-abstract presets (2-3 per mode). Audio reactivity off; beat links empty.
+const STUDIO_POST = {
+  tonemapMode: 'Khronos Neutral', exposure: 1.0, bloom: 0.1, bloomStrength: 0.03, bloomThreshold2: 1.8, kickBloomAmount: 0,
+  caStrength: 0, distortion: 0, saturation: 1.0, saturationPost: 1.0, vibrance: 0, vignetteStrength: 0.12, grainStrength: 0.008,
+  feedbackEnabled: false, hueShift: 0, cHueCycle: 0, audioReactive: false,
+};
+const lookStops = (look: string) => STUDIO_LOOKS[look].slots.slice(0, 6).map((c, i) => [i / 5, c]);
+function studioPreset(name: string, mode: string, look: string, description: string, extra: Record<string, any> = {}): Preset {
+  return { name, mode, description, params: { ...STUDIO_POST, studio3d: true, stLook: look, stMat: 'Scene', stSpeed: 1, stCamSpeed: 1,
+    stDof: 0.5, stFocus: 0, stAO: 1, stGloss: 1, stIrid: 0.8, stRim: 0.35, stShadowSoft: 3, stFog: 0, stKeyAz: -40, stKeyEl: 55,
+    stops: lookStops(look), ...extra }, beatLinks: [] };
+}
+const WALL_STUDIO = { lightPreset: 'C4D Studio Softbox', wMat: 'silk', wPatch: true, wObj: false, ao: 1.0, ssaoRadius: 0.6, iridescence: 0.25,
+  fold: 0.34, warp: 0.32, scale3d: 0.42, detail: 1, layers: 2, wallPaletteMix: 1.0, wcAuto: true, wcDist: 4.2, cycOn: true };
+export const STUDIO_PRESETS: Preset[] = [
+  studioPreset('Tunnel · Mint Ribbon', 'Tunnel', 'Mint Pink', 'Flight through pearl and mint torus rings, glossy double helix', { stFog: 0.03, stDof: 0.35, stKeyEl: 70, stKeyAz: -30 }),
+  studioPreset('Tunnel · Cobalt Rush', 'Tunnel', 'Cobalt Orange', 'Cobalt cove, orange and sky rings, faster flight', { stFog: 0.04, stDof: 0.3, stKeyEl: 70, stKeyAz: -30, stCamSpeed: 1.5 }),
+  studioPreset('Tunnel · Lilac Drift', 'Tunnel', 'Lilac Dream', 'Slow iridescent drift in lilac', { stFog: 0.03, stDof: 0.45, stKeyEl: 70, stMat: 'Iridescent', stCamSpeed: 0.7 }),
+  studioPreset('Kaleido · Coral Bloom', 'Kaleido', 'Coral Peach', 'Mirrored petal sculpture on a peach cove, counter-rotating rings', { stDof: 0.55 }),
+  studioPreset('Kaleido · Cream Gold', 'Kaleido', 'Cream Gold', 'Cream and gold still-life sculpture, satin metal', { stDof: 0.55, stMat: 'Satin metal', stKeyAz: -60, stKeyEl: 40 }),
+  studioPreset('Kaleido · Mint Pearl', 'Kaleido', 'Mint Pink', 'Iridescent pearl sculpture in mint and pink', { stDof: 0.6, stMat: 'Iridescent' }),
+  studioPreset('Plasma · Red Rope', 'Plasma', 'Red Studio', 'Twisted rope torus in teal, bordeaux and cream on a red cove', { stDof: 0.5, stKeyAz: -45 }),
+  studioPreset('Plasma · Cobalt Twist', 'Plasma', 'Cobalt Orange', 'Orange and cobalt twisted torus, glossy', { stDof: 0.5, stMat: 'Gloss', stKeyAz: -45 }),
+  studioPreset('Plasma · Lilac Twist', 'Plasma', 'Lilac Dream', 'Pastel twisted torus with iridescent strands', { stDof: 0.5, stMat: 'Iridescent', stKeyAz: -45 }),
+  studioPreset('Morph · Lilac Gloss', 'Morph', 'Lilac Dream', 'Glossy pastel metaballs on a lilac cove', { morphSculpt: true, stMat: 'Gloss', stDof: 0.45 }),
+  studioPreset('Morph · Coral Pearl', 'Morph', 'Coral Peach', 'Iridescent pearl blobs on a peach cove', { morphSculpt: true, stMat: 'Iridescent', stDof: 0.45 }),
+  studioPreset('Morph · Cobalt Satin', 'Morph', 'Cobalt Orange', 'Satin-metal blobs on a cobalt cove', { morphSculpt: true, stMat: 'Satin metal', stDof: 0.45 }),
+  studioPreset('Fractal · Lilac Bulb', '3D Fractal', 'Lilac Dream', 'Mandelbulb in a lilac studio cove', { frStudio: true, frType: 0, frPower: 8, frIter: 10, frCamDist: 2.5, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.15, stMat: 'Gloss' }),
+  studioPreset('Fractal · Coral Bulb', '3D Fractal', 'Coral Peach', 'Soft power-5 Mandelbulb in a peach studio cove', { frStudio: true, frType: 0, frPower: 5, frIter: 10, frCamDist: 2.6, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.12, stMat: 'Gloss' }),
+  studioPreset('Wall · Coral Silk', 'Wall Studio', 'Coral Peach', 'Smooth sculpted satin sheets in coral, lilac and mint', { ...WALL_STUDIO, saturation: 1.6, iridescence: 0.08 }),
+  studioPreset('Wall · Cobalt Clay', 'Wall Studio', 'Cobalt Orange', 'Smooth matte clay sheets, cobalt and orange', { ...WALL_STUDIO, wMat: 'clay', layers: 1, saturation: 1.8, brightness: 0.8 }),
+  studioPreset('Landscape · Pastel Canyon', 'Landscape', 'Coral Peach', 'The Blender canyon in a pastel studio: peach cove, coral/lilac/mint pigment', { landLook: 'Studio Pastel', landSpeed: 1, landFov: 50, landSunEl: 45, landSunAz: -40, landAO: 1.6, landPigment: 1.0, landFlow: 0.8, landGrain: 0.04, landFog: 0.6, landParticles: false, vignetteStrength: 0.1 }),
+  studioPreset('Landscape · Cobalt Dunes', 'Landscape', 'Cobalt Orange', 'The canyon in a cobalt studio with orange pigment', { landLook: 'Studio Cobalt', landSpeed: 1, landFov: 50, landSunEl: 45, landSunAz: -40, landAO: 1.6, landPigment: 1.0, landFlow: 0.8, landGrain: 0.04, landFog: 0.6, landParticles: false, vignetteStrength: 0.1 }),
+];
 
 export const PRESET_GALLERY: Preset[] = [
   {
@@ -161,6 +197,7 @@ export const PRESET_GALLERY: Preset[] = [
     },
     beatLinks: []
   },
+  ...STUDIO_PRESETS,
   {
     name: 'Neon Tunnel',
     mode: 'Tunnel',

@@ -1,4 +1,5 @@
-// "Sculpt" Morph: ray-marched metaball sculpture on a studio cyclorama, shaded like a
+// "Sculpt" Morph: ray-marched metaball sculpture on a studio cyclorama (pass 3: GGX gloss, iridescent
+// pearl and satin-metal options, studio env reflections, fresnel rim; alpha = distance for DOF), shaded like a
 // Cinema 4D ambient-occlusion render (sampled AO along the normal, soft penumbra shadows,
 // white dome + softbox key, pigment colors per blob blended through OKLab).
 // Original MIT-licensed work for flow-engine. No Shadertoy code. The SDF / soft-shadow /
@@ -14,7 +15,9 @@ in vec2 vUv;
 out vec4 o;
 uniform vec2 uRes;
 uniform float uTime, uSpeed, uBlend, uAO, uOrbit;
-uniform vec3 uBgTop, uBgBottom, uFloor, uKeyCol, uDomeCol;
+uniform vec3 uBgTop, uBgBottom, uFloor, uKeyCol, uDomeCol, uRimCol, uGlowCol;
+uniform int uMat;          // 0 matte clay, 1 gloss, 2 iridescent pearl, 3 satin metal
+uniform float uIrid, uRim, uGloss;
 ${LAND_OKLAB}
 
 const int NB=9;
@@ -85,7 +88,7 @@ void main(){
   vec3 ta=vec3(0.0,1.1,0.0);
   vec3 cw=normalize(ta-ro), cu=normalize(cross(cw,vec3(0,1,0))), cv=cross(cu,cw);
   vec3 rd=normalize(q.x*cu+q.y*cv+2.1*cw);
-  vec3 bg=mix(uBgBottom,uBgTop,smoothstep(-0.2,0.6,rd.y));
+  vec3 bg=mix(uBgBottom,uBgTop,smoothstep(-0.08,0.75,rd.y))+uGlowCol*pow(max(dot(rd,cw),0.0),6.0);
   float tt=0.0; float w=0.0; int mat=-1;
   for(int i=0;i<110;i++){
     vec3 p=ro+rd*tt;
@@ -96,29 +99,38 @@ void main(){
     if(tt>40.0) break;
   }
   vec3 col=bg;
+  float dist=1000.0;
   if(mat>=0){
+    dist=tt;
     vec3 p=ro+rd*tt;
     vec3 n=calcN(p);
     vec3 L=normalize(vec3(-0.55,0.85,0.45));
     float sh=softShadow(p+n*0.004,L);
     float ao=ambientOcc(p,n);
-    vec3 albedo;
-    float spec=0.0;
-    if(mat==1){
-      float tp=clamp(w+0.08*sin(p.y*3.0+uTime*0.3),0.0,1.0);
-      albedo=palette(0.12+0.86*tp);
-      vec3 hh=normalize(L-rd);
-      spec=pow(max(dot(n,hh),0.0),36.0)*0.35;
-    } else {
-      albedo=uFloor;
-    }
-    float dif=clamp(dot(n,L),0.0,1.0);
+    int m = mat==1 ? uMat : 0;
+    vec3 albedo = mat==1 ? palette(clamp(0.04+0.92*clamp(w+0.08*sin(p.y*3.0+uTime*0.3),0.0,1.0),0.0,1.0)) : uFloor;
+    float nv=max(dot(n,-rd),1e-3);
+    float rough = m==0 ? 0.6 : m==1 ? 0.13 : m==2 ? 0.22 : 0.3;
+    rough = clamp(rough/max(uGloss,0.05),0.05,0.9);
+    vec3 f0=vec3(m==0?0.03:0.05);
+    if(m==2){ vec3 film=0.5+0.5*cos(6.2831*(vec3(0.0,0.33,0.67)+nv*1.35+0.15)); albedo=mix(albedo,albedo*0.55+film*0.6,0.55*uIrid); f0=mix(f0,film*0.35,uIrid); }
+    if(m==3){ f0=albedo*0.8; albedo*=0.25; }
+    float dif=clamp((dot(n,L)+0.25)/1.25,0.0,1.0);
     float dome=0.55+0.45*n.y;
-    col=albedo*(uDomeCol*dome*ao+uKeyCol*dif*sh*mix(0.6,1.0,ao))+uKeyCol*spec*sh*ao;
-    // fade the floor into the cyc
+    vec3 diffc=albedo*(uDomeCol*dome*mix(0.38,1.0,ao)+uKeyCol*dif*sh*mix(0.6,1.0,ao));
+    vec3 hh=normalize(L-rd); float a2=rough*rough; a2*=a2;
+    float nh=max(dot(n,hh),0.0); float dd=nh*nh*(a2-1.0)+1.0;
+    vec3 Fk=f0+(1.0-f0)*pow(1.0-max(dot(hh,-rd),0.0),5.0);
+    vec3 spec=a2/(3.14159*dd*dd)*Fk*max(dot(n,L),0.0)*0.25*uKeyCol*sh;
+    vec3 R=reflect(rd,n);
+    vec3 env=mix(uBgBottom,uBgTop,smoothstep(-0.08,0.75,R.y))+uKeyCol*pow(max(dot(R,L),0.0),mix(90.0,6.0,rough))*mix(5.0,0.6,rough);
+    vec3 Fe=f0+(max(vec3(1.0-rough),f0)-f0)*pow(1.0-nv,5.0);
+    col=diffc*(1.0-Fe*0.5)+spec+env*Fe*mix(ao,1.0,0.25)*(m==0?0.35:1.0);
+    if(mat==1) col+=uRimCol*uRim*pow(1.0-nv,3.0)*mix(0.4,1.0,ao);
+    // fade the floor into the cyc (seamless infinite cove)
     float fog=1.0-exp(-max(tt-9.0,0.0)*0.12);
     col=mix(col,bg,fog);
   }
-  o=vec4(col,1.0);
+  o=vec4(col,dist);
 }
 `;

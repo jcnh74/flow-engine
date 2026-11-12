@@ -6,6 +6,8 @@ import type { RemoteSync } from '../remote';
 import { BeatLinkPopup } from './BeatLinkPopup';
 import { COLOR_PRESETS, applyColorPreset, type ColorPreset } from './ColorPresets';
 import { LIGHTING_RIGS, applyLightingRig, type LightingRig } from './LightingPresets';
+import { STUDIO_LOOK_NAMES, STUDIO_MATS } from '../studio';
+import { LAND_LOOK_NAMES } from '../landscape';
 
 interface ControlConfig {
   params: any;
@@ -78,7 +80,7 @@ export class MainControlPanel {
         this.buildSlider('sculptBlend', 'Sculpt Blend', 0.05, 2, 0.01, true),
         this.buildSlider('sculptAO', 'Sculpt AO', 0, 3, 0.01, true),
       ] : []),
-      ...(['Kaleido', 'Tunnel', 'Plasma', 'Morph'].includes(this.config.params.mode) ? [
+      ...((['Kaleido', 'Tunnel', 'Plasma'].includes(this.config.params.mode) && !this.config.params.studio3d) || (this.config.params.mode === 'Morph' && !this.config.params.morphSculpt) ? [
         this.buildSlider('relief', 'Sculpt (AO relief)', 0, 1, 0.01, true),
         this.buildSlider('reliefDepth', 'Sculpt Depth', 0, 20, 0.1, true),
         this.buildSlider('reliefAO', 'Sculpt AO', 0, 3, 0.01, true),
@@ -88,7 +90,11 @@ export class MainControlPanel {
     ]);
 
     // Mode-specific sections
-    if (mode === 'Tunnel') {
+    const studio3d = ['Tunnel', 'Kaleido', 'Plasma'].includes(mode) && !!this.config.params.studio3d;
+    if (studio3d) {
+      html += this.buildStudioSection(mode, true);
+      html += this.buildPostSection();
+    } else if (mode === 'Tunnel') {
       html += this.buildSection('Tunnel', [
         this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
         this.buildSlider('tunnelTwist', 'Twist', 0, 3, 0.1, true),
@@ -136,6 +142,7 @@ export class MainControlPanel {
         this.buildSlider('morphRate', 'Morph Rate', 0, 1, 0.05, true),
         this.buildSlider('morphGlow', 'Glow', 0, 2, 0.1, true),
       ]);
+      if (this.config.params.morphSculpt) html += this.buildStudioSection(mode, false);
       html += this.buildSection('Palette', [
         this.buildSelect('trippyPalette', 'Color Palette', ['Liquid Spectrum', 'Silk Iris', 'Tropical Ink', 'Aurora Fluid', 'Coral Reef', 'Machine Dreams', 'Ember', 'Glacier', 'Neon Bloom', 'Pastel Data']),
       ]);
@@ -213,6 +220,12 @@ export class MainControlPanel {
         this.buildSlider('pGain', 'Glow', 0.005, 0.3, 0.001, true),
       ]);
     } else if (mode === 'Liquid Spheres' || mode === 'Wall Studio') {
+      html += this.buildSection('Studio Look', [
+        this.buildSelect('stLook', 'Look', STUDIO_LOOK_NAMES),
+        this.buildSelect('wMat', 'Material', ['silk', 'clay', 'water', 'glass', 'fur', 'grass']),
+        this.buildSlider('detail', 'Detail (1 = smooth)', 1, 5, 1, true),
+        this.buildSlider('layers', 'Layers', 1, 5, 1, true),
+      ]);
       html += this.buildSection('Fabric', [
         this.buildSlider('fold', 'Fold', 0, 1.5, 0.01, true),
         this.buildSlider('warp', 'Warp', 0, 2, 0.01, true),
@@ -237,7 +250,7 @@ export class MainControlPanel {
       ]);
     } else if (mode === 'Landscape') {
       html += this.buildSection('Landscape', [
-        this.buildSelect('landLook', 'Look', ['Living Pigment', 'Ember Bloom', 'Glacier Night', 'Neon Pigment']),
+        this.buildSelect('landLook', 'Look', LAND_LOOK_NAMES),
         this.buildSlider('landSpeed', 'Flight Speed', 0, 2, 0.01, true),
         this.buildSlider('landFov', 'Lens FOV', 30, 90, 1, true),
         this.buildSlider('landSunEl', 'Key Height', 5, 85, 1, true),
@@ -267,6 +280,13 @@ export class MainControlPanel {
         this.buildSlider('frIter', 'Iterations', 4, 24, 1, true),
         this.buildSlider('frBailout', 'Bailout', 1, 10, 0.1, true),
         this.buildSlider('frScale', 'Scale', -3, 3, 0.1, true),
+      ]);
+      html += this.buildSection('Studio', [
+        this.buildCheckbox('frStudio', 'Studio cove look'),
+        this.buildSelect('stLook', 'Look', STUDIO_LOOK_NAMES),
+        this.buildSelect('stMat', 'Material', STUDIO_MATS),
+        this.buildSlider('stRim', 'Rim Light', 0, 1.5, 0.01, true),
+        this.buildSlider('frRes', 'Internal Resolution', 0.35, 1, 0.05, false),
       ]);
       html += this.buildSection('Camera', [
         this.buildSlider('frCamDist', 'Distance', 1, 10, 0.1, true),
@@ -371,6 +391,31 @@ export class MainControlPanel {
       this.buildSlider('feedbackKaleido', 'Kaleido Folds', 0, 12, 1, true),
       this.buildSlider('feedbackNoise', 'Noise Displacement', 0, 0.1, 0.001, true),
       this.buildSlider('feedbackHueDrift', 'Hue Drift', -0.1, 0.1, 0.001, true),
+    ]);
+  }
+
+  /** Pass 3: shared C4D studio-look controls (Tunnel / Kaleido / Plasma 3D scenes, Morph sculpt). */
+  private buildStudioSection(mode: string, scene: boolean): string {
+    return this.buildSection(scene ? `Studio 3D · ${mode}` : 'Studio Look', [
+      ...(scene ? [this.buildCheckbox('studio3d', '3D studio scene (Blender)')] : []),
+      this.buildSelect('stLook', 'Look', STUDIO_LOOK_NAMES),
+      this.buildSelect('stMat', 'Material', STUDIO_MATS),
+      ...(scene ? [
+        this.buildSlider('stSpeed', 'Sculpture Motion', 0, 3, 0.01, true),
+        this.buildSlider('stCamSpeed', 'Camera Speed', 0, 3, 0.01, true),
+      ] : []),
+      this.buildSlider('stDof', 'Depth of Field', 0, 2, 0.01, true),
+      this.buildSlider('stFocus', 'Focus Distance (0 = auto)', 0, 20, 0.1, true),
+      this.buildSlider('stGloss', 'Gloss', 0.3, 3, 0.01, true),
+      this.buildSlider('stIrid', 'Iridescence', 0, 1, 0.01, true),
+      this.buildSlider('stRim', 'Rim Light', 0, 1.5, 0.01, true),
+      ...(scene ? [
+        this.buildSlider('stAO', 'AO Depth', 0, 3, 0.01, true),
+        this.buildSlider('stShadowSoft', 'Shadow Softness', 0.5, 8, 0.1, true),
+        this.buildSlider('stKeyAz', 'Key Angle', -180, 180, 1, true),
+        this.buildSlider('stKeyEl', 'Key Height', 5, 89, 1, true),
+        this.buildSlider('stFog', 'Depth Haze', 0, 0.2, 0.001, true),
+      ] : []),
     ]);
   }
 

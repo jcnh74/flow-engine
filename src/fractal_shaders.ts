@@ -74,6 +74,9 @@ uniform vec4 uJuliaC;
 // Studio look (C4D AO): white dome + key, gradient cyclorama backdrop, fog into the backdrop
 uniform float uStudio;
 uniform vec3 uBgTop, uBgBottom, uDomeCol;
+// pass 3 studio look: third pigment band, key colour, GGX-ish gloss + fresnel rim
+uniform vec3 uMid, uKeyColS, uRimCol;
+uniform float uGlossS, uRimS;
 vec3 studioBg(vec3 rd){ return mix(uBgBottom, uBgTop, smoothstep(-0.35, 0.65, rd.y)); }
 
 const float PI = 3.14159265359;
@@ -437,13 +440,16 @@ vec4 raymarch(vec3 ro, vec3 rd) {
       if (uStudio > 0.5) {
         // Pigment bands: Color 1 -> chalk white -> Color 2 (no muddy midpoint)
         float f = fract(trap + uPaletteOffset);
-        col = mix(mix(uColor1, vec3(0.86, 0.9, 0.89), smoothstep(0.3, 0.5, f)), uColor2, smoothstep(0.62, 0.82, f));
+        col = mix(mix(uColor1, uMid, smoothstep(0.3, 0.5, f)), uColor2, smoothstep(0.62, 0.82, f));
         col *= col; // approx sRGB -> linear
-        // Dome light weighted by AO does most of the work; key adds soft shape
-        vec3 dome = uDomeCol * (0.55 + 0.45 * n.y) * ao;
-        vec3 lit = dome * (uAmbient * 2.2) + vec3(1.0, 0.95, 0.88) * diffuse * shadow * mix(0.6, 1.0, ao);
-        vec3 hh = normalize(uLightDir - rd);
-        col = col * lit + vec3(1.0, 0.95, 0.88) * pow(max(dot(n, hh), 0.0), 32.0) * 0.2 * shadow * ao;
+        // Dome light weighted by AO does most of the work (never fully black: tinted by the cove); key adds soft shape
+        vec3 dome = uDomeCol * (0.55 + 0.45 * n.y) * mix(0.3, 1.0, ao);
+        vec3 lit = dome * (uAmbient * 2.2) + uKeyColS * diffuse * shadow * mix(0.6, 1.0, ao);
+        float nv = max(dot(n, -rd), 0.0);
+        vec3 R = reflect(rd, n);
+        vec3 env = studioBg(R) + uKeyColS * pow(max(dot(R, uLightDir), 0.0), 40.0) * 2.0;
+        float fr = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+        col = col * lit + env * fr * uGlossS * ao + uRimCol * uRimS * pow(1.0 - nv, 3.0) * ao;
       } else {
       col = col * light * ao;
       }

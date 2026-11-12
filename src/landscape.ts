@@ -56,6 +56,15 @@ export const LAND_LOOKS: Record<string, LandLook> = {
     bgTop: [0.028, 0.012, 0.048], bgBottom: [0.004, 0.002, 0.008], bgGlow: [0.060, 0.020, 0.080],
     key: [1.00, 0.95, 1.05], sky: [0.95, 0.92, 1.08], ground: [0.38, 0.28, 0.40], rim: [0.85, 0.35, 0.80], ambient: 0.8,
   },
+  // Pass 3 studio palettes: light pastel / cobalt cove instead of a dark void (pigment comes from the preset stops)
+  'Studio Pastel': {
+    bgTop: [0.92, 0.62, 0.50], bgBottom: [0.80, 0.42, 0.34], bgGlow: [0.25, 0.18, 0.15],
+    key: [1.05, 0.98, 0.92], sky: [1.00, 0.92, 0.90], ground: [0.70, 0.50, 0.45], rim: [1.0, 0.85, 0.80], ambient: 0.9,
+  },
+  'Studio Cobalt': {
+    bgTop: [0.040, 0.095, 0.69], bgBottom: [0.012, 0.035, 0.29], bgGlow: [0.03, 0.06, 0.25],
+    key: [1.10, 0.98, 0.85], sky: [0.70, 0.78, 1.05], ground: [0.20, 0.25, 0.50], rim: [1.0, 0.65, 0.35], ambient: 0.85,
+  },
 };
 export const LAND_LOOK_NAMES = Object.keys(LAND_LOOKS);
 
