@@ -60,7 +60,9 @@ export class MidiManager {
       
       return true;
     } catch (err) {
-      console.error('Failed to access MIDI devices:', err);
+      // permission denied / unsupported is an expected state (headless, kiosk, user said no), not an app error
+      if ((err as { name?: string })?.name === 'NotAllowedError' || (err as { name?: string })?.name === 'SecurityError') console.warn('MIDI unavailable:', (err as Error).message);
+      else console.error('Failed to access MIDI devices:', err);
       return false;
     }
   }

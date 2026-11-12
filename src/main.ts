@@ -20,6 +20,7 @@ import { LandscapeRenderer, LAND_LOOK_NAMES } from './landscape';
 import { RELIEF_DOWN_FS, RELIEF_HEIGHT_FS, RELIEF_SHADE_FS } from './relief_shaders';
 import { SCULPT_FS } from './sculpt_shaders';
 import { StudioRenderer, STUDIO_LOOKS, STUDIO_LOOK_NAMES, STUDIO_MATS, srgbHex } from './studio';
+import { PhysicalRenderer, PHYS_MODES, PHYS_VARIANTS, PHYS_MATS, STARGATE_PALETTES } from './physical';
 import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -273,6 +274,7 @@ function setMode(newMode: string) {
   if (newMode === 'Landscape' && oldMode !== 'Landscape') landDefaults();
   if (newMode === '3D Fractal' && oldMode !== '3D Fractal') fractalStudioDefaults();
   if ((STUDIO_SCENE[newMode] || newMode === 'Morph') && oldMode !== newMode) studioDefaults(newMode);
+  if (PHYS_MODES[newMode] && oldMode !== newMode) physDefaults(newMode);
   
   // Reset and rebuild UI
   reset();
@@ -321,6 +323,8 @@ const P: any = {
   relief: 1.0, reliefDepth: 9, reliefAO: 1.0, reliefRadius: 9, reliefPalette: 'Living Pigment',
   // Studio 3D (pass 3): Tunnel / Kaleido / Plasma are Blender-built GLB sculptures in a C4D studio look.
   // stLook / stMat / stDof are shared by every studio-style mode (also Morph, 3D Fractal, Wall Studio).
+  // Pass 4 physical scenes (Fabric / Gravity / Paint / Jungle / Stargate / Paint Pour): shared controls
+  phLook: 'Coral Peach', phSpeed: 1.0, phMat: 'Satin', phDof: 0.2, phVariant: '', phKeyAz: -40, phKeyEl: 48, phGloss: 1.0, phIrid: 0.9, phPalette: 'Kubrick', phStreak: 1.0, phThickness: 1.0, phFamily: -1, phFov: 40,
   studio3d: true, stLook: 'Coral Peach', stMat: 'Scene', stSpeed: 1.0, stCamSpeed: 1.0, stDof: 0.5, stFocus: 0, stAO: 1.0, stGloss: 1.0,
   stIrid: 0.8, stRim: 0.35, stShadowSoft: 3.0, stFog: 0.0, stKeyAz: -40, stKeyEl: 55, frRes: 0.6,
   
@@ -364,7 +368,7 @@ const P: any = {
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
   exportPreset: '4K UHD 3840×2160', orientation: 'landscape', width: 3840, height: 2160, dpi: 300, tiff: false, pdf: false, frameToExport: true,
 };
-const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias','stretch','life','decay','pointSize','gain','colorBySpeed','paletteOffset','exposure','bloom','bloomThreshold','zoom','driftX','driftY',
+const SMOOTH = ['phSpeed','phStreak','phThickness','phGloss','phIrid','phKeyAz','phKeyEl','phDof','noiseScale','evolution','curl','turbulence','speed','flowBias','stretch','life','decay','pointSize','gain','colorBySpeed','paletteOffset','exposure','bloom','bloomThreshold','zoom','driftX','driftY',
   'fold','warp','layerSep','scale3d','gloss','spec','iridescence','rim','saturation','brightness','ao','evolution3d','orbitSpeed','camDist','fov','lightAngle','fog','detail','layers',
   'gStrength','gAz','gEl','mass','stiffness','damping','wind','windAz','floor','cohesion','gBlend','stream','pLife','vmax','pTurb','wellG','pWidth','streak','pGain','dof','fabricUnder','pColorBySpeed',
   'gH','gW','gCurv','gDensity','gWind','gWindAz','gGustK','gGustSpeed','gcDist','gcHeight','gcFov','gDry','hueShift','cHueCycle',
@@ -562,6 +566,19 @@ function renderStudio(T: Trails, aspect: number) {
   studio.render(name, { target: T.a.f, w: T.w, h: T.h, aspect, dt: P.paused ? 0 : Math.min(0.1, dt), params: {
     look: P.stLook, mat: P.stMat, speed: V.stSpeed, camSpeed: V.stCamSpeed, dof: V.stDof, focus: V.stFocus, ao: V.stAO, gloss: V.stGloss,
     irid: V.stIrid, rim: V.stRim, shadowSoft: V.stShadowSoft, fog: V.stFog, keyAz: V.stKeyAz, keyEl: V.stKeyEl } });
+  gl.bindVertexArray(vao);
+}
+// Pass 4 physical scenes: real simulated motion (cloth VAT, live rigid spheres, GPU paint fluid, jungle vortex, slit-scan)
+const phys = new PhysicalRenderer(gl);
+let phTime = 0;
+function renderPhys(T: Trails, aspect: number) {
+  const pdt = P.paused ? 0 : Math.min(0.1, dt);
+  phTime += pdt * P.phSpeed;
+  phys.render(P.mode, { target: T.a.f, w: T.w, h: T.h, aspect, dt: pdt, time: phTime,
+    dof: (src, target, w, h, focus, amount) => studio.dofPass(src, target, w, h, focus, amount),
+    params: { look: P.phLook, speed: P.phSpeed, mat: P.phMat, dof: P.phDof, keyAz: P.phKeyAz, keyEl: P.phKeyEl, quality: P.resolutionScale ?? 1,
+      variant: P.phVariant, density: 1, gloss: P.phGloss, irid: P.phIrid, palette: P.phPalette, streak: P.phStreak, thickness: P.phThickness,
+      family: P.phFamily, fov: P.phFov, paused: !!P.paused } });
   gl.bindVertexArray(vao);
 }
 // MilkDrop color grade: hue shift + saturation
@@ -1503,7 +1520,9 @@ function tick(now: number) {
   V = L; curAspect = previewAspect;
   const half = worldHalf(previewAspect);
   const T = trails!; const px = Math.min(T.w, T.h) / 1080;
-  if (isStudioMode()) {
+  if (PHYS_MODES[P.mode]) {
+    renderPhys(T, previewAspect);
+  } else if (isStudioMode()) {
     renderStudio(T, previewAspect);
   } else if (P.mode === 'Tunnel') {
     if (!P.paused) { t3 += dt * V.evolution3d; tOrbit += dt * V.orbitSpeed; }
@@ -2135,7 +2154,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
+gui.add(P, 'mode', ['Fabric', 'Gravity', 'Paint', 'Jungle', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
 gui.add({ r() { recover('button', true); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -2485,6 +2504,28 @@ function studioDefaults(mode: string) {
   else if (mode === 'Plasma') { P.stLook = 'Red Studio'; P.stFog = 0; P.stDof = 0.5; P.stKeyEl = 55; P.stKeyAz = -45; }
   else if (mode === 'Morph') { P.stLook = 'Lilac Dream'; P.stMat = 'Gloss'; P.stDof = 0.45; P.morphSculpt = true; }
 }
+/** Pass 4 defaults: C4D studio post, no audio coupling, a strong palette per scene. */
+function physDefaults(mode: string) {
+  studioPost();
+  P.audioReactive = false; P.phSpeed = 1; P.phDof = 0.15; P.phGloss = 1; P.phIrid = 0.9; P.phFamily = -1; P.phFov = 40;
+  const id = PHYS_MODES[mode];
+  P.phVariant = PHYS_VARIANTS[id]?.[0] ?? ''; P.phMat = PHYS_MATS[id]?.[0] ?? '';
+  if (id === 'fabric') { P.phLook = 'Cobalt Orange'; P.phKeyAz = -70; P.phKeyEl = 30; P.phDof = 0.25; }
+  else if (id === 'balls') { P.phLook = 'Cream Gold'; P.phKeyAz = -38; P.phKeyEl = 52; P.phDof = 0; }
+  else if (id === 'paint') { P.phLook = 'Coral Peach'; P.phKeyAz = -35; P.phKeyEl = 40; P.phThickness = 1; }
+  else if (id === 'jungle') { P.phLook = 'Mint Pink'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.35; P.bloomStrength = 0.05; }
+  else if (id === 'stargate') { P.phPalette = 'Kubrick'; P.phStreak = 1; P.bloom = 0.35; P.bloomStrength = 0.22; P.bloomThreshold2 = 1.0; P.vignetteStrength = 0.25; P.tonemapMode = 'ACES'; }
+  else if (id === 'pour') { P.tonemapMode = 'None'; P.bloomStrength = 0; P.vignetteStrength = 0; P.grainStrength = 0; }
+}
+const phF = gui.addFolder('Physical (pass 4)');
+phF.add(P, 'phLook', STUDIO_LOOK_NAMES).name('palette look');
+phF.add(P, 'phSpeed', 0, 2, 0.01).name('motion speed');
+phF.add(P, 'phMat', [...new Set(Object.values(PHYS_MATS).flat())]).name('material');
+phF.add(P, 'phVariant', [...new Set(Object.values(PHYS_VARIANTS).flat())]).name('variant');
+phF.add(P, 'phKeyAz', -180, 180, 1).name('key angle'); phF.add(P, 'phKeyEl', 5, 85, 1).name('key height');
+phF.add(P, 'phGloss', 0.2, 2, 0.01).name('gloss'); phF.add(P, 'phIrid', 0, 1, 0.01).name('iridescence'); phF.add(P, 'phDof', 0, 1, 0.01).name('depth of field');
+phF.add(P, 'phPalette', Object.keys(STARGATE_PALETTES)).name('stargate palette'); phF.add(P, 'phStreak', 0.1, 3, 0.01).name('slit-scan streak');
+phF.add(P, 'phThickness', 0.2, 3, 0.01).name('paint thickness');
 const wMatF = gui.addFolder('Material');
 wMatF.add(P, 'wMat', WMATS).name('wall material'); wMatF.addColor(P, 'wColor').name('color'); wMatF.add(P, 'wPatch').name('palette patchwork (no objects)');
 wMatF.add(P, 'wRough', 0, 0.6, 0.01).name('glass frost'); wMatF.add(P, 'wAbsorb', 0, 4, 0.01).name('absorption / thickness'); wMatF.add(P, 'wDisp', 0, 0.1, 0.001).name('glass dispersion');
@@ -2520,6 +2561,7 @@ function updateFolders() {
   for (const f of [wMatF, wObjF, wCamF]) f.show(w);
   frF.show(fr);
   landF.show(land);
+  phF.show(!!PHYS_MODES[P.mode]);
   if (w) { f3.show(true); lf.show(true); f3.title('Wall'); lf.title('Lighting'); } 
   else if (!fr) { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); }
   cf.show(true); pre.show(true); ex.show(true); // Always show Color, Presets, Export
@@ -2821,7 +2863,7 @@ const q = new URLSearchParams(location.search);
 const rec = sessionStorage.getItem('flow-recover'); if (rec) { sessionStorage.removeItem('flow-recover'); Object.assign(P, JSON.parse(rec)); }
 
 // Accept any real mode name, case-insensitive, plus legacy aliases
-const VALID_MODES = ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
+const VALID_MODES = ['Fabric', 'Gravity', 'Paint', 'Jungle', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
 const MODE_ALIASES: Record<string, string> = {
   '2d': '2D flow',
   'particles': 'Particle Fabric',
@@ -2927,7 +2969,7 @@ log(`Remote URL: ${remoteSync.state.remoteUrl}`);
 requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
-(window as any).engine = { P, renderStill, reset, recover, renderVideo, studio,
+(window as any).engine = { P, renderStill, reset, recover, renderVideo, studio, phys,
   buildPalette,
   getStops: () => stops,
   setStops: (s: Stop[], paletteName?: string) => { 

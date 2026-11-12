@@ -1,0 +1,127 @@
+{
+ "scene": "jungle",
+ "stride": 14,
+ "layout": "pos3 nrm3 uv2 part bend hingeX hingeZ tone ao",
+ "vertexBytes": 1009456,
+ "indexCount": 84012,
+ "protos": [
+  {
+   "name": "gerbera",
+   "kind": "flower",
+   "vOff": 0,
+   "vCount": 2504,
+   "iOff": 0,
+   "iCount": 11208,
+   "radius": 1.201,
+   "tris": 3736,
+   "aoMean": 0.56
+  },
+  {
+   "name": "dahlia",
+   "kind": "flower",
+   "vOff": 2504,
+   "vCount": 3384,
+   "iOff": 11208,
+   "iCount": 14208,
+   "radius": 1.005,
+   "tris": 4736,
+   "aoMean": 0.258
+  },
+  {
+   "name": "hibiscus",
+   "kind": "flower",
+   "vOff": 5888,
+   "vCount": 1562,
+   "iOff": 25416,
+   "iCount": 7872,
+   "radius": 1.079,
+   "tris": 2624,
+   "aoMean": 0.62
+  },
+  {
+   "name": "lotus",
+   "kind": "flower",
+   "vOff": 7450,
+   "vCount": 1980,
+   "iOff": 33288,
+   "iCount": 9348,
+   "radius": 1.007,
+   "tris": 3116,
+   "aoMean": 0.386
+  },
+  {
+   "name": "tulip",
+   "kind": "flower",
+   "vOff": 9430,
+   "vCount": 1080,
+   "iOff": 42636,
+   "iCount": 5496,
+   "radius": 1.106,
+   "tris": 1832,
+   "aoMean": 0.514
+  },
+  {
+   "name": "anemone",
+   "kind": "flower",
+   "vOff": 10510,
+   "vCount": 2224,
+   "iOff": 48132,
+   "iCount": 10728,
+   "radius": 0.955,
+   "tris": 3576,
+   "aoMean": 0.439
+  },
+  {
+   "name": "monstera",
+   "kind": "leaf",
+   "vOff": 12734,
+   "vCount": 924,
+   "iOff": 58860,
+   "iCount": 4800,
+   "radius": 1.615,
+   "tris": 1600,
+   "aoMean": 0.98
+  },
+  {
+   "name": "banana",
+   "kind": "leaf",
+   "vOff": 13658,
+   "vCount": 632,
+   "iOff": 63660,
+   "iCount": 3240,
+   "radius": 2.256,
+   "tris": 1080,
+   "aoMean": 0.915
+  },
+  {
+   "name": "alocasia",
+   "kind": "leaf",
+   "vOff": 14290,
+   "vCount": 696,
+   "iOff": 66900,
+   "iCount": 3816,
+   "radius": 1.505,
+   "tris": 1272,
+   "aoMean": 0.956
+  },
+  {
+   "name": "fern",
+   "kind": "leaf",
+   "vOff": 14986,
+   "vCount": 3040,
+   "iOff": 70716,
+   "iCount": 13296,
+   "radius": 2.003,
+   "tris": 4432,
+   "aoMean": 0.583
+  }
+ ],
+ "stats": {
+  "blender": "5.3.0",
+  "ao": "cycles",
+  "aoSamples": 64,
+  "aoBakeSec": 5.4,
+  "buildSec": 5.5,
+  "totalTris": 28004
+ }
+}
