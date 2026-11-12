@@ -32,3 +32,16 @@ All code here is original and was written for this project. It is not derived fr
 - D. Trumbull's slit-scan technique for *2001: A Space Odyssey* (1968): the idea only, reimplemented procedurally
 - The Khronos PBR Neutral tone mapper (Apache-2.0 reference, reimplemented)
 - Blender 5.3 cloth and Mantaflow (bundled with Blender) were used offline to produce the baked assets
+
+## Pass 5 changes
+
+| Scene | What changed | Files |
+|---|---|---|
+| Gravity (default variant **Cascade**) | Rebuilt as a deep 3D space: six tilted terraces stepping down toward the camera, rails, domes, and a lacquer floor that runs under the lens. About 4,200 balls, released in palette-section waves every 3.2 s. CPU sim with a uniform hash grid and 1 substep (about 9–10 ms per frame on the Forge Mac). 4096 PCF shadows from a back key, which also gives the rim light. Top-down contact-AO splats on every surface, plus per-ball neighbour occlusion and ground contact. An approximate neighbour-colour reflection term on the balls. A real half-res planar reflection in the floor. Palette fog and DOF. | `src/physical/cascade.ts` |
+| Gravity **Machine** (old side-on layout) | Kept as a variant. Surfaces are now sculpted: a concave wall fillet, a full bullnose front, brass domed peg caps, chrome paddle hubs and a clear-coat glaze. | `src/physical/balls.ts` |
+| City Vortex (new) | Curled city floor and spiralling streets. Glass towers use fresnel env reflection over a lit-window interior grid. Instanced taxis, buses, lights, lamps, signs, hydrants and benches. Palettes: Dusk Gold, Cobalt Night, Pastel Morning. | `src/physical/city.ts`, `tools/blender/pass5/city_parts.py` |
+| Jungle | 10 species with solid petals, venation, translucency and sheen. Dark palette-tinted depth fog replaces the milky haze. | `src/physical/jungle.ts`, `tools/blender/pass5/jungle_flora5.py` |
+| Fabric (default **Ribbon**) | A free-flying silk ribbon along a closed Lissajous spine, with tapered ends, torsion and flutter. Exact 12 s loop. | `src/physical/fabric.ts` |
+| Stargate | Rotated Bayer jitter, depth-weighted history and far-field averaging; grain off. | `src/physical/stargate.ts` |
+| Paint Pour | Four nozzle lanes (coral, cobalt, mint, gold). The dish is a collider and a rim torus drains paint, so the pool reaches a steady size. The loop is cut PERIOD-aligned in the steady part. | `tools/blender/pass4/paint_pour5.py`, `tools/blender/pass4/loop_crossfade.py` |
+| Retired | Tunnel and Kaleido are removed from the mode lists and the preset gallery. Their code, `VALID_MODES` and `ALL_PRESETS` entries are kept. | `src/main.ts`, `src/ui/MainControlPanel.ts`, `src/presets.ts` |

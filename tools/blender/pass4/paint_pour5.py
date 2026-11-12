@@ -44,15 +44,17 @@ bpy.ops.mesh.primitive_cylinder_add(radius=0.26, depth=0.7, location=(0, 0, 0.42
 bpy.ops.mesh.primitive_cylinder_add(radius=1.62, depth=0.16, location=(0, 0, 0.08), vertices=160); dish = bpy.context.object; dish.name = 'Dish'
 sol = dish.modifiers.new('Solid', 'SOLIDIFY'); sol.thickness = 0.05
 bv = dish.modifiers.new('Bevel', 'BEVEL'); bv.width = 0.02; bv.segments = 4
-bpy.ops.object.shade_smooth()
-bpy.ops.mesh.primitive_cylinder_add(radius=1.7, depth=0.1, location=(0, 0, 0.06), vertices=64); out = bpy.context.object; out.name = 'Drain'
+bpy.ops.object.shade_smooth(); eff(dish)
+# drain = closed torus near the dish rim: paint pools on the dish floor, spreads out and is removed at r~1.35,
+# so the pool reaches a steady size instead of filling the basin
+bpy.ops.mesh.primitive_torus_add(major_radius=1.47, minor_radius=0.13, location=(0, 0, 0.2)); out = bpy.context.object; out.name = 'Drain'
 om = out.modifiers.new('Fluid', 'FLUID'); om.fluid_type = 'FLOW'; om.flow_settings.flow_type = 'LIQUID'; om.flow_settings.flow_behavior = 'OUTFLOW'; out.hide_render = True
 LANES = [('coral', 200), ('cobalt', 250), ('mint', 290), ('gold', 340)]   # all on the camera-facing half
 for i, (name, az) in enumerate(LANES):
-    a = math.radians(az); x0, y0 = 0.3 * math.cos(a), 0.3 * math.sin(a)
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.075, location=(x0, y0, 2.95)); n = bpy.context.object; n.name = f'Nozzle_{name}'; n.hide_render = True
+    a = math.radians(az); x0, y0 = 0.4 * math.cos(a), 0.4 * math.sin(a)
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.052, location=(x0, y0, 2.95)); n = bpy.context.object; n.name = f'Nozzle_{name}'; n.hide_render = True
     fm = n.modifiers.new('Fluid', 'FLUID'); fm.fluid_type = 'FLOW'; fs = fm.flow_settings
-    fs.flow_type = 'LIQUID'; fs.flow_behavior = 'INFLOW'; fs.use_initial_velocity = True; fs.velocity_coord = (0.35 * math.cos(a), 0.35 * math.sin(a), -1.8)
+    fs.flow_type = 'LIQUID'; fs.flow_behavior = 'INFLOW'; fs.use_initial_velocity = True; fs.velocity_coord = (0.25 * math.cos(a), 0.25 * math.sin(a), -1.3)
     # periodic sway (period PERIOD frames): small ellipse, phase-shifted per lane so ribbons fold
     for fr in range(1, END + 2, 10):
         ph = 2 * math.pi * fr / PERIOD + i * 1.7
