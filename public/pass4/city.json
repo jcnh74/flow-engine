@@ -1,0 +1,317 @@
+{
+ "scene": "city",
+ "stride": 14,
+ "layout": "pos3 nrm3 uv2 part code ex ey tone ao",
+ "vertexBytes": 2031624,
+ "indexCount": 154884,
+ "protos": [
+  {
+   "name": "tower_setback",
+   "kind": "tower",
+   "vOff": 0,
+   "vCount": 3640,
+   "iOff": 0,
+   "iCount": 16260,
+   "tris": 5420,
+   "min": [
+    -1.55,
+    0.0,
+    -1.55
+   ],
+   "max": [
+    1.55,
+    11.93,
+    1.55
+   ],
+   "aoMean": 0.71
+  },
+  {
+   "name": "tower_cylinder",
+   "kind": "tower",
+   "vOff": 3640,
+   "vCount": 1660,
+   "iOff": 16260,
+   "iCount": 5268,
+   "tris": 1756,
+   "min": [
+    -1.6,
+    0.0,
+    -1.6
+   ],
+   "max": [
+    1.6,
+    9.75,
+    1.6
+   ],
+   "aoMean": 0.809
+  },
+  {
+   "name": "tower_twist",
+   "kind": "tower",
+   "vOff": 5300,
+   "vCount": 1481,
+   "iOff": 21528,
+   "iCount": 3420,
+   "tris": 1140,
+   "min": [
+    -1.329,
+    0.0,
+    -1.329
+   ],
+   "max": [
+    1.329,
+    11.03,
+    1.329
+   ],
+   "aoMean": 0.807
+  },
+  {
+   "name": "tower_slab",
+   "kind": "tower",
+   "vOff": 6781,
+   "vCount": 8085,
+   "iOff": 24948,
+   "iCount": 37080,
+   "tris": 12360,
+   "min": [
+    -2.0,
+    0.0,
+    -0.9
+   ],
+   "max": [
+    2.0,
+    7.7,
+    0.9
+   ],
+   "aoMean": 0.433
+  },
+  {
+   "name": "tower_podium",
+   "kind": "tower",
+   "vOff": 14866,
+   "vCount": 2961,
+   "iOff": 62028,
+   "iCount": 13068,
+   "tris": 4356,
+   "min": [
+    -1.9,
+    0.0,
+    -1.9
+   ],
+   "max": [
+    1.9,
+    7.73,
+    1.9
+   ],
+   "aoMean": 0.555
+  },
+  {
+   "name": "street",
+   "kind": "street",
+   "vOff": 17827,
+   "vCount": 148,
+   "iOff": 75096,
+   "iCount": 222,
+   "tris": 74,
+   "min": [
+    -1.1,
+    0.0,
+    -2.0
+   ],
+   "max": [
+    1.1,
+    0.08,
+    2.0
+   ],
+   "aoMean": 0.604
+  },
+  {
+   "name": "crosswalk",
+   "kind": "street",
+   "vOff": 17975,
+   "vCount": 212,
+   "iOff": 75318,
+   "iCount": 318,
+   "tris": 106,
+   "min": [
+    -1.1,
+    0.0,
+    -2.0
+   ],
+   "max": [
+    1.1,
+    0.08,
+    2.0
+   ],
+   "aoMean": 0.418
+  },
+  {
+   "name": "ground",
+   "kind": "ground",
+   "vOff": 18187,
+   "vCount": 256,
+   "iOff": 75636,
+   "iCount": 384,
+   "tris": 128,
+   "min": [
+    -2.0,
+    0.0,
+    -2.0
+   ],
+   "max": [
+    2.0,
+    0.0,
+    2.0
+   ],
+   "aoMean": 1.0
+  },
+  {
+   "name": "taxi",
+   "kind": "car",
+   "vOff": 18443,
+   "vCount": 4704,
+   "iOff": 76020,
+   "iCount": 20748,
+   "tris": 6916,
+   "min": [
+    -0.23,
+    0.0,
+    -0.49
+   ],
+   "max": [
+    0.24,
+    0.475,
+    0.49
+   ],
+   "aoMean": 0.655
+  },
+  {
+   "name": "bus",
+   "kind": "car",
+   "vOff": 23147,
+   "vCount": 3552,
+   "iOff": 96768,
+   "iCount": 15456,
+   "tris": 5152,
+   "min": [
+    -0.28,
+    0.0,
+    -1.261
+   ],
+   "max": [
+    0.29,
+    0.76,
+    1.261
+   ],
+   "aoMean": 0.471
+  },
+  {
+   "name": "traffic_light",
+   "kind": "prop",
+   "vOff": 26699,
+   "vCount": 1836,
+   "iOff": 112224,
+   "iCount": 7896,
+   "tris": 2632,
+   "min": [
+    -0.03,
+    0.0,
+    -0.06
+   ],
+   "max": [
+    0.63,
+    1.1,
+    0.115
+   ],
+   "aoMean": 0.662
+  },
+  {
+   "name": "street_lamp",
+   "kind": "prop",
+   "vOff": 28535,
+   "vCount": 1648,
+   "iOff": 120120,
+   "iCount": 7368,
+   "tris": 2456,
+   "min": [
+    -0.05,
+    0.0,
+    -0.05
+   ],
+   "max": [
+    0.48,
+    1.545,
+    0.05
+   ],
+   "aoMean": 0.758
+  },
+  {
+   "name": "sign",
+   "kind": "prop",
+   "vOff": 30183,
+   "vCount": 1196,
+   "iOff": 127488,
+   "iCount": 5412,
+   "tris": 1804,
+   "min": [
+    -0.17,
+    0.0,
+    -0.017
+   ],
+   "max": [
+    0.17,
+    1.03,
+    0.017
+   ],
+   "aoMean": 0.829
+  },
+  {
+   "name": "hydrant",
+   "kind": "prop",
+   "vOff": 31379,
+   "vCount": 676,
+   "iOff": 132900,
+   "iCount": 2580,
+   "tris": 860,
+   "min": [
+    -0.09,
+    0.0,
+    -0.075
+   ],
+   "max": [
+    0.09,
+    0.315,
+    0.09
+   ],
+   "aoMean": 0.618
+  },
+  {
+   "name": "bench",
+   "kind": "prop",
+   "vOff": 32055,
+   "vCount": 4224,
+   "iOff": 135480,
+   "iCount": 19404,
+   "tris": 6468,
+   "min": [
+    -0.32,
+    0.0,
+    -0.108
+   ],
+   "max": [
+    0.32,
+    0.4,
+    0.112
+   ],
+   "aoMean": 0.85
+  }
+ ],
+ "stats": {
+  "blender": "5.3.0",
+  "ao": "cycles",
+  "aoSamples": 64,
+  "aoBakeSec": 5.0,
+  "buildSec": 5.1,
+  "totalTris": 51628
+ }
+}

@@ -67,7 +67,7 @@ export class MainControlPanel {
 
     // Scene section (always visible)
     html += this.buildSection('Scene', [
-      this.buildSelect('mode', 'Mode', ['Fabric', 'Gravity', 'Paint', 'Jungle', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
+      this.buildSelect('mode', 'Mode', ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
       this.buildSlider('seed', 'Seed', 0, 999999, 1),
       this.buildSlider('resolutionScale', 'Quality / Resolution', 0.5, 1.0, 0.05, false),
       this.buildCheckbox('autoQuality', 'Auto Quality (60fps)'),
@@ -248,11 +248,12 @@ export class MainControlPanel {
         this.buildButton('milkdrop-random', '🎲 Random', 'action:milkdrop-random'),
         `<div class="preset-name" id="milkdrop-preset-name" style="padding: 8px; font-size: 11px; color: #999; text-align: center; font-family: monospace;"></div>`
       ]);
-    } else if (['Fabric', 'Gravity', 'Paint', 'Jungle', 'Stargate', 'Paint Pour'].includes(mode)) {
+    } else if (['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour'].includes(mode)) {
       html += this.buildSection('Physical Scene', [
         this.buildSelect('phLook', 'Palette', STUDIO_LOOK_NAMES),
         this.buildSlider('phSpeed', 'Motion Speed', 0, 2, 0.01, true),
         ...(mode === 'Fabric' ? [this.buildSelect('phMat', 'Cloth', ['Satin', 'Silk', 'Iridescent', 'Velvet']), this.buildSelect('phVariant', 'Motion', ['Flow', 'Blender Bake'])] : []),
+        ...(mode === 'City Vortex' ? [this.buildSelect('phMat', 'City Palette', ['Dusk Gold', 'Cobalt Night', 'Pastel Morning'])] : []),
         ...(mode === 'Jungle' ? [this.buildSelect('phMat', 'Flora', ['Natural', 'Pastel', 'Iridescent']), this.buildSelect('phVariant', 'Shot', ['Vortex', 'Canopy'])] : []),
         ...(mode === 'Stargate' ? [this.buildSelect('phPalette', 'Light Palette', ['Kubrick', 'Jupiter']), this.buildSelect('phVariant', 'Planes', ['Floor + Ceiling', 'Walls']), this.buildSlider('phStreak', 'Slit-scan Streak', 0.1, 3, 0.01, true)] : []),
         ...(mode === 'Paint' ? [this.buildSelect('phVariant', 'Canvas', ['Pour', 'Drip Wall']), this.buildSlider('phThickness', 'Paint Thickness', 0.2, 3, 0.01, true)] : []),

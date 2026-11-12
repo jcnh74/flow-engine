@@ -28,6 +28,18 @@ describe('pass 4 physical scenes: assets', () => {
   });
 });
 
+describe('pass 5 city vortex: assets', () => {
+  test('city kit is consistent with the binary and has every prototype', () => {
+    const m = JSON.parse(readFileSync(pub('city.json'), 'utf-8'));
+    const size = statSync(pub('city.bin')).size;
+    expect(size).toBe(m.vertexBytes + m.indexCount * 4);
+    expect(size).toBeLessThan(60 * MB);
+    const names = m.protos.map((p: { name: string }) => p.name);
+    for (const n of ['taxi', 'bus', 'traffic_light', 'street_lamp', 'sign', 'hydrant', 'bench', 'street', 'crosswalk']) expect(names).toContain(n);
+    expect(m.protos.filter((p: { kind: string }) => p.kind === 'tower').length).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe('pass 4 physical scenes: gravity sim', () => {
   test('emits sectional palettes, collides and recycles balls without leaking', () => {
     const s = new BallSim(1100);
@@ -53,7 +65,7 @@ describe('pass 4 physical scenes: gravity sim', () => {
 describe('pass 4 physical scenes: wiring', () => {
   test('modes are registered in main and the panel', () => {
     const main = src('main.ts'), ui = src('ui/MainControlPanel.ts'), idx = src('physical/index.ts');
-    for (const m of ['Fabric', 'Gravity', 'Paint', 'Jungle', 'Stargate', 'Paint Pour']) {
+    for (const m of ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour']) {
       expect(idx).toContain(`'${m}'`.replace(/^'(\w+)'$/, '$1'));
       expect(main).toContain(`'${m}'`);
       expect(ui).toContain(`'${m}'`);
@@ -61,7 +73,7 @@ describe('pass 4 physical scenes: wiring', () => {
     expect(main).toContain('PHYS_MODES[P.mode]');
   });
   test('shaders are GLSL ES 3.00 and the loop-critical pieces are present', () => {
-    for (const f of ['stargate', 'paint', 'balls', 'fabric', 'jungle']) expect(src(`physical/${f}.ts`)).toContain('#version 300 es');
+    for (const f of ['stargate', 'paint', 'balls', 'fabric', 'jungle', 'city']) expect(src(`physical/${f}.ts`)).toContain('#version 300 es');
     expect(src('physical/fabric.ts')).toContain('uTime/12.0');          // wave cloth periodic in 12 s
     expect(src('physical/paint.ts')).toContain('uGravV');               // gravity-driven paint
   });

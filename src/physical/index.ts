@@ -6,18 +6,19 @@ import { BallsScene } from './balls';
 import { FabricScene } from './fabric';
 import { JungleScene } from './jungle';
 import { VideoLoopScene } from './videoloop';
-export { STARGATE_PALETTES };
+import { CityScene, CITY_PALETTES } from './city';
+export { STARGATE_PALETTES, CITY_PALETTES };
 
 /** Mode name -> scene id. */
 export const PHYS_MODES: Record<string, string> = {
-  'Fabric': 'fabric', 'Gravity': 'balls', 'Paint': 'paint', 'Jungle': 'jungle', 'Stargate': 'stargate', 'Paint Pour': 'pour',
+  'Fabric': 'fabric', 'Gravity': 'balls', 'Paint': 'paint', 'Jungle': 'jungle', 'City Vortex': 'city', 'Stargate': 'stargate', 'Paint Pour': 'pour',
 };
 export const PHYS_MODE_NAMES = Object.keys(PHYS_MODES);
 export const PHYS_VARIANTS: Record<string, string[]> = {
-  fabric: ['Flow', 'Blender Bake'], balls: ['Machine'], paint: ['Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
+  fabric: ['Flow', 'Blender Bake'], balls: ['Machine'], paint: ['Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], city: ['Vortex'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
 };
 export const PHYS_MATS: Record<string, string[]> = {
-  fabric: ['Satin', 'Silk', 'Iridescent', 'Velvet'], balls: ['Mixed'], paint: ['Wet Acrylic'], jungle: ['Natural', 'Pastel', 'Iridescent'], stargate: ['Light'], pour: ['Cycles'],
+  fabric: ['Satin', 'Silk', 'Iridescent', 'Velvet'], balls: ['Mixed'], paint: ['Wet Acrylic'], jungle: ['Natural', 'Pastel', 'Iridescent'], city: ['Dusk Gold', 'Cobalt Night', 'Pastel Morning'], stargate: ['Light'], pour: ['Cycles'],
 };
 
 export class PhysicalRenderer {
@@ -29,7 +30,7 @@ export class PhysicalRenderer {
     try {
       const gl = this.gl;
       const s: PhysScene = id === 'stargate' ? new StargateScene(gl) : id === 'paint' ? new PaintScene(gl) : id === 'balls' ? new BallsScene(gl)
-        : id === 'fabric' ? new FabricScene(gl) : id === 'jungle' ? new JungleScene(gl) : new VideoLoopScene(gl, '/pass4/paint_pour.mp4');
+        : id === 'fabric' ? new FabricScene(gl) : id === 'jungle' ? new JungleScene(gl) : id === 'city' ? new CityScene(gl) : new VideoLoopScene(gl, '/pass4/paint_pour.mp4');
       void s.load();
       this.scenes[id] = s;
       return s;

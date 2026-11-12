@@ -2154,7 +2154,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Fabric', 'Gravity', 'Paint', 'Jungle', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
+gui.add(P, 'mode', ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
 gui.add({ r() { recover('button', true); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -2514,6 +2514,7 @@ function physDefaults(mode: string) {
   else if (id === 'balls') { P.phLook = 'Cream Gold'; P.phKeyAz = -38; P.phKeyEl = 52; P.phDof = 0; }
   else if (id === 'paint') { P.phLook = 'Coral Peach'; P.phKeyAz = -35; P.phKeyEl = 40; P.phThickness = 1; }
   else if (id === 'jungle') { P.phLook = 'Mint Pink'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.35; P.bloomStrength = 0.05; }
+  else if (id === 'city') { P.phKeyAz = -40; P.phKeyEl = 50; P.phDof = 0.2; P.phFov = 64; P.bloom = 0.3; P.bloomStrength = 0.16; P.bloomThreshold2 = 1.0; }
   else if (id === 'stargate') { P.phPalette = 'Kubrick'; P.phStreak = 1; P.bloom = 0.35; P.bloomStrength = 0.22; P.bloomThreshold2 = 1.0; P.vignetteStrength = 0.25; P.tonemapMode = 'ACES'; }
   else if (id === 'pour') { P.tonemapMode = 'None'; P.bloomStrength = 0; P.vignetteStrength = 0; P.grainStrength = 0; }
 }
@@ -2863,7 +2864,7 @@ const q = new URLSearchParams(location.search);
 const rec = sessionStorage.getItem('flow-recover'); if (rec) { sessionStorage.removeItem('flow-recover'); Object.assign(P, JSON.parse(rec)); }
 
 // Accept any real mode name, case-insensitive, plus legacy aliases
-const VALID_MODES = ['Fabric', 'Gravity', 'Paint', 'Jungle', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
+const VALID_MODES = ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
 const MODE_ALIASES: Record<string, string> = {
   '2d': '2D flow',
   'particles': 'Particle Fabric',

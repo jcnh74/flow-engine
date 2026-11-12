@@ -62,7 +62,7 @@ describe('Watchdog False Positive Fixes', () => {
 
 describe('Mode Query Parameter', () => {
   test('should define valid modes list', () => {
-    expect(mainSrc).toContain("const VALID_MODES = ['Fabric', 'Gravity', 'Paint', 'Jungle', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']");
+    expect(mainSrc).toContain("const VALID_MODES = ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']");
   });
 
   test('should define mode aliases', () => {
