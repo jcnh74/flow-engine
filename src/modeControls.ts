@@ -2,6 +2,7 @@
 // Each mode declares its own sliders / knobs / selectors bound to real scene parameters (the scenes read these
 // keys every frame), its defaults and 3-5 built-in presets. User presets persist in localStorage per mode.
 // Original MIT-licensed work for flow-engine.
+import { SPLASH_PALETTES, SPLASH_SHAPES } from './physical/splash';
 import { ROOM_PALETTES, ROOM_ORDERS, ROOM_CAMERAS } from './physical/colorroom';
 
 export type Ctl = { key: string; label: string; type: 'slider' | 'knob' | 'select' | 'check'; min?: number; max?: number; step?: number; options?: string[] };
@@ -55,12 +56,21 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
     },
   },
   'Paint': {
-    sections: [{ title: 'Paint', ctls: [SEL('phVariant', 'Canvas', ['Pour', 'Drip Wall']), K('phThickness', 'Thickness', 0.2, 3), S('phSpeed', 'Flow Speed', 0, 2), K('phGloss', 'Gloss', 0.2, 2), S('phKeyAz', 'Key Angle', -180, 180, 1), S('phKeyEl', 'Key Height', 5, 85, 1)] }],
-    defaults: {},
+    sections: [
+      { title: 'Splash', ctls: [SEL('phVariant', 'Scene', ['Splash', 'Pour', 'Drip Wall']), SEL('spShape', 'Splash Type', SPLASH_SHAPES), S('spRate', 'Splashes / s', 0.2, 6, 0.05), K('spSize', 'Paint Size', 0.5, 2), K('spSpeed', 'Throw Speed', 0.3, 2.2), K('spDepth', 'Depth Spread', 0.3, 1.6)] },
+      { title: 'Paint Body', ctls: [K('spGravity', 'Gravity', 0, 6, 0.05), K('spDrag', 'Air Drag', 0, 1.5), K('spDroplets', 'Droplets', 0, 2.5), K('spStretch', 'Rope Stretch', 0, 2.5), K('spSmooth', 'Surface Smoothing', 0.3, 2), S('spMix', 'Two-Colour Mix', 0, 1)] },
+      { title: 'Colour & Light', ctls: [SEL('spPalette', 'Palette', Object.keys(SPLASH_PALETTES)), K('phGloss', 'Gloss', 0.2, 2), K('spGlow', 'Thickness Glow', 0, 2.5), S('phKeyAz', 'Key Angle', -180, 180, 1), S('phKeyEl', 'Key Height', 5, 85, 1)] },
+      { title: 'Camera', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('spCamDrift', 'Camera Drift', 0, 3), S('phFov', 'Lens FOV', 30, 85, 1), S('spFocus', 'Focus Distance', 2, 18, 0.1), S('phDof', 'Depth of Field', 0, 1)] },
+      { title: 'Classic Canvas', ctls: [K('phThickness', 'Thickness', 0.2, 3)] },
+    ],
+    defaults: { spShape: 'Mixed', spRate: 2.2, spSize: 1, spSpeed: 1, spDepth: 1, spGravity: 1.6, spDrag: 0.25, spDroplets: 1, spStretch: 1, spSmooth: 1, spMix: 0.5, spPalette: 'Carnival', spGlow: 1, spCamDrift: 1, spFocus: 6 },
     presets: {
-      'Wet Pour': { phVariant: 'Pour', phThickness: 1, phSpeed: 1, phGloss: 1.2 },
-      'Heavy Impasto': { phVariant: 'Pour', phThickness: 2.6, phSpeed: 0.6, phGloss: 0.8 },
-      'Drip Wall': { phVariant: 'Drip Wall', phThickness: 1.2, phSpeed: 1.2, phGloss: 1.4 },
+      'Carnival Burst': { phVariant: 'Splash', spShape: 'Mixed', spRate: 2.2, spSize: 1, spSpeed: 1, spPalette: 'Carnival', spMix: 0.5, spGravity: 1.6, phSpeed: 1 },
+      'Crown Storm': { phVariant: 'Splash', spShape: 'Crowns', spRate: 3.6, spSize: 1.2, spSpeed: 1.3, spPalette: 'Primary Pop', spMix: 0.7, spDroplets: 1.6, phSpeed: 1 },
+      'Honey Ropes': { phVariant: 'Splash', spShape: 'Ropes', spRate: 1.4, spSize: 1.5, spSpeed: 0.7, spPalette: 'Earth & Gold', spDrag: 0.6, spStretch: 1.8, spGravity: 2.4, phSpeed: 0.7 },
+      'Neon Spray': { phVariant: 'Splash', spShape: 'Mixed', spRate: 4.5, spSize: 0.8, spSpeed: 1.6, spPalette: 'Neon', spDroplets: 2.2, spMix: 0.9, phSpeed: 1.2 },
+      'Wet Pour (canvas)': { phVariant: 'Pour', phThickness: 1, phSpeed: 1, phGloss: 1.2 },
+      'Drip Wall (canvas)': { phVariant: 'Drip Wall', phThickness: 1.2, phSpeed: 1.2, phGloss: 1.4 },
     },
   },
   'City Vortex': {

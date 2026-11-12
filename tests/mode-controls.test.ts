@@ -28,6 +28,7 @@ describe('pass 6 per-mode controls + presets', () => {
   test('scenes read the control keys (bound to real dynamics)', () => {
     const src = (f: string) => readFileSync(new URL(`../src/physical/${f}`, import.meta.url), 'utf8');
     for (const k of ['grDropSize', 'grDropEvery', 'grBounce', 'grGravity', 'grRoom', 'grCamera']) expect(src('colorroom.ts')).toContain(`P.${k}`);
+    for (const k of ['spRate', 'spSize', 'spSpeed', 'spGravity', 'spPalette', 'spShape', 'spDroplets', 'spSmooth']) expect(src('splash.ts')).toContain(`P.${k}`);
     for (const k of ['sgDensity', 'sgWarp', 'sgGlow', 'sgPattern', 'sgExposure', 'sgBands']) expect(src('stargate.ts')).toContain(`P.${k}`);
     for (const k of ['ppClip', 'ppSat', 'ppHue', 'ppZoom']) expect(src('videoloop.ts')).toContain(`P.${k}`);
   });

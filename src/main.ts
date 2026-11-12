@@ -2512,7 +2512,7 @@ function physDefaults(mode: string) {
   P.phVariant = PHYS_VARIANTS[id]?.[0] ?? ''; P.phMat = PHYS_MATS[id]?.[0] ?? '';
   if (id === 'fabric') { P.phLook = 'Cobalt Orange'; P.phKeyAz = -70; P.phKeyEl = 30; P.phDof = 0.25; }
   else if (id === 'balls') { P.phLook = 'Cream Gold'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.2; P.phFov = 58; }   // Color Room: front-high key so shadows rake onto the walls   // Cascade: back key (rim + shadows toward the lens), wide lens, DOF
-  else if (id === 'paint') { P.phLook = 'Coral Peach'; P.phKeyAz = -35; P.phKeyEl = 40; P.phThickness = 1; }
+  else if (id === 'paint') { P.phLook = 'Coral Peach'; P.phKeyAz = -35; P.phKeyEl = 40; P.phThickness = 1; P.phDof = 0.45; P.phFov = 50; }
   else if (id === 'jungle') { P.phLook = 'Mint Pink'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.35; P.bloomStrength = 0.05; }
   else if (id === 'city') { P.phKeyAz = -40; P.phKeyEl = 50; P.phDof = 0.2; P.phFov = 64; P.bloom = 0.3; P.bloomStrength = 0.16; P.bloomThreshold2 = 1.0; }
   else if (id === 'stargate') { P.phPalette = 'Kubrick'; P.phStreak = 1; P.bloom = 0.35; P.bloomStrength = 0.22; P.bloomThreshold2 = 1.0; P.vignetteStrength = 0.25; P.tonemapMode = 'ACES'; P.grainStrength = 0; }
