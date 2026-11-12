@@ -2510,7 +2510,7 @@ function physDefaults(mode: string) {
   P.audioReactive = false; P.phSpeed = 1; P.phDof = 0.15; P.phGloss = 1; P.phIrid = 0.9; P.phFamily = -1; P.phFov = 40;
   const id = PHYS_MODES[mode];
   P.phVariant = PHYS_VARIANTS[id]?.[0] ?? ''; P.phMat = PHYS_MATS[id]?.[0] ?? '';
-  if (id === 'fabric') { P.phLook = 'Cobalt Orange'; P.phKeyAz = -70; P.phKeyEl = 30; P.phDof = 0.25; }
+  if (id === 'fabric') { P.phLook = 'Cream Gold'; P.phKeyAz = -60; P.phKeyEl = 40; P.phDof = 0.25; P.phFov = 52; }
   else if (id === 'balls') { P.phLook = 'Cream Gold'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.2; P.phFov = 58; }   // Color Room: front-high key so shadows rake onto the walls   // Cascade: back key (rim + shadows toward the lens), wide lens, DOF
   else if (id === 'paint') { P.phLook = 'Coral Peach'; P.phKeyAz = -35; P.phKeyEl = 40; P.phThickness = 1; P.phDof = 0.45; P.phFov = 50; }
   else if (id === 'jungle') { P.phLook = 'Mint Pink'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.35; P.bloomStrength = 0.05; }

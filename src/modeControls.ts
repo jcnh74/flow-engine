@@ -104,10 +104,10 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
   'Fabric': {
     sections: [
       { title: 'Ribbons', ctls: [S('fbCount', 'Ribbon Count', 1, 10, 1), S('phSpeed', 'Float Speed', 0, 2.5), K('fbFlutter', 'Flutter', 0, 2), K('fbWidth', 'Width', 0.4, 2), K('fbTwist', 'Twist', 0, 2)] },
-      { title: 'Cloth', ctls: [SEL('fbPalette', 'Palette', ['Complementary Coral/Teal', 'Triad Jewel', 'Analog Sunset', 'Split Lilac/Gold', 'Monochrome Pearl']), SEL('phMat', 'Cloth', ['Satin', 'Silk', 'Iridescent', 'Velvet']), K('fbWeave', 'Weave Bump', 0, 2), K('fbSheen', 'Anisotropic Sheen', 0, 2), SEL('phVariant', 'Motion', ['Ribbon', 'Flow', 'Blender Bake'])] },
-      { title: 'Camera', ctls: [S('phFov', 'Lens FOV', 30, 85, 1), S('phDof', 'Depth of Field', 0, 1), S('phKeyAz', 'Key Angle', -180, 180, 1), S('phKeyEl', 'Key Height', 5, 85, 1)] },
+      { title: 'Cloth', ctls: [SEL('fbPalette', 'Palette', ['Complementary Coral/Teal', 'Triad Jewel', 'Analog Sunset', 'Split Lilac/Gold', 'Monochrome Pearl']), SEL('phMat', 'Cloth', ['Satin', 'Silk', 'Iridescent', 'Velvet']), K('fbWeave', 'Weave Bump', 0, 2), K('fbSheen', 'Anisotropic Sheen', 0, 2), SEL('phVariant', 'Motion', ['Drift', 'Ribbon', 'Flow', 'Blender Bake'])] },
+      { title: 'Camera', ctls: [S('phFov', 'Lens FOV', 30, 85, 1), S('fbFocus', 'Focus Distance', 3, 25, 0.1), S('phDof', 'Depth of Field', 0, 1), S('phKeyAz', 'Key Angle', -180, 180, 1), S('phKeyEl', 'Key Height', 5, 85, 1)] },
     ],
-    defaults: { fbCount: 7, fbFlutter: 1, fbWidth: 1, fbTwist: 1, fbPalette: 'Complementary Coral/Teal', fbWeave: 1, fbSheen: 1 },
+    defaults: { fbFocus: 9, fbCount: 8, fbFlutter: 1, fbWidth: 1, fbTwist: 1, fbPalette: 'Complementary Coral/Teal', fbWeave: 1, fbSheen: 1 },
     presets: {
       'Silk Parade': { fbCount: 7, phSpeed: 1, fbFlutter: 1, fbWidth: 1, fbPalette: 'Complementary Coral/Teal', phMat: 'Silk', fbWeave: 1, fbSheen: 1.2 },
       'Jewel Satin': { fbCount: 9, phSpeed: 0.8, fbFlutter: 0.7, fbWidth: 1.3, fbPalette: 'Triad Jewel', phMat: 'Satin', fbWeave: 0.8, fbSheen: 1.5 },
