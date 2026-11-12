@@ -45,3 +45,18 @@ All code here is original and was written for this project. It is not derived fr
 | Stargate | Rotated Bayer jitter, depth-weighted history and far-field averaging; grain off. | `src/physical/stargate.ts` |
 | Paint Pour | Four nozzle lanes (coral, cobalt, mint, gold). The dish is a collider and a rim torus drains paint, so the pool reaches a steady size. The loop is cut PERIOD-aligned in the steady part. | `tools/blender/pass4/paint_pour5.py`, `tools/blender/pass4/loop_crossfade.py` |
 | Retired | Tunnel and Kaleido are removed from the mode lists and the preset gallery. Their code, `VALID_MODES` and `ALL_PRESETS` entries are kept. | `src/main.ts`, `src/ui/MainControlPanel.ts`, `src/presets.ts` |
+
+## Pass 6 (2026-11-12)
+
+| Mode | What changed | Files |
+|---|---|---|
+| Gravity | Default scene is now **Color Room**: bright walls, a reflective floor, and big single-colour clumps (~1100 balls) that drop in turn, splash, bounce and mix, then recycle. Uses Cascade's renderer: planar reflection, 4096 PCF shadows, contact AO. | `src/physical/colorroom.ts` |
+| Paint | Default scene is now **Splash** (live). Crowns with finger ropes, Worthington jets, necking ropes and droplet sprays are thrown at the lens from many depths. Rendered as screen-space fluid: impostor depth and pigment MRT, radius-aware Vogel bilateral smoothing, wet acrylic shading. Pigments mix where splashes touch. | `src/physical/splash.ts` |
+| Fabric | Default scene is now **Drift**. 5–10 ribbons or sheets come out of the haze toward the camera, with analytic VS geometry. Shading has a procedural plain-weave bump, thread-following anisotropic sheen and PCF shadows. 5 complementary palettes. | `src/physical/fabricdrift.ts` |
+| City | Neighbourhoods built from a procedural box kit with procedural facades: glass downtown, brownstones, industrial, and a waterfront with a canal. Adds rooftop AC units and tanks, more traffic, and a district-bias relayout. | `src/physical/city.ts` |
+| Jungle | Motif journey through Orchids, Heliconia/BoP, Monstera/Palm, Ferns/Moss, Bromeliads and Lotus. Each instance picks its zone at the far-end wrap, and the haze cross-fades per zone. | `src/physical/jungle.ts` |
+| All modes | Per-mode panels (`src/modeControls.ts`, `MainControlPanel.buildModeControls`) with sliders, knobs and selectors bound to live scene keys. 3–6 built-in presets per mode, plus user Save/Load/Delete stored in localStorage under `flowModePresets:<mode>`. | `src/modeControls.ts`, `src/ui/MainControlPanel.ts` |
+
+**Experiment kept:** `tools/blender/pass6/paint_splash6.py` (Mantaflow collision jets). At bakeable resolutions (64–72) it produced blobby sausages, not crowns, so the live Splash replaced it. Paint Pour still defaults to the pass-4 Cycles pour clip.
+
+**Captures:** `node scripts/capture-pass4.mjs --seconds 10 --out DIR --only "label|mode=…&set=k:v;k:v"`. Panel screenshots: `node scripts/panel-shot.mjs DIR "Mode=Preset" …`.
