@@ -14,6 +14,34 @@ export interface Preset {
 
 export const PRESET_GALLERY: Preset[] = [
   {
+    name: 'Canyon Flight',
+    mode: 'Landscape',
+    description: 'Blender canyon fly-through; bass lifts the ridge, mids and highs drive the particle cloud',
+    params: {
+      landSpeed: 0.7,
+      landBassLift: 1.35,
+      landFog: 0.42,
+      landFov: 55,
+      landParticleCount: 65536,
+      landParticleSize: 2.6,
+      landParticleGlow: 1.15,
+      exposure: 1.05,
+      bloom: 0.4,
+      bloomStrength: 0.16,
+      saturation: 1.35,
+      saturationPost: 1.12,
+      hueShift: 0,
+      palette: 'Ember',
+      stops: [[0, '#1a0000'], [0.3, '#8b0000'], [0.6, '#ff4500'], [0.85, '#ffb347'], [1, '#fff4d6']],
+      background: '#020208',
+      tonemapMode: 'ACES'
+    },
+    beatLinks: [
+      { source: 'bass', target: 'landBassLift', depth: 0.8 },
+      { source: 'kick', target: 'bloom', depth: 0.5 }
+    ]
+  },
+  {
     name: 'Neon Tunnel',
     mode: 'Tunnel',
     description: 'High-speed tunnel with neon colors',

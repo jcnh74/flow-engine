@@ -386,3 +386,33 @@ test('MainControlPanel > All modes have universal controls', () => {
     panel.destroy();
   }
 });
+
+test('MainControlPanel > Landscape mode shows flight and particle controls only', () => {
+  const params = createMockParams('Landscape');
+  (params as any).landSpeed = 0.7;
+  (params as any).landFov = 55;
+  (params as any).landBassLift = 1.2;
+  (params as any).landFog = 0.45;
+  (params as any).landParticleSize = 2.4;
+  (params as any).landParticleGlow = 1.0;
+  const audioAnalyzer = new AudioAnalyzer();
+  const modulationSystem = new ModulationSystem();
+  const panel = new MainControlPanel({
+    params,
+    audioState: audioAnalyzer.state,
+    modulationSystem,
+  });
+  const visible = getVisibleControlParams(panel);
+  expect(visible.has('mode')).toBe(true);
+  expect(visible.has('landSpeed')).toBe(true);
+  expect(visible.has('landBassLift')).toBe(true);
+  expect(visible.has('landFog')).toBe(true);
+  expect(visible.has('landParticleSize')).toBe(true);
+  expect(visible.has('landParticleGlow')).toBe(true);
+  // Should not show unrelated mode controls
+  expect(visible.has('frPower')).toBe(false);
+  expect(visible.has('tunnelTwist')).toBe(false);
+  expect(visible.has('kaleidoSegments')).toBe(false);
+  expect(visible.has('lsRadius')).toBe(false);
+  panel.destroy();
+});

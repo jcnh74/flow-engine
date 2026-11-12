@@ -16,6 +16,7 @@ import { BeatLinkPopup } from './ui/BeatLinkPopup';
 import { PresetGallery } from './ui/PresetGallery';
 import { hexToLinear, srgbToLinear } from './render-graph';
 import { ButterchurnRenderer } from './butterchurn-integration';
+import { LandscapeRenderer } from './landscape';
 import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -261,6 +262,7 @@ function setMode(newMode: string) {
   
   // Apply mode-specific defaults
   if (isW()) wallDefaults();
+  if (newMode === 'Landscape' && oldMode !== 'Landscape') landDefaults();
   
   // Reset and rebuild UI
   reset();
@@ -295,6 +297,9 @@ const P: any = {
   trippyPalette: 'Liquid Spectrum',
   // MilkDrop params
   milkDropPreset: '', milkDropAutoCycle: false, milkDropCycleBars: 8,
+  // Landscape mode (Blender canyon + curl particles)
+  landSpeed: 0.7, landBassLift: 1.2, landFog: 0.45, landFov: 55,
+  landParticleCount: 65536, landParticleSize: 2.4, landParticleGlow: 1.0,
   
   // 2D Fractal params removed
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
@@ -345,7 +350,8 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'frPower','frIter','frBailout','frScale','frFold','frMinR','frFixedR','frCamDist','frCamFov','frRotSpeed','frMorph','frColorMix','frAmbient','frDiffuse','frGlow','frShadow','frMaxSteps','frMaxDist','frSurfDist','frLightAz','frLightEl','frFoldRot','frJuliaSpeed','frCamOrbitSpeed','frSlicePos','frFogDensity','frFogStart','frAOStrength','frAORadius','frShadowSharpness',
   'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
-  'bloomStrength','bloomThreshold2','kickBloomAmount','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength','wallPaletteMix'];
+  'bloomStrength','bloomThreshold2','kickBloomAmount','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength','wallPaletteMix',
+  'landSpeed','landBassLift','landFog','landFov','landParticleSize','landParticleGlow'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
 function easeParams() { for (const k of SMOOTH) { const d = P[k] - L[k]; L[k] = Math.abs(d) < 1e-6 ? P[k] : L[k] + d * Math.min(1, P.smoothing <= 0 ? 1 : P.smoothing * 2); } }
@@ -409,6 +415,8 @@ const caDistort = prog(POST.POST_VS, POST.CA_DISTORT_FS);
 const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
 const blit = prog(POST.POST_VS, POST.BLIT_FS);
 const lumaKey = prog(POST.POST_VS, POST.LUMA_KEY_FS);
+const landscape = new LandscapeRenderer(gl);
+landscape.load('/landscape').catch((e) => console.error('Landscape load', e));
 // MilkDrop color grade: hue shift + saturation
 const milkDropGrade = prog(POST.POST_VS, `#version 300 es
 precision highp float;
@@ -1136,6 +1144,34 @@ function renderFractal(T: Trails, vp: number[]) {
 
 // 2D Fractal rendering removed
 
+// ---------- Landscape mode ----------
+function renderLandscape(T: Trails, aspect: number) {
+  const pal: [number, number, number][] = [];
+  for (let i = 0; i < Math.min(8, stops.length); i++) {
+    const c = hexLinear(stops[i][1]);
+    pal.push([c[0], c[1], c[2]]);
+  }
+  const bg = hexLinear(P.background);
+  landscape.render({
+    target: T.a.f,
+    depth: T.depth,
+    w: T.w,
+    h: T.h,
+    aspect,
+    time: currentTime,
+    dt,
+    audio: {
+      bassEnv: audioAnalyzer.state.bassEnv,
+      midEnv: audioAnalyzer.state.midEnv,
+      highEnv: audioAnalyzer.state.highEnv,
+      kickEnv: audioAnalyzer.state.kickEnv,
+    },
+    params: { ...P, landSpeed: V.landSpeed, landBassLift: V.landBassLift, landFog: V.landFog, landFov: V.landFov, landParticleSize: V.landParticleSize, landParticleGlow: V.landParticleGlow, hueShift: V.hueShift ?? P.hueShift, saturation: V.saturation },
+    palette: pal,
+    background: [bg[0], bg[1], bg[2]],
+  });
+}
+
 // ---------- Trippy Mode rendering ----------
 function renderTrippy(T: Trails, modeIndex: number) {
   gl.disable(gl.BLEND);
@@ -1287,6 +1323,9 @@ function tick(now: number) {
   } else if (P.mode === 'Morph') {
     if (!P.paused) { t3 += dt * V.orbitSpeed; }
     renderTrippy(T, 3);
+  } else if (P.mode === 'Landscape') {
+    if (!P.paused) { t3 += dt * V.evolution3d; }
+    renderLandscape(T, previewAspect);
   } else if (P.mode === '3D Fractal') {
     if (!P.paused) frame++;
     renderFractal(T, [0, 1, 0, 1]);
@@ -1610,7 +1649,7 @@ function tick(now: number) {
     console.log(`After tonemap (screen LDR) - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
   }
   
-  const what = P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
+  const what = P.mode === 'Landscape' ? `Landscape · speed ${V.landSpeed.toFixed(2)} · ${(P.landParticleCount/1000).toFixed(0)}K particles · audio ${audioAnalyzer.state.source}${landscape.ready ? '' : ' · loading'}` : P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
   const frameTime = dt * 1000; // ms
   hud.textContent = `${fps.toFixed(1)} fps (${frameTime.toFixed(1)}ms)  ·  ${what}  ·  time ${currentTime.toFixed(1)}s  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
 }
@@ -1899,7 +1938,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
+gui.add(P, 'mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
 gui.add({ r() { recover('button', true); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -2184,6 +2223,25 @@ function wallDefaults() {
   P.lsFlowU = 0.08; // Add motion
   P.lsFlowV = 0.05;
 }
+function landDefaults() {
+  P.palette = 'Ember';
+  if (PALETTES['Ember']) stops = PALETTES['Ember'].map((s: Stop) => [s[0], s[1]] as Stop);
+  syncStops();
+  P.hueShift = 0;
+  P.saturation = 1.25;
+  P.exposure = 1.0;
+  P.bloom = 0.28;
+  P.bloomStrength = 0.1;
+  P.background = '#020208';
+  P.tonemapMode = 'ACES';
+  P.landSpeed = 0.7;
+  P.landBassLift = 1.2;
+  P.landFog = 0.38;
+  P.landFov = 58;
+  P.landParticleSize = 1.6;
+  P.landParticleGlow = 0.75;
+  buildPalette();
+}
 const wMatF = gui.addFolder('Material');
 wMatF.add(P, 'wMat', WMATS).name('wall material'); wMatF.addColor(P, 'wColor').name('color'); wMatF.add(P, 'wPatch').name('palette patchwork (no objects)');
 wMatF.add(P, 'wRough', 0, 0.6, 0.01).name('glass frost'); wMatF.add(P, 'wAbsorb', 0, 4, 0.01).name('absorption / thickness'); wMatF.add(P, 'wDisp', 0, 0.1, 0.001).name('glass dispersion');
@@ -2197,12 +2255,21 @@ wCamF.add(P, 'wcPanX', -2, 2, 0.01).name('pan X'); wCamF.add(P, 'wcPanY', -2, 2,
 wCamF.add({ r: () => { applyWView('Front'); wsU(); } }, 'r').name('reset camera');
 wCamF.add(P, 'cycOn').name('cyclorama'); wCamF.addColor(P, 'cycA').name('cyc top'); wCamF.addColor(P, 'cycB').name('cyc bottom'); wCamF.add(P, 'grain', 0, 0.1, 0.001).name('film grain');
 wCamF.add(P, 'tonemapMode', ['AgX', 'ACES', 'Khronos Neutral', 'None']).name('tonemap');
+const landF = gui.addFolder('Landscape');
+landF.add(P, 'landSpeed', 0, 2, 0.01).name('flight speed');
+landF.add(P, 'landFov', 30, 90, 1).name('lens FOV');
+landF.add(P, 'landBassLift', 0, 4, 0.05).name('bass lift');
+landF.add(P, 'landFog', 0, 1.5, 0.01).name('fog');
+landF.add(P, 'landParticleCount', { '16K': 16384, '65K': 65536, '262K': 262144 }).name('particles');
+landF.add(P, 'landParticleSize', 0.5, 8, 0.05).name('particle size');
+landF.add(P, 'landParticleGlow', 0.2, 2.5, 0.05).name('particle glow');
 function updateFolders() { 
-  const w = isW(), fr = P.mode === '3D Fractal';
+  const w = isW(), fr = P.mode === '3D Fractal', land = P.mode === 'Landscape';
   // Fixed: pre (Presets) folder should always be visible like cf and ex
-  for (const f of [f3, gf, lsf, pf, lf, sim_, look, col]) f.show(!w && !fr);
+  for (const f of [f3, gf, lsf, pf, lf, sim_, look, col]) f.show(!w && !fr && !land);
   for (const f of [wMatF, wObjF, wCamF]) f.show(w);
   frF.show(fr);
+  landF.show(land);
   if (w) { f3.show(true); lf.show(true); f3.title('Wall'); lf.title('Lighting'); } 
   else if (!fr) { f3.title('3D Fabric'); lf.title('Lighting & Shadows'); }
   cf.show(true); pre.show(true); ex.show(true); // Always show Color, Presets, Export
@@ -2293,6 +2360,8 @@ const panel = new MainControlPanel({
     i.click();
   },
 });
+
+(window as any).panel = panel;
 
 // ---------- Remote Sync (WebSocket) ----------
 remoteSync = new RemoteSync(P, 
@@ -2500,12 +2569,14 @@ const q = new URLSearchParams(location.search);
 const rec = sessionStorage.getItem('flow-recover'); if (rec) { sessionStorage.removeItem('flow-recover'); Object.assign(P, JSON.parse(rec)); }
 
 // Accept any real mode name, case-insensitive, plus legacy aliases
-const VALID_MODES = ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
+const VALID_MODES = ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
 const MODE_ALIASES: Record<string, string> = {
   '2d': '2D flow',
   'particles': 'Particle Fabric',
   'spheres': 'Liquid Spheres',
-  '3d': '3D fabric'
+  '3d': '3D fabric',
+  'canyon': 'Landscape',
+  'landscape': 'Landscape'
 };
 
 if (q.has('mode')) {
@@ -2618,6 +2689,9 @@ if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const i
   },
   setMode,  // Expose for e2e tests
   loadPresetFromGallery,
+  getFps: () => fps,
+  getFrame: () => frame,
+  landscape,
   gui,
   PALETTES,
   // Expose readPixelsLDR for e2e tests (reads from default FB after tonemap, same frame)

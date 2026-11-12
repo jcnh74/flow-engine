@@ -65,7 +65,7 @@ export class MainControlPanel {
 
     // Scene section (always visible)
     html += this.buildSection('Scene', [
-      this.buildSelect('mode', 'Mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
+      this.buildSelect('mode', 'Mode', ['Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
       this.buildSlider('seed', 'Seed', 0, 999999, 1),
       this.buildSlider('resolutionScale', 'Quality / Resolution', 0.5, 1.0, 0.05, false),
       this.buildCheckbox('autoQuality', 'Auto Quality (60fps)'),
@@ -222,6 +222,16 @@ export class MainControlPanel {
         this.buildButton('milkdrop-random', '🎲 Random', 'action:milkdrop-random'),
         `<div class="preset-name" id="milkdrop-preset-name" style="padding: 8px; font-size: 11px; color: #999; text-align: center; font-family: monospace;"></div>`
       ]);
+    } else if (mode === 'Landscape') {
+      html += this.buildSection('Landscape', [
+        this.buildSlider('landSpeed', 'Flight Speed', 0, 2, 0.01, true),
+        this.buildSlider('landFov', 'Lens FOV', 30, 90, 1, true),
+        this.buildSlider('landBassLift', 'Bass Lift', 0, 4, 0.05, true),
+        this.buildSlider('landFog', 'Fog', 0, 1.5, 0.01, true),
+        this.buildSlider('landParticleSize', 'Particle Size', 0.5, 8, 0.05, true),
+        this.buildSlider('landParticleGlow', 'Particle Glow', 0.2, 2.5, 0.05, true),
+      ]);
+      html += this.buildPostSection();
     } else if (mode === '3D Fractal') {
       html += this.buildSection('Fractal', [
         this.buildSelect('frType', 'Type', { 
