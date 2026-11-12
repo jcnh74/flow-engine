@@ -8,6 +8,7 @@ import { COLOR_PRESETS, applyColorPreset, type ColorPreset } from './ColorPreset
 import { LIGHTING_RIGS, applyLightingRig, type LightingRig } from './LightingPresets';
 import { STUDIO_LOOK_NAMES, STUDIO_MATS } from '../studio';
 import { LAND_LOOK_NAMES } from '../landscape';
+import { MODE_CONTROLS, presetNames, applyModePreset, saveModePreset, deleteModePreset, applyModeDefaults, type Ctl } from '../modeControls';
 
 interface ControlConfig {
   params: any;
@@ -122,6 +123,7 @@ export class MainControlPanel {
       html += this.buildPostSection();
       html += this.buildFeedbackSection();
     } else if (mode === 'Plasma') {
+      html += this.buildModeControls(mode);
       html += this.buildSection('Plasma', [
         this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
         this.buildSlider('plasmaScale', 'Scale', 0.5, 3, 0.1, true),
@@ -135,6 +137,7 @@ export class MainControlPanel {
       html += this.buildPostSection();
       html += this.buildFeedbackSection();
     } else if (mode === 'Morph') {
+      html += this.buildModeControls(mode);
       html += this.buildSection('Morphing', [
         this.buildSlider('trippySpeed', 'Speed', 0.5, 3, 0.1, true),
         this.buildSlider('morphBlobs', 'Blob Count', 1, 6, 1, true),
@@ -249,14 +252,10 @@ export class MainControlPanel {
         `<div class="preset-name" id="milkdrop-preset-name" style="padding: 8px; font-size: 11px; color: #999; text-align: center; font-family: monospace;"></div>`
       ]);
     } else if (['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour'].includes(mode)) {
-      html += this.buildSection('Physical Scene', [
+      html += this.buildModeControls(mode);
+      html += this.buildSection('Studio', [
         this.buildSelect('phLook', 'Palette', STUDIO_LOOK_NAMES),
         this.buildSlider('phSpeed', 'Motion Speed', 0, 2, 0.01, true),
-        ...(mode === 'Fabric' ? [this.buildSelect('phMat', 'Cloth', ['Satin', 'Silk', 'Iridescent', 'Velvet']), this.buildSelect('phVariant', 'Motion', ['Ribbon', 'Flow', 'Blender Bake'])] : []),
-        ...(mode === 'City Vortex' ? [this.buildSelect('phMat', 'City Palette', ['Dusk Gold', 'Cobalt Night', 'Pastel Morning'])] : []),
-        ...(mode === 'Jungle' ? [this.buildSelect('phMat', 'Flora', ['Natural', 'Pastel', 'Iridescent']), this.buildSelect('phVariant', 'Shot', ['Vortex', 'Canopy'])] : []),
-        ...(mode === 'Stargate' ? [this.buildSelect('phPalette', 'Light Palette', ['Kubrick', 'Jupiter']), this.buildSelect('phVariant', 'Planes', ['Floor + Ceiling', 'Walls']), this.buildSlider('phStreak', 'Slit-scan Streak', 0.1, 3, 0.01, true)] : []),
-        ...(mode === 'Paint' ? [this.buildSelect('phVariant', 'Canvas', ['Pour', 'Drip Wall']), this.buildSlider('phThickness', 'Paint Thickness', 0.2, 3, 0.01, true)] : []),
         this.buildSlider('phGloss', 'Gloss', 0.2, 2, 0.01, true),
         this.buildSlider('phIrid', 'Iridescence', 0, 1, 0.01, true),
         this.buildSlider('phKeyAz', 'Key Angle', -180, 180, 1, true),
@@ -265,6 +264,7 @@ export class MainControlPanel {
       ]);
       html += this.buildPostSection();
     } else if (mode === 'Landscape') {
+      html += this.buildModeControls(mode);
       html += this.buildSection('Landscape', [
         this.buildSelect('landLook', 'Look', LAND_LOOK_NAMES),
         this.buildSlider('landSpeed', 'Flight Speed', 0, 2, 0.01, true),
@@ -433,6 +433,42 @@ export class MainControlPanel {
         this.buildSlider('stFog', 'Depth Haze', 0, 0.2, 0.001, true),
       ] : []),
     ]);
+  }
+
+  /** Pass 6: the mode's own panel (sliders, knobs, selectors bound to live scene parameters) + its presets. */
+  private buildModeControls(mode: string): string {
+    const spec = MODE_CONTROLS[mode]; if (!spec) return '';
+    applyModeDefaults(this.config.params, mode);
+    const one = (c: Ctl) => c.type === 'slider' ? this.buildSlider(c.key, c.label, c.min!, c.max!, c.step ?? 0.01, true)
+      : c.type === 'knob' ? this.buildKnob(c.key, c.label, c.min!, c.max!, c.step ?? 0.01)
+      : c.type === 'select' ? this.buildSelect(c.key, c.label, c.options!) : this.buildCheckbox(c.key, c.label);
+    const names = presetNames(mode);
+    const presetHtml = `
+      <div class="control mode-presets" data-mode="${mode}">
+        <div class="control-row"><label class="control-label">Preset</label>
+          <select class="control-select" data-mp-select>${names.map((n) => `<option value="${n}">${n}</option>`).join('')}</select></div>
+        <div class="control-row mp-buttons">
+          <button class="control-button" data-action="mp:load">Load</button>
+          <input class="mp-name" type="text" placeholder="name" maxlength="40" />
+          <button class="control-button" data-action="mp:save">Save</button>
+          <button class="control-button" data-action="mp:delete" title="Delete a ★ user preset">Delete</button>
+        </div>
+      </div>`;
+    return this.buildSection(`${mode} Presets`, [presetHtml]) + spec.sections.map((sec) => this.buildSection(`${mode} · ${sec.title}`, sec.ctls.map(one))).join('');
+  }
+
+  private buildKnob(param: string, label: string, min: number, max: number, step: number): string {
+    const value = Number(this.config.params[param] ?? (min + max) / 2);
+    const v = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+    return `
+      <div class="control knob-control" data-param="${param}">
+        <div class="knob" style="--v:${v.toFixed(3)}" data-knob="${param}" data-min="${min}" data-max="${max}">
+          <input type="range" class="knob-input" data-param="${param}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}" />
+          <div class="knob-cap"></div>
+        </div>
+        <label class="knob-label">${label}</label>
+        <span class="control-value" data-value="${param}">${value.toFixed(2)}</span>
+      </div>`;
   }
 
   private buildSlider(param: string, label: string, min: number, max: number, step: number, modulatable = false): string {
@@ -805,6 +841,7 @@ export class MainControlPanel {
         
         this.config.params[param] = value;
         this.updateValueDisplay(param, value);
+        this.updateKnob(param, value);
         if (param === 'hueShift' && (window as any).engine?.buildPalette) {
           (window as any).engine.buildPalette();
         }
@@ -915,6 +952,8 @@ export class MainControlPanel {
         this.config.onExportMidi();
       } else if (action === 'import-midi' && this.config.onImportMidi) {
         this.config.onImportMidi();
+      } else if (action?.startsWith('mp:')) {
+        this.handleModePreset(action, target);
       } else if (action?.startsWith('action:')) {
         // Handle MIDI-learnable action buttons
         // Trigger the action via global window functions
@@ -941,6 +980,24 @@ export class MainControlPanel {
         e.preventDefault();
       }
     });
+  }
+
+  private updateKnob(param: string, value: any): void {
+    this.container.querySelectorAll(`.knob[data-knob="${param}"]`).forEach((k) => {
+      const el = k as HTMLElement; const mn = Number(el.dataset.min), mx = Number(el.dataset.max);
+      el.style.setProperty('--v', String(Math.max(0, Math.min(1, (Number(value) - mn) / (mx - mn || 1)))));
+    });
+  }
+
+  private handleModePreset(action: string, target: HTMLElement): void {
+    const box = target.closest('.mode-presets') as HTMLElement | null; if (!box) return;
+    const mode = box.dataset.mode!; const sel = box.querySelector('[data-mp-select]') as HTMLSelectElement;
+    const P = this.config.params;
+    if (action === 'mp:load') { if (applyModePreset(P, mode, sel.value)) { this.syncDisplayedValues(); P.__modePreset = sel.value; } }
+    else if (action === 'mp:save') {
+      const nameEl = box.querySelector('.mp-name') as HTMLInputElement; const saved = saveModePreset(P, mode, nameEl.value || `My ${mode} ${new Date().toLocaleTimeString()}`);
+      if (saved) { this.rebuild(); const s2 = this.container.querySelector('[data-mp-select]') as HTMLSelectElement | null; if (s2) s2.value = saved; }
+    } else if (action === 'mp:delete') { if (deleteModePreset(mode, sel.value)) this.rebuild(); }
   }
 
   private updateValueDisplay(param: string, value: any): void {
@@ -1051,6 +1108,7 @@ export class MainControlPanel {
         input.value = String(value);
       } else if (input.type === 'range' || input.tagName === 'SELECT') {
         input.value = String(value);
+        if (input.classList.contains('knob-input')) this.updateKnob(param, value);
       }
       
       // Update display value

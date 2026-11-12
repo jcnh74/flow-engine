@@ -1,0 +1,172 @@
+// Pass 6: per-mode control panels + per-mode presets (built-in and user-saved), applied live.
+// Each mode declares its own sliders / knobs / selectors bound to real scene parameters (the scenes read these
+// keys every frame), its defaults and 3-5 built-in presets. User presets persist in localStorage per mode.
+// Original MIT-licensed work for flow-engine.
+import { ROOM_PALETTES, ROOM_ORDERS, ROOM_CAMERAS } from './physical/colorroom';
+
+export type Ctl = { key: string; label: string; type: 'slider' | 'knob' | 'select' | 'check'; min?: number; max?: number; step?: number; options?: string[] };
+export type ModeSpec = { sections: { title: string; ctls: Ctl[] }[]; defaults: Record<string, any>; presets: Record<string, Record<string, any>> };
+
+const S = (key: string, label: string, min: number, max: number, step = 0.01): Ctl => ({ key, label, type: 'slider', min, max, step });
+const K = (key: string, label: string, min: number, max: number, step = 0.01): Ctl => ({ key, label, type: 'knob', min, max, step });
+const SEL = (key: string, label: string, options: string[]): Ctl => ({ key, label, type: 'select', options });
+
+export const MODE_CONTROLS: Record<string, ModeSpec> = {
+  'Gravity': {
+    sections: [
+      { title: 'Drops', ctls: [S('grDropSize', 'Drop Size (balls)', 100, 2400, 10), S('grDropEvery', 'Drop Interval (s)', 0.6, 6, 0.05), K('grSpread', 'Drop Spread', 0, 1.5), K('grBallSize', 'Ball Size', 0.6, 1.8)] },
+      { title: 'Physics', ctls: [K('grBounce', 'Bounciness', 0.2, 0.95), K('grGravity', 'Gravity', 2, 20, 0.1), K('grRest', 'Settle → Recycle (s)', 0.5, 8, 0.1), S('phSpeed', 'Time Scale', 0.1, 2)] },
+      { title: 'Look & Camera', ctls: [SEL('phVariant', 'Scene', ['Color Room', 'Cascade', 'Machine']), SEL('grRoom', 'Room Colours', Object.keys(ROOM_PALETTES)), SEL('grOrder', 'Colour Order', Object.keys(ROOM_ORDERS)),
+        SEL('grCamera', 'Camera', ROOM_CAMERAS), K('grCamEnergy', 'Camera Energy', 0, 2.5), S('phFov', 'Lens FOV', 30, 85, 1), S('phDof', 'Depth of Field', 0, 1), S('phIrid', 'Pearl Iridescence', 0, 1)] },
+    ],
+    defaults: { grDropSize: 1100, grDropEvery: 2.4, grSpread: 1, grBallSize: 1, grBounce: 0.78, grGravity: 9.8, grRest: 2.5, grRoom: 'Pop Gallery', grOrder: 'Rainbow', grCamera: 'Low Wide', grCamEnergy: 1 },
+    presets: {
+      'Pop Splash': { grDropSize: 1100, grDropEvery: 2.4, grBounce: 0.78, grGravity: 9.8, grRoom: 'Pop Gallery', grOrder: 'Rainbow', grCamera: 'Low Wide', grBallSize: 1 },
+      'Monsoon': { grDropSize: 2200, grDropEvery: 1.4, grBounce: 0.6, grGravity: 14, grRoom: 'Sunset Clay', grOrder: 'Warm / Cool', grCamera: 'Front Row', grBallSize: 0.8 },
+      'Moon Bounce': { grDropSize: 700, grDropEvery: 3.2, grBounce: 0.93, grGravity: 4, grRoom: 'Candy Loft', grOrder: 'Mint & Gold', grCamera: 'Orbit', grBallSize: 1.2 },
+      'Neon Duel': { grDropSize: 1500, grDropEvery: 2.0, grBounce: 0.82, grGravity: 9.8, grRoom: 'Neon Noir', grOrder: 'Duo Coral-Cobalt', grCamera: 'Overhead Dive', grBallSize: 1 },
+    },
+  },
+  'Stargate': {
+    sections: [
+      { title: 'Flight', ctls: [S('phSpeed', 'Speed', 0, 3), K('phStreak', 'Streak Length', 0.1, 3), K('sgWarp', 'Warp', 0, 2), S('sgFov', 'Lens', 0.4, 1.2)] },
+      { title: 'Artwork', ctls: [K('sgDensity', 'Density', 0.1, 0.95), K('sgBands', 'Band Count', 0.4, 4), SEL('sgPattern', 'Pattern', ['Auto Cycle', 'Ribbons', 'Dot Lattice', 'Moiré']), SEL('phPalette', 'Light Palette', ['Kubrick', 'Jupiter', 'Neon Ice', 'Sunset Strip']), SEL('phVariant', 'Planes', ['Floor + Ceiling', 'Walls'])] },
+      { title: 'Light', ctls: [K('sgGlow', 'Horizon Glow', 0, 3), K('sgExposure', 'Exposure', 0.3, 2.5)] },
+    ],
+    defaults: { sgWarp: 0.3, sgFov: 0.62, sgDensity: 0.68, sgBands: 1.4, sgPattern: 'Auto Cycle', sgGlow: 1, sgExposure: 1 },
+    presets: {
+      'Kubrick 1968': { phSpeed: 1, phStreak: 1, sgWarp: 0.3, sgDensity: 0.68, sgBands: 1.4, sgPattern: 'Auto Cycle', phPalette: 'Kubrick', phVariant: 'Floor + Ceiling', sgGlow: 1, sgExposure: 1 },
+      'Hyperdrive': { phSpeed: 2.6, phStreak: 2.6, sgWarp: 0.1, sgDensity: 0.8, sgBands: 2.2, sgPattern: 'Ribbons', phPalette: 'Neon Ice', sgGlow: 2, sgExposure: 1.3 },
+      'Jupiter Drift': { phSpeed: 0.5, phStreak: 1.6, sgWarp: 1.2, sgDensity: 0.5, sgBands: 0.9, sgPattern: 'Moiré', phPalette: 'Jupiter', phVariant: 'Walls', sgGlow: 1.4, sgExposure: 1 },
+      'Dot Tunnel': { phSpeed: 1.4, phStreak: 0.5, sgWarp: 0.5, sgDensity: 0.6, sgBands: 3, sgPattern: 'Dot Lattice', phPalette: 'Sunset Strip', sgGlow: 0.6, sgExposure: 1.1 },
+    },
+  },
+  'Paint Pour': {
+    sections: [
+      { title: 'Clip', ctls: [SEL('ppClip', 'Clip', ['Splash', 'Pour']), S('phSpeed', 'Playback Speed', 0.25, 2)] },
+      { title: 'Grade', ctls: [K('ppSat', 'Saturation', 0, 2), K('ppHue', 'Hue Shift', -0.5, 0.5), K('ppExposure', 'Exposure', 0.4, 2), K('ppZoom', 'Push-in', 1, 1.6), K('ppDrift', 'Camera Drift', 0, 1)] },
+    ],
+    defaults: { ppClip: 'Pour', ppSat: 1, ppHue: 0, ppExposure: 1, ppZoom: 1, ppDrift: 0.3 },
+    presets: {
+      'Splash Natural': { ppClip: 'Splash', ppSat: 1, ppHue: 0, ppExposure: 1, ppZoom: 1, ppDrift: 0.3, phSpeed: 1 },
+      'Splash Slow-mo': { ppClip: 'Splash', ppSat: 1.15, ppHue: 0, ppExposure: 1.05, ppZoom: 1.15, ppDrift: 0.6, phSpeed: 0.4 },
+      'Splash Cool Shift': { ppClip: 'Splash', ppSat: 1.3, ppHue: 0.33, ppExposure: 1, ppZoom: 1.05, ppDrift: 0.3, phSpeed: 1 },
+      'Pour Classic': { ppClip: 'Pour', ppSat: 1, ppHue: 0, ppExposure: 1, ppZoom: 1, ppDrift: 0, phSpeed: 1 },
+    },
+  },
+  'Paint': {
+    sections: [{ title: 'Paint', ctls: [SEL('phVariant', 'Canvas', ['Pour', 'Drip Wall']), K('phThickness', 'Thickness', 0.2, 3), S('phSpeed', 'Flow Speed', 0, 2), K('phGloss', 'Gloss', 0.2, 2), S('phKeyAz', 'Key Angle', -180, 180, 1), S('phKeyEl', 'Key Height', 5, 85, 1)] }],
+    defaults: {},
+    presets: {
+      'Wet Pour': { phVariant: 'Pour', phThickness: 1, phSpeed: 1, phGloss: 1.2 },
+      'Heavy Impasto': { phVariant: 'Pour', phThickness: 2.6, phSpeed: 0.6, phGloss: 0.8 },
+      'Drip Wall': { phVariant: 'Drip Wall', phThickness: 1.2, phSpeed: 1.2, phGloss: 1.4 },
+    },
+  },
+  'City Vortex': {
+    sections: [
+      { title: 'Traffic & Flow', ctls: [S('phSpeed', 'Flow Speed', 0, 2.5), K('ctSpin', 'Vortex Spin', 0, 0.3), K('ctTraffic', 'Traffic Speed', 0, 2.5), K('ctLights', 'Window Lights', 0, 1.5)] },
+      { title: 'City', ctls: [SEL('phMat', 'Palette', ['Dusk Gold', 'Cobalt Night', 'Pastel Morning']), SEL('ctDistrict', 'District Bias', ['Mixed', 'Downtown Glass', 'Brownstones', 'Industrial', 'Waterfront']), K('ctFog', 'Haze', 0, 2), K('ctRefl', 'Glass Reflection', 0, 1.5)] },
+      { title: 'Camera', ctls: [S('phFov', 'Lens FOV', 35, 90, 1), S('phDof', 'Depth of Field', 0, 1), S('phKeyAz', 'Sun Angle', -180, 180, 1), S('phKeyEl', 'Sun Height', 5, 85, 1)] },
+    ],
+    defaults: { ctSpin: 0.07, ctTraffic: 1, ctLights: 1, ctDistrict: 'Mixed', ctFog: 1, ctRefl: 1 },
+    presets: {
+      'Golden Hour': { phMat: 'Dusk Gold', phSpeed: 1, ctSpin: 0.07, ctTraffic: 1, ctLights: 0.6, ctFog: 1, ctRefl: 1.1, phKeyEl: 20 },
+      'Night Shift': { phMat: 'Cobalt Night', phSpeed: 1.3, ctSpin: 0.1, ctTraffic: 1.8, ctLights: 1.4, ctFog: 1.2, ctRefl: 0.8 },
+      'Morning Commute': { phMat: 'Pastel Morning', phSpeed: 0.7, ctSpin: 0.04, ctTraffic: 0.8, ctLights: 0.2, ctFog: 0.7, ctRefl: 1.2, phKeyEl: 50 },
+      'Brownstone Calm': { phMat: 'Dusk Gold', ctDistrict: 'Brownstones', phSpeed: 0.5, ctSpin: 0.03, ctTraffic: 0.5, ctLights: 0.8 },
+    },
+  },
+  'Jungle': {
+    sections: [
+      { title: 'Motifs', ctls: [SEL('jgMotif', 'Motif', ['Journey (cycle)', 'Orchids', 'Heliconia & Bird-of-Paradise', 'Monstera & Palm', 'Ferns & Moss', 'Bromeliads', 'Lotus Water Garden']), K('jgCycle', 'Motif Duration (s)', 6, 40, 1)] },
+      { title: 'Motion', ctls: [S('phSpeed', 'Flight Speed', 0, 2), K('jgSway', 'Leaf Sway', 0, 2), K('jgBloom', 'Petal Opening', 0, 1.5), K('jgDensity', 'Density', 0.3, 1)] },
+      { title: 'Look', ctls: [SEL('phMat', 'Flora', ['Natural', 'Pastel', 'Iridescent']), K('jgFog', 'Depth Fog', 0, 2), K('jgSat', 'Saturation', 0.4, 1.8), S('phFov', 'Lens FOV', 35, 90, 1), S('phDof', 'Depth of Field', 0, 1)] },
+    ],
+    defaults: { jgMotif: 'Journey (cycle)', jgCycle: 16, jgSway: 1, jgBloom: 1, jgDensity: 1, jgFog: 1, jgSat: 1 },
+    presets: {
+      'Rainforest Journey': { jgMotif: 'Journey (cycle)', jgCycle: 16, phSpeed: 1, jgSway: 1, jgBloom: 1, phMat: 'Natural', jgFog: 1, jgSat: 1 },
+      'Orchid House': { jgMotif: 'Orchids', phSpeed: 0.6, jgSway: 0.6, jgBloom: 1.3, phMat: 'Natural', jgFog: 0.7, jgSat: 1.2 },
+      'Lotus Dream': { jgMotif: 'Lotus Water Garden', phSpeed: 0.5, jgSway: 0.4, phMat: 'Pastel', jgFog: 1.3, jgSat: 0.9 },
+      'Iridescent Canopy': { jgMotif: 'Monstera & Palm', phSpeed: 1.3, jgSway: 1.6, phMat: 'Iridescent', jgFog: 0.8, jgSat: 1.4 },
+    },
+  },
+  'Fabric': {
+    sections: [
+      { title: 'Ribbons', ctls: [S('fbCount', 'Ribbon Count', 1, 10, 1), S('phSpeed', 'Float Speed', 0, 2.5), K('fbFlutter', 'Flutter', 0, 2), K('fbWidth', 'Width', 0.4, 2), K('fbTwist', 'Twist', 0, 2)] },
+      { title: 'Cloth', ctls: [SEL('fbPalette', 'Palette', ['Complementary Coral/Teal', 'Triad Jewel', 'Analog Sunset', 'Split Lilac/Gold', 'Monochrome Pearl']), SEL('phMat', 'Cloth', ['Satin', 'Silk', 'Iridescent', 'Velvet']), K('fbWeave', 'Weave Bump', 0, 2), K('fbSheen', 'Anisotropic Sheen', 0, 2), SEL('phVariant', 'Motion', ['Ribbon', 'Flow', 'Blender Bake'])] },
+      { title: 'Camera', ctls: [S('phFov', 'Lens FOV', 30, 85, 1), S('phDof', 'Depth of Field', 0, 1), S('phKeyAz', 'Key Angle', -180, 180, 1), S('phKeyEl', 'Key Height', 5, 85, 1)] },
+    ],
+    defaults: { fbCount: 7, fbFlutter: 1, fbWidth: 1, fbTwist: 1, fbPalette: 'Complementary Coral/Teal', fbWeave: 1, fbSheen: 1 },
+    presets: {
+      'Silk Parade': { fbCount: 7, phSpeed: 1, fbFlutter: 1, fbWidth: 1, fbPalette: 'Complementary Coral/Teal', phMat: 'Silk', fbWeave: 1, fbSheen: 1.2 },
+      'Jewel Satin': { fbCount: 9, phSpeed: 0.8, fbFlutter: 0.7, fbWidth: 1.3, fbPalette: 'Triad Jewel', phMat: 'Satin', fbWeave: 0.8, fbSheen: 1.5 },
+      'Sunset Drift': { fbCount: 5, phSpeed: 0.5, fbFlutter: 1.4, fbWidth: 1.6, fbPalette: 'Analog Sunset', phMat: 'Silk', fbWeave: 1.3, fbSheen: 1 },
+      'Pearl Velvet': { fbCount: 6, phSpeed: 0.7, fbFlutter: 0.5, fbWidth: 1.1, fbPalette: 'Monochrome Pearl', phMat: 'Velvet', fbWeave: 1.8, fbSheen: 0.6 },
+    },
+  },
+  'Landscape': {
+    sections: [{ title: 'Dynamics', ctls: [K('landSpeed', 'Flight Speed', 0, 2), K('landFlow', 'Pigment Flow', 0, 4), K('landPigment', 'Pigment', 0, 1.5), K('landFog', 'Depth Fade', 0, 1.5)] }],
+    defaults: {},
+    presets: {
+      'Gentle Glide': { landSpeed: 0.6, landFlow: 1, landPigment: 0.8, landFog: 0.6 },
+      'Pigment Storm': { landSpeed: 1.4, landFlow: 3.2, landPigment: 1.4, landFog: 0.4 },
+      'Misty Dawn': { landSpeed: 0.4, landFlow: 0.6, landPigment: 0.5, landFog: 1.3 },
+      'Fast Canyon': { landSpeed: 2, landFlow: 1.6, landPigment: 1, landFog: 0.2 },
+    },
+  },
+  'Morph': {
+    sections: [{ title: 'Dynamics', ctls: [K('trippySpeed', 'Speed', 0.5, 3), K('morphBlobs', 'Blob Count', 1, 6, 1), K('morphSmooth', 'Smoothness', 0, 1), K('morphRate', 'Morph Rate', 0, 1), K('morphGlow', 'Glow', 0, 2)] }],
+    defaults: {},
+    presets: {
+      'Lava Calm': { trippySpeed: 0.8, morphBlobs: 3, morphSmooth: 0.8, morphRate: 0.3, morphGlow: 0.6 },
+      'Busy Cells': { trippySpeed: 2.2, morphBlobs: 6, morphSmooth: 0.4, morphRate: 0.8, morphGlow: 1 },
+      'Glow Pair': { trippySpeed: 1.2, morphBlobs: 2, morphSmooth: 0.9, morphRate: 0.5, morphGlow: 1.8 },
+    },
+  },
+  'Plasma': {
+    sections: [{ title: 'Dynamics', ctls: [K('trippySpeed', 'Speed', 0.5, 3), K('plasmaScale', 'Scale', 0.5, 3), K('plasmaWarp', 'Warp', 0, 2), K('plasmaFlow', 'Flow', 0, 1.5), K('plasmaContrast', 'Contrast', 0.5, 2)] }],
+    defaults: {},
+    presets: {
+      'Silk Plasma': { trippySpeed: 0.8, plasmaScale: 1.2, plasmaWarp: 0.6, plasmaFlow: 0.5, plasmaContrast: 1 },
+      'Acid Warp': { trippySpeed: 2.4, plasmaScale: 2.4, plasmaWarp: 1.8, plasmaFlow: 1.2, plasmaContrast: 1.6 },
+      'Slow Tide': { trippySpeed: 0.5, plasmaScale: 0.7, plasmaWarp: 0.3, plasmaFlow: 0.3, plasmaContrast: 0.8 },
+    },
+  },
+};
+
+const LS = (mode: string) => `flowModePresets:${mode}`;
+type Store = { getItem(k: string): string | null; setItem(k: string, v: string): void };
+const store = (): Store | null => (typeof localStorage !== 'undefined' ? localStorage : null);
+export function userPresets(mode: string): Record<string, Record<string, any>> {
+  try { return JSON.parse(store()?.getItem(LS(mode)) ?? '{}'); } catch { return {}; }
+}
+export function presetNames(mode: string): string[] {
+  const spec = MODE_CONTROLS[mode]; if (!spec) return [];
+  return [...Object.keys(spec.presets), ...Object.keys(userPresets(mode)).map((n) => `★ ${n}`)];
+}
+/** Fill any of the mode's control keys that are still unset. */
+export function applyModeDefaults(P: Record<string, any>, mode: string) {
+  const spec = MODE_CONTROLS[mode]; if (!spec) return;
+  for (const [k, v] of Object.entries(spec.defaults)) if (P[k] === undefined) P[k] = v;
+}
+export function applyModePreset(P: Record<string, any>, mode: string, name: string): boolean {
+  const spec = MODE_CONTROLS[mode]; if (!spec) return false;
+  const vals = name.startsWith('★ ') ? userPresets(mode)[name.slice(2)] : spec.presets[name];
+  if (!vals) return false;
+  Object.assign(P, vals); return true;
+}
+export function captureModeValues(P: Record<string, any>, mode: string): Record<string, any> {
+  const spec = MODE_CONTROLS[mode]; const out: Record<string, any> = {};
+  if (!spec) return out;
+  for (const s of spec.sections) for (const c of s.ctls) if (P[c.key] !== undefined) out[c.key] = P[c.key];
+  return out;
+}
+export function saveModePreset(P: Record<string, any>, mode: string, name: string): string | null {
+  const st = store(); const n = name.trim().slice(0, 40); if (!st || !n) return null;
+  const all = userPresets(mode); all[n] = captureModeValues(P, mode); st.setItem(LS(mode), JSON.stringify(all)); return `★ ${n}`;
+}
+export function deleteModePreset(mode: string, name: string): boolean {
+  const st = store(); if (!st || !name.startsWith('★ ')) return false;
+  const all = userPresets(mode); delete all[name.slice(2)]; st.setItem(LS(mode), JSON.stringify(all)); return true;
+}

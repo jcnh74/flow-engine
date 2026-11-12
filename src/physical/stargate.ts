@@ -9,7 +9,7 @@ import { compile, fbo, deleteFB, QUAD_VS, lookOf, lin, type FB, type PhysFrame, 
 const FS = `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 o;
-uniform vec2 uRes; uniform float uTime, uSpeed, uStreak, uDt, uAspect, uPlanes, uFamily, uExposure, uBands;
+uniform vec2 uRes; uniform float uTime, uSpeed, uStreak, uDt, uAspect, uPlanes, uFamily, uExposure, uBands, uDensity, uWarp, uGlow, uFov;
 uniform vec3 uPal[7];
 uniform sampler2D uHist; uniform float uHistW;
 float h11(float p){ p = fract(p*0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
@@ -22,7 +22,7 @@ vec3 art(float a, float s, float side, float aa, float fam){
   float B = a*uBands; float b = floor(B); float x = fract(B)-0.5;
   float seg = 1.6 + 2.5*h11(b*3.1 + side*17.0);
   float k = floor(s/seg + h11(b+side*5.0)*7.0);
-  float on = step(0.32, h21(vec2(b, k) + side*13.0));
+  float on = step(1.0 - uDensity, h21(vec2(b, k) + side*13.0));
   float lum = on*(0.35 + 1.4*pow(h21(vec2(k, b*1.7)), 2.0));
   vec3 c = pal(b*0.073 + k*0.021 + side*0.31 + uTime*0.012);
   // family 0: luminous ribbons of different widths
@@ -46,15 +46,16 @@ void main(){
   float bay = (BAYER[bp.y*4 + bp.x] + 0.5)/16.0;
   float jit = fract(bay + fract(uTime*7.31)*0.618);
   float tt = uTime + (jit-0.5)*uDt*uExposure;            // stochastic sub-frame time = motion blur
-  float sway = 0.035*sin(tt*0.23);
-  vec3 rd = normalize(vec3(uv.x*0.62 + sway, uv.y*0.62, 1.0));
+  float sway = 0.035*uWarp*3.0*sin(tt*0.23);
+  float roll = 0.12*uWarp*sin(tt*0.11); uv = mat2(cos(roll), -sin(roll), sin(roll), cos(roll))*uv;
+  vec3 rd = normalize(vec3(uv.x*uFov + sway, uv.y*uFov + 0.02*uWarp*sin(tt*0.17), 1.0));
   float vert = step(0.5, uPlanes);
   float across = mix(rd.y, rd.x, vert);                  // axis that hits a plane
   float lateral = mix(rd.x, rd.y, vert);
   float side = across > 0.0 ? 1.0 : 0.0;
   float t = 1.0/max(abs(across), 1e-4);
   float z = rd.z*t;                                      // distance along the corridor
-  float a = lateral*t;
+  float a = lateral*t + uWarp*0.35*sin(z*0.06 + tt*0.4);   // warp: the corridor snakes
   float travel = tt*uSpeed;
   float aa = clamp(fwidth(a)*uBands*1.5, 0.002, 0.5);
   // slit-scan exposure: integrate the artwork forward along travel; the window grows with depth
@@ -74,7 +75,7 @@ void main(){
   float near = exp(-z*0.09);
   col *= 0.5 + 1.5*near;
   float horizon = exp(-abs(across)*28.0);
-  col += pal(uTime*0.03 + 0.5)*horizon*0.9 + vec3(1.0)*exp(-abs(across)*140.0)*0.8;
+  col += (pal(uTime*0.03 + 0.5)*horizon*0.9 + vec3(1.0)*exp(-abs(across)*140.0)*0.8)*uGlow;
   col *= smoothstep(0.0, 0.02, abs(across)) * 0.85 + 0.15;
   col = max(col, 0.0);
   vec3 prev = texture(uHist, vUv).rgb;
@@ -88,6 +89,8 @@ void main(){ vec3 c = texture(uSrc, vUv).rgb; o = vec4(c*uGain, 1.0); }`;
 export const STARGATE_PALETTES: Record<string, string[]> = {
   'Kubrick': ['#ff2a1a', '#ffb000', '#1fd2ff', '#ff3fd0', '#3cff6a', '#3a3cff', '#ffe9a0'],
   'Jupiter': ['#ff6a00', '#ffcf3a', '#c2185b', '#7b1fff', '#00b8d4', '#ff3d00', '#ffe0b2'],
+  'Neon Ice': ['#00e5ff', '#7c4dff', '#e0f7ff', '#18ffff', '#3d5afe', '#ff4081', '#b2ebf2'],
+  'Sunset Strip': ['#ff1744', '#ff9100', '#ffd740', '#f50057', '#651fff', '#ff6e40', '#fff3e0'],
 };
 
 export class StargateScene implements PhysScene {
@@ -110,18 +113,20 @@ export class StargateScene implements PhysScene {
     gl.useProgram(this.p.p); const u = this.p.u;
     gl.uniform2f(u.uRes, f.w, f.h); gl.uniform1f(u.uTime, f.time); gl.uniform1f(u.uAspect, f.aspect);
     gl.uniform1f(u.uSpeed, 9.0 * P.speed); gl.uniform1f(u.uStreak, 3.0 * (P.streak ?? 1)); gl.uniform1f(u.uDt, Math.max(f.dt, 1 / 60));
-    gl.uniform1f(u.uExposure, 1.0); gl.uniform1f(u.uBands, P.bands ?? 1.4);
+    gl.uniform1f(u.uExposure, 1.0); gl.uniform1f(u.uBands, P.sgBands ?? P.bands ?? 1.4);
+    gl.uniform1f(u.uDensity, P.sgDensity ?? 0.68); gl.uniform1f(u.uWarp, P.sgWarp ?? 0.3); gl.uniform1f(u.uGlow, P.sgGlow ?? 1); gl.uniform1f(u.uFov, P.sgFov ?? 0.62);
     gl.uniform1f(u.uPlanes, P.variant === 'Walls' ? 1 : 0);
     // artwork family crossfades every ~10 s (0 -> 1 -> 2 -> 3(=0)), seamless 40 s cycle
     const cyc = (f.time / 10) % 4; const fr = cyc - Math.floor(cyc); const fam = Math.floor(cyc) + Math.min(1, Math.max(0, (fr - 0.75) / 0.25));
-    gl.uniform1f(u.uFamily, P.family >= 0 ? P.family : fam);
+    const pat = ({ 'Ribbons': 0, 'Dot Lattice': 1, 'Moiré': 2 } as Record<string, number>)[P.sgPattern as string];
+    gl.uniform1f(u.uFamily, pat !== undefined ? pat : P.family >= 0 ? P.family : fam);
     const palName = P.palette && STARGATE_PALETTES[P.palette] ? P.palette : null;
     const hexes = palName ? STARGATE_PALETTES[palName] : lookOf(P.look).slots;
     const flat = new Float32Array(21); hexes.forEach((h, k) => flat.set(lin(h, 1.0), k * 3)); gl.uniform3fv(u['uPal[0]'], flat);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(u.uHist, 0); gl.uniform1f(u.uHistW, P.paused ? 0.0 : 0.45);
     gl.bindVertexArray(this.vao); gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, f.target); gl.viewport(0, 0, f.w, f.h);
-    gl.useProgram(this.copy.p); gl.bindTexture(gl.TEXTURE_2D, dst.t); gl.uniform1i(this.copy.u.uSrc, 0); gl.uniform1f(this.copy.u.uGain, P.exposure ?? 1.0);
+    gl.useProgram(this.copy.p); gl.bindTexture(gl.TEXTURE_2D, dst.t); gl.uniform1i(this.copy.u.uSrc, 0); gl.uniform1f(this.copy.u.uGain, P.sgExposure ?? P.exposure ?? 1.0);
     gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindVertexArray(null);
     this.stats = { family: +fam.toFixed(2), planes: P.variant === 'Walls' ? 'walls' : 'floor+ceiling' };
   }
