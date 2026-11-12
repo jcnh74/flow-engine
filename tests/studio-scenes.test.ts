@@ -54,7 +54,8 @@ describe('studio looks + presets', () => {
     const per: Record<string, number> = {};
     for (const p of STUDIO_PRESETS) {
       per[p.mode] = (per[p.mode] ?? 0) + 1;
-      expect(PRESET_GALLERY.includes(p)).toBe(true);
+      // pass 5: retired modes (Tunnel, Kaleido) keep their presets in ALL_PRESETS but leave the gallery
+      expect(PRESET_GALLERY.includes(p)).toBe(!['Tunnel', 'Kaleido'].includes(p.mode));
       expect(p.params.audioReactive).toBe(false);
       expect(STUDIO_LOOKS[p.params.stLook]).toBeDefined();
       expect(STUDIO_MATS).toContain(p.params.stMat);

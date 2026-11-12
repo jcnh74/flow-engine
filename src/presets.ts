@@ -48,7 +48,8 @@ export const STUDIO_PRESETS: Preset[] = [
   studioPreset('Landscape · Cobalt Dunes', 'Landscape', 'Cobalt Orange', 'The canyon in a cobalt studio with orange pigment', { landLook: 'Studio Cobalt', landSpeed: 1, landFov: 50, landSunEl: 45, landSunAz: -40, landAO: 1.6, landPigment: 1.0, landFlow: 0.8, landGrain: 0.04, landFog: 0.6, landParticles: false, vignetteStrength: 0.1 }),
 ];
 
-export const PRESET_GALLERY: Preset[] = [
+/** Every preset ever authored (retired modes included, so their code paths stay reachable from code/tests). */
+export const ALL_PRESETS: Preset[] = [
   {
     name: 'Living Pigment',
     mode: 'Landscape',
@@ -580,6 +581,10 @@ export const PRESET_GALLERY: Preset[] = [
     }
   }
 ];
+
+/** Pass 5: Tunnel and Kaleido are retired from the UI (code kept). */
+export const RETIRED_MODES = ['Tunnel', 'Kaleido'];
+export const PRESET_GALLERY: Preset[] = ALL_PRESETS.filter((p) => !RETIRED_MODES.includes(p.mode));
 
 // Random preset selection
 export function getRandomPreset(): Preset {

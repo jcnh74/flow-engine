@@ -89,3 +89,17 @@ describe('pass 4 physical scenes: wiring', () => {
     expect(maxZ).toBeGreaterThan(0);   // the surge reaches the floor in front of the terraces
   });
 });
+
+describe('pass 5 retirements', () => {
+  test('Tunnel and Kaleido are hidden from the mode lists and presets (code kept)', async () => {
+    const { PRESET_GALLERY, ALL_PRESETS } = await import('../src/presets');
+    expect(PRESET_GALLERY.some((p) => p.mode === 'Tunnel' || p.mode === 'Kaleido')).toBe(false);
+    expect(ALL_PRESETS.some((p) => p.mode === 'Tunnel')).toBe(true);
+    const fs = await import('fs');
+    const main = fs.readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+    const gui = main.split('\n').find((l) => l.startsWith("gui.add(P, 'mode'"))!;
+    expect(gui).not.toContain("'Tunnel'"); expect(gui).not.toContain("'Kaleido'");
+    for (const m of ['Landscape', 'Morph', 'Plasma']) expect(gui).toContain(`'${m}'`);
+    expect(main).toContain("} else if (P.mode === 'Tunnel') {");
+  });
+});
