@@ -1,0 +1,15 @@
+{
+ "res": 512,
+ "size": 200.0,
+ "verts": 262144,
+ "tris": 522242,
+ "hMin": 5.017134046455682,
+ "hMax": 26.35582280096695,
+ "ao": "cycles",
+ "aoDevice": "GPU",
+ "aoBakeSec": 3.3,
+ "aoMean": 0.5601192712783813,
+ "glbBytes": 8421500,
+ "chunks": 5,
+ "totalSec": 6.7
+}

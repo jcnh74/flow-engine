@@ -71,7 +71,20 @@ export class MainControlPanel {
       this.buildCheckbox('autoQuality', 'Auto Quality (60fps)'),
       this.buildButton('randomize', '🎲 Randomize', 'randomize'),
       this.buildButton('reset', '⛑ Reset', 'reset'),
-      this.buildCheckbox('paused', 'Paused')
+      this.buildCheckbox('paused', 'Paused'),
+      this.buildCheckbox('audioReactive', 'Audio Reactive (off = style only)'),
+      ...(this.config.params.mode === 'Morph' ? [
+        this.buildCheckbox('morphSculpt', 'Sculpt (3D AO blobs)'),
+        this.buildSlider('sculptBlend', 'Sculpt Blend', 0.05, 2, 0.01, true),
+        this.buildSlider('sculptAO', 'Sculpt AO', 0, 3, 0.01, true),
+      ] : []),
+      ...(['Kaleido', 'Tunnel', 'Plasma', 'Morph'].includes(this.config.params.mode) ? [
+        this.buildSlider('relief', 'Sculpt (AO relief)', 0, 1, 0.01, true),
+        this.buildSlider('reliefDepth', 'Sculpt Depth', 0, 20, 0.1, true),
+        this.buildSlider('reliefAO', 'Sculpt AO', 0, 3, 0.01, true),
+        this.buildSlider('reliefRadius', 'Sculpt Softness', 2, 30, 0.5, true),
+        this.buildSelect('reliefPalette', 'Sculpt Palette', ['Living Pigment', 'Ember Bloom', 'Glacier Night', 'Neon Pigment']),
+      ] : [])
     ]);
 
     // Mode-specific sections
@@ -224,10 +237,18 @@ export class MainControlPanel {
       ]);
     } else if (mode === 'Landscape') {
       html += this.buildSection('Landscape', [
+        this.buildSelect('landLook', 'Look', ['Living Pigment', 'Ember Bloom', 'Glacier Night', 'Neon Pigment']),
         this.buildSlider('landSpeed', 'Flight Speed', 0, 2, 0.01, true),
         this.buildSlider('landFov', 'Lens FOV', 30, 90, 1, true),
+        this.buildSlider('landSunEl', 'Key Height', 5, 85, 1, true),
+        this.buildSlider('landSunAz', 'Key Angle', -180, 180, 1, true),
+        this.buildSlider('landAO', 'AO Depth', 0, 4, 0.05, true),
+        this.buildSlider('landPigment', 'Pigment', 0, 1.5, 0.01, true),
+        this.buildSlider('landFlow', 'Pigment Flow', 0, 4, 0.01, true),
+        this.buildSlider('landGrain', 'Pigment Grain', 0, 1, 0.01, true),
+        this.buildSlider('landFog', 'Depth Fade', 0, 1.5, 0.01, true),
         this.buildSlider('landBassLift', 'Bass Lift', 0, 4, 0.05, true),
-        this.buildSlider('landFog', 'Fog', 0, 1.5, 0.01, true),
+        this.buildCheckbox('landParticles', 'Particles'),
         this.buildSlider('landParticleSize', 'Particle Size', 0.5, 8, 0.05, true),
         this.buildSlider('landParticleGlow', 'Particle Glow', 0.2, 2.5, 0.05, true),
       ]);

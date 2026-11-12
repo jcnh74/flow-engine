@@ -1,5 +1,8 @@
-// Landscape mode: fly a Blender-authored canyon on a camera path,
-// lift the terrain with bass, and advect a curl-noise particle cloud with mids/highs.
+// Landscape mode (pass 2): a Blender-sculpted pigment relief rendered in a
+// Cinema 4D-style ambient-occlusion studio look: Cycles-baked AO in the vertex
+// colors, a soft key light with real (PCF) shadow-mapped shadows, an AO-weighted
+// sky dome, rim light, flowing OKLab pigment and a gradient studio backdrop.
+// The pass-1 curl-noise particle cloud is kept but off by default.
 // Original MIT-licensed work. No Shadertoy code.
 
 import { parseGlb, parseCameraPath, sampleCameraPath, type GlbMesh, type CameraPath, type Vec3 } from './gltf';
@@ -28,6 +31,34 @@ export type LandRenderOpts = {
   background: [number, number, number];
 };
 
+/** Lighting + backdrop looks (linear RGB). Pigment colors come from the palette stops. */
+export type LandLook = {
+  bgTop: Vec3; bgBottom: Vec3; bgGlow: Vec3;
+  key: Vec3; sky: Vec3; ground: Vec3; rim: Vec3;
+  ambient: number;
+};
+
+export const LAND_LOOKS: Record<string, LandLook> = {
+  // C4D AO studio: a bright, near-white dome does most of the work (AO carves the folds), a soft key adds shape
+  'Living Pigment': {
+    bgTop: [0.030, 0.034, 0.040], bgBottom: [0.004, 0.005, 0.007], bgGlow: [0.045, 0.050, 0.055],
+    key: [1.05, 0.98, 0.88], sky: [0.95, 1.00, 1.08], ground: [0.40, 0.36, 0.32], rim: [0.35, 0.50, 0.75], ambient: 0.8,
+  },
+  'Ember Bloom': {
+    bgTop: [0.040, 0.020, 0.016], bgBottom: [0.006, 0.003, 0.003], bgGlow: [0.075, 0.032, 0.022],
+    key: [1.10, 0.95, 0.78], sky: [1.00, 0.95, 0.95], ground: [0.45, 0.32, 0.26], rim: [0.80, 0.42, 0.30], ambient: 0.8,
+  },
+  'Glacier Night': {
+    bgTop: [0.012, 0.022, 0.048], bgBottom: [0.002, 0.004, 0.010], bgGlow: [0.025, 0.050, 0.095],
+    key: [0.85, 0.95, 1.10], sky: [0.80, 0.90, 1.10], ground: [0.25, 0.28, 0.36], rim: [0.45, 0.70, 1.00], ambient: 0.8,
+  },
+  'Neon Pigment': {
+    bgTop: [0.028, 0.012, 0.048], bgBottom: [0.004, 0.002, 0.008], bgGlow: [0.060, 0.020, 0.080],
+    key: [1.00, 0.95, 1.05], sky: [0.95, 0.92, 1.08], ground: [0.38, 0.28, 0.40], rim: [0.85, 0.35, 0.80], ambient: 0.8,
+  },
+};
+export const LAND_LOOK_NAMES = Object.keys(LAND_LOOKS);
+
 type Prog = { p: WebGLProgram; u: Record<string, WebGLUniformLocation | null> };
 
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string, name: string): Prog {
@@ -51,6 +82,7 @@ function compile(gl: WebGL2RenderingContext, vs: string, fs: string, name: strin
   for (let i = 0; i < n; i++) {
     const a = gl.getActiveUniform(prog, i)!;
     u[a.name] = gl.getUniformLocation(prog, a.name);
+    if (a.name.endsWith('[0]')) u[a.name.slice(0, -3)] = u[a.name];
   }
   return { p: prog, u };
 }
@@ -84,8 +116,15 @@ function perspective(fovyRad: number, aspect: number, near: number, far: number)
   ];
 }
 
+function ortho(l: number, r: number, b: number, t: number, n: number, f: number): number[] {
+  return [2 / (r - l), 0, 0, 0, 0, 2 / (t - b), 0, 0, 0, 0, -2 / (f - n), 0, -(r + l) / (r - l), -(t + b) / (t - b), -(f + n) / (f - n), 1];
+}
+
+function xform(m: number[], p: Vec3): Vec3 {
+  return [m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14]];
+}
+
 function camAxes(view: number[]): { fwd: Vec3; right: Vec3; up: Vec3 } {
-  // View is column-major lookAt; camera axes are the rows of the rotation part
   return {
     right: [view[0], view[4], view[8]],
     up: [view[1], view[5], view[9]],
@@ -102,6 +141,8 @@ type ParticleGrid = {
   init: boolean;
 };
 
+const SHADOW_RES = 2048;
+
 export class LandscapeRenderer {
   ready = false;
   error: string | null = null;
@@ -113,21 +154,21 @@ export class LandscapeRenderer {
   private gl: WebGL2RenderingContext;
   private sky: Prog;
   private terrain: Prog;
+  private shadowProg: Prog;
   private sim: Prog;
   private particle: Prog;
   private vao: WebGLVertexArrayObject | null = null;
-  private vboPos: WebGLBuffer | null = null;
-  private vboNrm: WebGLBuffer | null = null;
-  private vboCol: WebGLBuffer | null = null;
-  private ebo: WebGLBuffer | null = null;
   private indexCount = 0;
   private grid: ParticleGrid | null = null;
   private loading = false;
+  private shadowTex: WebGLTexture | null = null;
+  private shadowFB: WebGLFramebuffer | null = null;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
     this.sky = compile(gl, LS.LAND_QUAD_VS, LS.LAND_SKY_FS, 'land-sky');
     this.terrain = compile(gl, LS.LAND_TERRAIN_VS, LS.LAND_TERRAIN_FS, 'land-terrain');
+    this.shadowProg = compile(gl, LS.LAND_TERRAIN_VS, LS.LAND_SHADOW_FS, 'land-shadow');
     this.sim = compile(gl, LS.LAND_QUAD_VS, LS.LAND_SIM_FS, 'land-sim');
     this.particle = compile(gl, LS.LAND_PARTICLE_VS, LS.LAND_PARTICLE_FS, 'land-part');
   }
@@ -149,9 +190,10 @@ export class LandscapeRenderer {
       this.mesh = parseGlb(glbBuf);
       this.path = parseCameraPath(pathJson);
       this.uploadMesh();
+      this.ensureShadow();
       this.ready = true;
       this.error = null;
-      console.log(`Landscape loaded: ${this.mesh.positions.length / 3} verts, ${this.mesh.indices.length / 3} tris, path ${this.path.sampleCount}`);
+      console.log(`Landscape loaded: ${this.mesh.positions.length / 3} verts, ${this.mesh.indices.length / 3} tris, path ${this.path.sampleCount}${this.path.loop ? ' (loop)' : ''}`);
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
       console.error('Landscape load failed:', this.error);
@@ -166,29 +208,43 @@ export class LandscapeRenderer {
     const m = this.mesh!;
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
-    this.vboPos = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vboPos);
-    gl.bufferData(gl.ARRAY_BUFFER, m.positions, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-    this.vboNrm = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vboNrm);
-    gl.bufferData(gl.ARRAY_BUFFER, m.normals, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(1);
-    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
-    this.vboCol = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vboCol);
-    gl.bufferData(gl.ARRAY_BUFFER, m.colors, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(2);
-    gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 0, 0);
-    this.ebo = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ebo);
+    const buf = (data: Float32Array, loc: number, size: number) => {
+      const b = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+    };
+    buf(m.positions, 0, 3);
+    buf(m.normals, 1, 3);
+    buf(m.colors, 2, 4);
+    const ebo = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
     this.indexCount = m.indices.length;
-    const maxIdx = this.indexCount ? m.indices.reduce((a, b) => (a > b ? a : b), 0) : 0;
-    // Always upload 32-bit indices; WebGL2 supports OES_element_index_uint by default.
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.indices, gl.STATIC_DRAW);
-    void maxIdx;
     gl.bindVertexArray(null);
+  }
+
+  private ensureShadow() {
+    if (this.shadowTex) return;
+    const gl = this.gl;
+    const t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, SHADOW_RES, SHADOW_RES);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+    const f = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, t, 0);
+    gl.drawBuffers([gl.NONE]);
+    gl.readBuffer(gl.NONE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.shadowTex = t;
+    this.shadowFB = f;
   }
 
   private makeStateTex(w: number, h: number): LandFB {
@@ -208,10 +264,8 @@ export class LandscapeRenderer {
     const side = Math.max(8, Math.min(512, Math.ceil(Math.sqrt(Math.max(1024, count)))));
     if (this.grid && this.grid.w === side) return;
     this.freeParticles();
-    const gl = this.gl;
     const pos: [LandFB, LandFB] = [this.makeStateTex(side, side), this.makeStateTex(side, side)];
     const vel: [LandFB, LandFB] = [this.makeStateTex(side, side), this.makeStateTex(side, side)];
-    // Shared FBOs with MRT: pos + vel as COLOR0/COLOR1. We bind textures at sim time.
     this.grid = { w: side, n: side * side, pos, vel, cur: 0, init: true };
   }
 
@@ -225,89 +279,103 @@ export class LandscapeRenderer {
     this.grid = null;
   }
 
-  private palStops(palette: [number, number, number][]): [[number, number, number], [number, number, number], [number, number, number]] {
+  /** Up to 6 stops, evenly resampled from the palette (linear RGB). */
+  private palStops(palette: [number, number, number][]): [number, number, number][] {
     const n = palette.length;
-    if (n === 0) return [[0.15, 0.08, 0.05], [0.7, 0.4, 0.18], [0.95, 0.7, 0.35]];
-    const pick = (t: number) => palette[Math.min(n - 1, Math.max(0, Math.round(t * (n - 1))))];
-    return [pick(0.1), pick(0.5), pick(0.9)];
+    if (n === 0) return [[0.01, 0.02, 0.03], [0.02, 0.18, 0.26], [0.05, 0.52, 0.6], [0.9, 0.56, 0.12], [0.95, 0.88, 0.72]];
+    if (n === 1) return [palette[0], palette[0]];
+    if (n <= 6) return palette.slice();
+    const out: [number, number, number][] = [];
+    for (let i = 0; i < 6; i++) out.push(palette[Math.round((i / 5) * (n - 1))]);
+    return out;
   }
 
   render(opts: LandRenderOpts) {
     if (!this.ready || !this.mesh || !this.path || !this.vao) return;
     const gl = this.gl;
     const P = opts.params;
-    const count = P.landParticleCount ?? 65536;
-    this.ensureParticles(count);
+    const look = LAND_LOOKS[P.landLook as string] ?? LAND_LOOKS['Living Pigment'];
 
-    const speed = P.landSpeed ?? 0.7;
-    const fovDeg = P.landFov ?? this.path.fovDeg ?? 55;
-    // Start ~18% into the canyon so the first frame isn't at the mesh edge
-    const cam = sampleCameraPath(this.path, opts.time + this.path.durationSec * 0.18, speed);
-    // Ride above the trough and aim the look point up so the horizon and sky stay in frame
-    cam.position[1] += 2.2;
-    cam.target[1] += 3.2;
+    const speed = P.landSpeed ?? 1.0;
+    const fovDeg = P.landFov ?? this.path.fovDeg ?? 50;
+    const cam = sampleCameraPath(this.path, opts.time + (P.landStart ?? 0.2) * this.path.durationSec / Math.max(0.05, speed), speed);
     const aspect = Math.max(0.1, opts.aspect);
     const view = lookAt(cam.position, cam.target, [0, 1, 0]);
-    const proj = perspective((fovDeg * Math.PI) / 180, aspect, 0.15, 220);
+    const proj = perspective((fovDeg * Math.PI) / 180, aspect, 0.5, 600);
     const vp = mul(proj, view);
     const axes = camAxes(view);
-    const [p0, p1, p2] = this.palStops(opts.palette);
+    const pal = this.palStops(opts.palette);
     const hueTurns = (((P.hueShift ?? 0) / 360) + ((P.cHueCycle ?? 0) / 60) * opts.time);
     const hue = ((hueTurns % 1) + 1) % 1;
-    const sat = P.saturation ?? 1.3;
-    const fog = P.landFog ?? 0.45;
+    const sat = P.saturation ?? 1.2;
     const bass = opts.audio.bassEnv;
     const mid = opts.audio.midEnv;
     const high = opts.audio.highEnv;
     const kick = opts.audio.kickEnv;
 
-    // Lighting: warm key from high right, cool fill
-    const sunDir: Vec3 = norm([0.55, 0.62, 0.45]);
-    const sunCol: Vec3 = [0.95, 0.74, 0.52];
-    const fillCol: Vec3 = [0.28, 0.36, 0.52];
-    const horizon: Vec3 = [0.48, 0.38, 0.30];
-    const zenith: Vec3 = [0.14, 0.20, 0.36];
-    const fogCol: Vec3 = [
-      opts.background[0] * 0.4 + 0.35,
-      opts.background[1] * 0.4 + 0.32,
-      opts.background[2] * 0.4 + 0.36,
-    ];
+    // Key light: camera-relative studio key (upper-left, slightly in front), like a C4D softbox
+    const fwdFlat = norm([axes.fwd[0], 0, axes.fwd[2]]);
+    const rightFlat = norm([axes.right[0], 0, axes.right[2]]);
+    const el = ((P.landSunEl ?? 38) * Math.PI) / 180;
+    const az = ((P.landSunAz ?? -40) * Math.PI) / 180;
+    const horiz = add(scl(fwdFlat, -Math.cos(az)), scl(rightFlat, Math.sin(az)));
+    const keyDir = norm(add(scl(horiz, Math.cos(el)), [0, Math.sin(el), 0]));
 
-    const tanHalf = Math.tan((fovDeg * Math.PI) / 180 / 2);
+    // --- shadow map: ortho fit around the whole relief ---
+    const mn = this.mesh.min, mx = this.mesh.max;
+    const center: Vec3 = [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2];
+    const lightView = lookAt(add(center, scl(keyDir, 300)), center, Math.abs(keyDir[1]) > 0.98 ? [0, 0, 1] : [0, 1, 0]);
+    let lx0 = Infinity, lx1 = -Infinity, ly0 = Infinity, ly1 = -Infinity, lz0 = Infinity, lz1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      const c: Vec3 = [i & 1 ? mx[0] : mn[0], i & 2 ? mx[1] + 6 : mn[1], i & 4 ? mx[2] : mn[2]];
+      const q = xform(lightView, c);
+      lx0 = Math.min(lx0, q[0]); lx1 = Math.max(lx1, q[0]);
+      ly0 = Math.min(ly0, q[1]); ly1 = Math.max(ly1, q[1]);
+      lz0 = Math.min(lz0, q[2]); lz1 = Math.max(lz1, q[2]);
+    }
+    const lightVP = mul(ortho(lx0, lx1, ly0, ly1, -lz1 - 5, -lz0 + 5), lightView);
+    const shadowTexel = 1 / SHADOW_RES;
+
+    const bassLift = P.landBassLift ?? 1.2;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadowFB);
+    gl.viewport(0, 0, SHADOW_RES, SHADOW_RES);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    gl.depthMask(true);
+    gl.clearDepth(1);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(1.5, 3.0);
+    gl.useProgram(this.shadowProg.p);
+    const shu = this.shadowProg.u;
+    gl.uniformMatrix4fv(shu.uVP, false, lightVP);
+    gl.uniformMatrix4fv(shu.uLightVP, false, lightVP);
+    gl.uniform1f(shu.uBassLift, bassLift);
+    gl.uniform1f(shu.uBass, bass);
+    gl.uniform1f(shu.uKick, kick);
+    gl.bindVertexArray(this.vao);
+    gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
+    gl.bindVertexArray(null);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
 
     if (this.debugFrames < 3) {
-      const xform = (p: Vec3) => {
-        const x = vp[0]*p[0]+vp[4]*p[1]+vp[8]*p[2]+vp[12];
-        const y = vp[1]*p[0]+vp[5]*p[1]+vp[9]*p[2]+vp[13];
-        const z = vp[2]*p[0]+vp[6]*p[1]+vp[10]*p[2]+vp[14];
-        const w = vp[3]*p[0]+vp[7]*p[1]+vp[11]*p[2]+vp[15];
-        return { ndc: w !== 0 ? [+(x/w).toFixed(3), +(y/w).toFixed(3), +(z/w).toFixed(3)] : [x, y, z], w: +w.toFixed(3) };
-      };
-      const mid: Vec3 = [
-        (this.mesh.min[0]+this.mesh.max[0])/2,
-        (this.mesh.min[1]+this.mesh.max[1])/2,
-        (this.mesh.min[2]+this.mesh.max[2])/2,
-      ];
       this.lastDebug = {
         pos: cam.position.map((n: number) => +n.toFixed(3)),
         target: cam.target.map((n: number) => +n.toFixed(3)),
-        fovDeg, aspect,
-        axes: { fwd: axes.fwd.map((n) => +n.toFixed(3)), right: axes.right.map((n) => +n.toFixed(3)), up: axes.up.map((n) => +n.toFixed(3)) },
-        min: this.mesh.min, max: this.mesh.max,
-        ndcEyeFwd10: xform(add(cam.position, scl(norm(sub(cam.target, cam.position)), 10))),
-        ndcTarget: xform(cam.target),
-        ndcMeshMid: xform(mid),
-        ndcMin: xform(this.mesh.min),
-        ndcMax: xform(this.mesh.max),
-        ndcFloorAhead: xform([cam.position[0], this.mesh.min[1], cam.position[2] - 8]),
-        indexCount: this.indexCount,
-        verts: this.mesh.positions.length/3,
+        keyDir: keyDir.map((n) => +n.toFixed(3)),
+        fovDeg, aspect, min: mn, max: mx, indexCount: this.indexCount, verts: this.mesh.positions.length / 3,
+        loop: this.path.loop,
       };
       this.debugFrames++;
     }
 
-    // --- particle sim (offscreen, doesn't touch the scene FBO) ---
-    this.stepParticles(opts.dt, opts.time, cam.position, axes, bass, mid, high, kick, speed, P.seed ?? 1977);
+    const particlesOn = !!P.landParticles && (P.landParticleCount ?? 0) > 0;
+    if (particlesOn) {
+      this.ensureParticles(P.landParticleCount);
+      this.stepParticles(opts.dt, opts.time, cam.position, axes, bass, mid, high, kick, speed, P.seed ?? 1977);
+    }
 
     // --- scene ---
     gl.bindFramebuffer(gl.FRAMEBUFFER, opts.target);
@@ -321,85 +389,97 @@ export class LandscapeRenderer {
     gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    // Sky
+    const setBackdrop = (u: Record<string, WebGLUniformLocation | null>) => {
+      gl.uniform3f(u.uBgTop, look.bgTop[0], look.bgTop[1], look.bgTop[2]);
+      gl.uniform3f(u.uBgBottom, look.bgBottom[0], look.bgBottom[1], look.bgBottom[2]);
+      gl.uniform3f(u.uBgGlow, look.bgGlow[0], look.bgGlow[1], look.bgGlow[2]);
+      gl.uniform2f(u.uRes, opts.w, opts.h);
+    };
+
+    // Studio backdrop
     gl.useProgram(this.sky.p);
-    const su = this.sky.u;
-    gl.uniform3f(su.uCamPos, cam.position[0], cam.position[1], cam.position[2]);
-    gl.uniform3f(su.uCamFwd, axes.fwd[0], axes.fwd[1], axes.fwd[2]);
-    gl.uniform3f(su.uCamRight, axes.right[0], axes.right[1], axes.right[2]);
-    gl.uniform3f(su.uCamUp, axes.up[0], axes.up[1], axes.up[2]);
-    gl.uniform1f(su.uTanHalfFov, tanHalf);
-    gl.uniform1f(su.uAspect, aspect);
-    gl.uniform3f(su.uSunDir, sunDir[0], sunDir[1], sunDir[2]);
-    gl.uniform3f(su.uSunCol, sunCol[0], sunCol[1], sunCol[2]);
-    gl.uniform3f(su.uHorizon, horizon[0], horizon[1], horizon[2]);
-    gl.uniform3f(su.uZenith, zenith[0], zenith[1], zenith[2]);
-    gl.uniform3f(su.uFogCol, fogCol[0], fogCol[1], fogCol[2]);
-    gl.uniform1f(su.uTime, opts.time);
+    setBackdrop(this.sky.u);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    // Terrain
+    // Relief
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LESS);
-    gl.enable(gl.CULL_FACE);
-    gl.cullFace(gl.BACK);
-    gl.frontFace(gl.CCW);
     gl.useProgram(this.terrain.p);
     const tu = this.terrain.u;
+    setBackdrop(tu);
     gl.uniformMatrix4fv(tu.uVP, false, vp);
-    gl.uniformMatrix4fv(tu.uView, false, view);
-    gl.uniform1f(tu.uBassLift, P.landBassLift ?? 1.2);
+    gl.uniformMatrix4fv(tu.uLightVP, false, lightVP);
+    gl.uniform1f(tu.uBassLift, bassLift);
     gl.uniform1f(tu.uBass, bass);
     gl.uniform1f(tu.uKick, kick);
     gl.uniform3f(tu.uEye, cam.position[0], cam.position[1], cam.position[2]);
-    gl.uniform3f(tu.uSunDir, sunDir[0], sunDir[1], sunDir[2]);
-    gl.uniform3f(tu.uSunCol, sunCol[0], sunCol[1], sunCol[2]);
-    gl.uniform3f(tu.uFillCol, fillCol[0], fillCol[1], fillCol[2]);
-    gl.uniform3f(tu.uFogCol, fogCol[0], fogCol[1], fogCol[2]);
-    gl.uniform1f(tu.uFog, fog);
+    gl.uniform3f(tu.uKeyDir, keyDir[0], keyDir[1], keyDir[2]);
+    const ki = P.landKey ?? 1.0;
+    gl.uniform3f(tu.uKeyCol, look.key[0] * ki, look.key[1] * ki, look.key[2] * ki);
+    gl.uniform3f(tu.uSkyCol, look.sky[0], look.sky[1], look.sky[2]);
+    gl.uniform3f(tu.uGroundCol, look.ground[0], look.ground[1], look.ground[2]);
+    gl.uniform3f(tu.uRimCol, look.rim[0], look.rim[1], look.rim[2]);
+    gl.uniform1f(tu.uAmbient, look.ambient * (P.landAmbient ?? 1.0));
+    gl.uniform1f(tu.uAOPow, P.landAO ?? 1.6);
+    gl.uniform1f(tu.uFog, P.landFog ?? 0.5);
+    gl.uniform1f(tu.uFogNear, 40);
+    gl.uniform1f(tu.uTime, opts.time);
+    gl.uniform1f(tu.uFlow, P.landFlow ?? 1.0);
+    gl.uniform1f(tu.uPigment, P.landPigment ?? 1.0);
+    gl.uniform1f(tu.uGrain, P.landGrain ?? 0.35);
+    gl.uniform1f(tu.uBands, P.landBands ?? 4.0);
     gl.uniform1f(tu.uHue, hue);
     gl.uniform1f(tu.uSat, sat);
-    gl.uniform3f(tu.uPal0, p0[0], p0[1], p0[2]);
-    gl.uniform3f(tu.uPal1, p1[0], p1[1], p1[2]);
-    gl.uniform3f(tu.uPal2, p2[0], p2[1], p2[2]);
-    gl.uniform1f(tu.uTime, opts.time);
+    const palFlat = new Float32Array(18);
+    pal.slice(0, 6).forEach((c, i) => palFlat.set(c, i * 3));
+    gl.uniform3fv(tu.uPal, palFlat);
+    gl.uniform1i(tu.uPalN, Math.min(6, Math.max(2, pal.length)));
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
+    gl.uniform1i(tu.uShadow, 0);
+    gl.uniform1f(tu.uShadowTexel, shadowTexel);
+    gl.uniform1f(tu.uShadowSoft, P.landShadowSoft ?? 2.5);
     gl.bindVertexArray(this.vao);
     gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
     gl.bindVertexArray(null);
-    gl.disable(gl.CULL_FACE);
 
-    // Particles (additive, depth-tested, no depth write)
-    const g = this.grid!;
-    const cur = g.cur;
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE);
-    gl.depthMask(false);
-    gl.useProgram(this.particle.p);
-    const pu = this.particle.u;
+    if (particlesOn) {
+      const g = this.grid!;
+      const cur = g.cur;
+      const p0 = pal[1] ?? pal[0], p1 = pal[Math.floor(pal.length / 2)], p2 = pal[pal.length - 1];
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.depthMask(false);
+      gl.useProgram(this.particle.p);
+      const pu = this.particle.u;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, g.pos[cur].t);
+      gl.uniform1i(pu.uPos, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, g.vel[cur].t);
+      gl.uniform1i(pu.uVel, 1);
+      gl.uniform1i(pu.uTexW, g.w);
+      gl.uniformMatrix4fv(pu.uVP, false, vp);
+      gl.uniformMatrix4fv(pu.uView, false, view);
+      gl.uniform1f(pu.uSize, P.landParticleSize ?? 1.6);
+      gl.uniform1f(pu.uHigh, high);
+      gl.uniform1f(pu.uGlow, P.landParticleGlow ?? 0.75);
+      gl.uniform2f(pu.uRes, opts.w, opts.h);
+      gl.uniform1f(pu.uHue, hue);
+      gl.uniform1f(pu.uSat, sat);
+      gl.uniform3f(pu.uPal0, p0[0], p0[1], p0[2]);
+      gl.uniform3f(pu.uPal1, p1[0], p1[1], p1[2]);
+      gl.uniform3f(pu.uPal2, p2[0], p2[1], p2[2]);
+      gl.drawArrays(gl.POINTS, 0, g.n);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, g.pos[cur].t);
-    gl.uniform1i(pu.uPos, 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, g.vel[cur].t);
-    gl.uniform1i(pu.uVel, 1);
-    gl.uniform1i(pu.uTexW, g.w);
-    gl.uniformMatrix4fv(pu.uVP, false, vp);
-    gl.uniformMatrix4fv(pu.uView, false, view);
-    gl.uniform1f(pu.uSize, P.landParticleSize ?? 2.4);
-    gl.uniform1f(pu.uHigh, high);
-    gl.uniform1f(pu.uGlow, P.landParticleGlow ?? 1.0);
-    gl.uniform2f(pu.uRes, opts.w, opts.h);
-    gl.uniform1f(pu.uHue, hue);
-    gl.uniform1f(pu.uSat, sat);
-    gl.uniform3f(pu.uPal0, p0[0], p0[1], p0[2]);
-    gl.uniform3f(pu.uPal1, p1[0], p1[1], p1[2]);
-    gl.uniform3f(pu.uPal2, p2[0], p2[1], p2[2]);
-    gl.drawArrays(gl.POINTS, 0, g.n);
-
-    gl.depthMask(true);
-    gl.disable(gl.BLEND);
+    gl.bindTexture(gl.TEXTURE_2D, null);
     gl.disable(gl.DEPTH_TEST);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
 
   private stepParticles(dt: number, time: number, camPos: Vec3, axes: { fwd: Vec3; right: Vec3; up: Vec3 }, bass: number, mid: number, high: number, kick: number, speed: number, seed: number) {

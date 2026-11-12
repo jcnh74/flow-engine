@@ -9,3 +9,7 @@ src.v*/
 .DS_Store
 .env
 .env.*
+
+# pass-2 scratch (local only)
+.trash/
+out-landscape/

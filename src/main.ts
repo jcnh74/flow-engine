@@ -16,7 +16,9 @@ import { BeatLinkPopup } from './ui/BeatLinkPopup';
 import { PresetGallery } from './ui/PresetGallery';
 import { hexToLinear, srgbToLinear } from './render-graph';
 import { ButterchurnRenderer } from './butterchurn-integration';
-import { LandscapeRenderer } from './landscape';
+import { LandscapeRenderer, LAND_LOOK_NAMES } from './landscape';
+import { RELIEF_DOWN_FS, RELIEF_HEIGHT_FS, RELIEF_SHADE_FS } from './relief_shaders';
+import { SCULPT_FS } from './sculpt_shaders';
 import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -40,6 +42,11 @@ const PALETTES: Record<string, Stop[]> = {
   'Glacier': [[0, '#001219'], [0.3, '#005f73'], [0.55, '#0a9396'], [0.8, '#94d2bd'], [1, '#e9d8a6']],
   'Neon Bloom': [[0, '#ff00a8'], [0.33, '#7a00ff'], [0.66, '#00e5ff'], [1, '#c6ff00']],
   'Pastel Data': [[0, '#ffadad'], [0.25, '#ffd6a5'], [0.5, '#caffbf'], [0.75, '#9bf6ff'], [1, '#bdb2ff']],
+  // Pigment palettes tuned against Refik Anadol / Dataland stills (Living Paintings, Machine Hallucinations)
+  'Living Pigment': [[0, '#0f3a48'], [0.22, '#1d8ea6'], [0.45, '#4cc3d2'], [0.66, '#e4eeec'], [0.84, '#d89a4c'], [1, '#8e4e2a']],
+  'Ember Bloom': [[0, '#1e1d24'], [0.25, '#4a4b58'], [0.45, '#6f7284'], [0.62, '#d8586a'], [0.8, '#f2a83a'], [1, '#ffe3a8']],
+  'Glacier Night': [[0, '#0a1428'], [0.25, '#1f3f74'], [0.45, '#4f7fc0'], [0.65, '#8cc4e4'], [0.85, '#e2f0f6'], [1, '#fbf4e8']],
+  'Neon Pigment': [[0, '#1a1030'], [0.25, '#3d2a78'], [0.45, '#7a5cc8'], [0.62, '#e04a9c'], [0.8, '#3cc8d8'], [1, '#f5efff']],
 };
 // Convert hex to sRGB [0-1]
 const hex = (h: string) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
@@ -263,6 +270,7 @@ function setMode(newMode: string) {
   // Apply mode-specific defaults
   if (isW()) wallDefaults();
   if (newMode === 'Landscape' && oldMode !== 'Landscape') landDefaults();
+  if (newMode === '3D Fractal' && oldMode !== '3D Fractal') fractalStudioDefaults();
   
   // Reset and rebuild UI
   reset();
@@ -298,8 +306,17 @@ const P: any = {
   // MilkDrop params
   milkDropPreset: '', milkDropAutoCycle: false, milkDropCycleBars: 8,
   // Landscape mode (Blender canyon + curl particles)
-  landSpeed: 0.7, landBassLift: 1.2, landFog: 0.45, landFov: 55,
-  landParticleCount: 65536, landParticleSize: 2.4, landParticleGlow: 1.0,
+  landSpeed: 1.0, landBassLift: 1.2, landFog: 0.5, landFov: 50,
+  landParticleCount: 16384, landParticleSize: 1.6, landParticleGlow: 0.75, landParticles: false,
+  landLook: 'Living Pigment', landSunEl: 38, landSunAz: -40, landAO: 1.6, landAmbient: 1.0, landKey: 1.0,
+  landFlow: 1.0, landPigment: 1.0, landGrain: 0.35, landBands: 4, landShadowSoft: 2.5, landStart: 0.2,
+  // Audio reactivity is OFF by default in every mode (style-first). The analyser still runs for the meters;
+  // when this is false the envelopes are zeroed for rendering and modulation each frame.
+  audioReactive: false,
+  // Sculpt relief finish for the 2D modes (C4D AO look); 0 = original flat neon look
+  frStudio: true, frBgTop: '#5c646e', frBgBottom: '#16191d',
+  morphSculpt: true, sculptBlend: 0.9, sculptAO: 1.0,
+  relief: 1.0, reliefDepth: 9, reliefAO: 1.0, reliefRadius: 9, reliefPalette: 'Living Pigment',
   
   // 2D Fractal params removed
   wMat: 'clay', wColor: '#d9563c', wPatch: false, wFurLen: 0.06, wFurDens: 700, wComb: 0.8, wWind: 0.15, wShells: 16, wRough: 0.08, wAbsorb: 1.2, wDisp: 0.03,
@@ -336,7 +353,7 @@ const P: any = {
   feedbackEnabled: false, feedbackDecay: 0.95, feedbackZoom: 1.0, feedbackRotate: 0.0,
   feedbackTranslateX: 0.0, feedbackTranslateY: 0.0, feedbackMix: 0.5,
   feedbackKaleido: 0, feedbackNoise: 0.0, feedbackHueDrift: 0.0,
-  lift: '#000000', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.15, vibrance: 0.1, wallPaletteMix: 0.65,
+  lift: '#808080', gamma: '#808080', gainPost: '#ffffff', saturationPost: 1.15, vibrance: 0.1, wallPaletteMix: 0.65,
   vignetteStrength: 0.0, vignetteRadius: 1.2, grainStrength: 0.0,
   lights: [] as any[], zoom: 1, driftX: 0.0, driftY: 0.0, paused: false, cmykSafe: false,
   exportPreset: '4K UHD 3840×2160', orientation: 'landscape', width: 3840, height: 2160, dpi: 300, tiff: false, pdf: false, frameToExport: true,
@@ -351,7 +368,9 @@ const SMOOTH = ['noiseScale','evolution','curl','turbulence','speed','flowBias',
   'trippySpeed','tunnelTwist','tunnelRings','tunnelFov','tunnelWarp','kaleidoSegments','kaleidoZoom','kaleidoRotation','kaleidoFeedback','plasmaScale','plasmaWarp','plasmaFlow','plasmaContrast','morphBlobs','morphSmooth','morphRate','morphGlow',
   'envIntensity','envRot','shadowSoft','shadowBias','ssaoRadius',
   'bloomStrength','bloomThreshold2','kickBloomAmount','caStrength','distortion','saturationPost','vibrance','vignetteStrength','grainStrength','wallPaletteMix',
-  'landSpeed','landBassLift','landFog','landFov','landParticleSize','landParticleGlow'];
+  'landSpeed','landBassLift','landFog','landFov','landParticleSize','landParticleGlow',
+  'landSunEl','landSunAz','landAO','landAmbient','landKey','landFlow','landPigment','landGrain','landBands','landShadowSoft',
+  'sculptBlend','sculptAO','reliefDepth','reliefAO','reliefRadius'];
 const L: any = {}; SMOOTH.forEach(k => L[k] = P[k]);
 let V: any = L; // values used by GL code: eased copy for preview, final P for stills
 function easeParams() { for (const k of SMOOTH) { const d = P[k] - L[k]; L[k] = Math.abs(d) < 1e-6 ? P[k] : L[k] + d * Math.min(1, P.smoothing <= 0 ? 1 : P.smoothing * 2); } }
@@ -415,6 +434,89 @@ const caDistort = prog(POST.POST_VS, POST.CA_DISTORT_FS);
 const colorGrade = prog(POST.POST_VS, POST.COLOR_GRADE_FS);
 const blit = prog(POST.POST_VS, POST.BLIT_FS);
 const lumaKey = prog(POST.POST_VS, POST.LUMA_KEY_FS);
+const reliefDown = prog(POST.POST_VS, RELIEF_DOWN_FS);
+const reliefHeight = prog(POST.POST_VS, RELIEF_HEIGHT_FS);
+let reliefD: FB | undefined;
+const reliefShade = prog(POST.POST_VS, RELIEF_SHADE_FS);
+let reliefH: FB | undefined;
+const RELIEF_MODES = ['Kaleido', 'Tunnel', 'Plasma', 'Morph'];
+const RELIEF_FLOORS: Record<string, [string, string]> = {
+  'Living Pigment': ['#6a737c', '#3a4048'], 'Ember Bloom': ['#6e625e', '#3c3230'], 'Glacier Night': ['#4c5a70', '#262f3e'], 'Neon Pigment': ['#5e5470', '#332b40'],
+};
+function applyRelief() {
+  if (!hdrComp) return;
+  const w = hdrComp.w, h = hdrComp.h, hw = Math.max(1, w >> 2), hh = Math.max(1, h >> 2);
+  if (!reliefH || reliefH.w !== hw || reliefH.h !== hh) { del(reliefH); del(reliefD); reliefH = hdrFB(hw, hh); reliefD = hdrFB(hw, hh); }
+  gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, reliefD!.f); gl.viewport(0, 0, hw, hh);
+  gl.useProgram(reliefDown.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp.t); gl.uniform1i(reliefDown.u.uSrc, 0);
+  gl.uniform2f(reliefDown.u.uTexel, 1 / w, 1 / h);
+  quad();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, reliefH.f); gl.viewport(0, 0, hw, hh);
+  gl.useProgram(reliefHeight.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, reliefD!.t); gl.uniform1i(reliefHeight.u.uSrc, 0);
+  gl.uniform2f(reliefHeight.u.uTexel, 1 / hw, 1 / hh);
+  gl.uniform1f(reliefHeight.u.uRadius, P.reliefRadius * (hw / 480));
+  quad();
+  const out = hdrFB(w, h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, out.f); gl.viewport(0, 0, w, h);
+  gl.useProgram(reliefShade.p);
+  const u = reliefShade.u;
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hdrComp.t); gl.uniform1i(u.uSrc, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, reliefH.t); gl.uniform1i(u.uH, 1);
+  gl.uniform2f(u.uHTexel, 1 / hw, 1 / hh);
+  gl.uniform1f(u.uDepth, P.reliefDepth);
+  gl.uniform1f(u.uAO, P.reliefAO);
+  gl.uniform1f(u.uMix, Math.min(1, Math.max(0, P.relief)));
+  gl.uniform1f(u.uAspect, w / h);
+  gl.uniform1f(u.uTime, currentTime);
+  const fl = RELIEF_FLOORS[P.reliefPalette] ?? RELIEF_FLOORS['Living Pigment'];
+  const ft = hexLinear(fl[0]), fb = hexLinear(fl[1]);
+  gl.uniform3f(u.uFloorTop, ft[0], ft[1], ft[2]); gl.uniform3f(u.uFloorBottom, fb[0], fb[1], fb[2]);
+  gl.uniform3f(u.uKeyCol, 0.62, 0.58, 0.52); gl.uniform3f(u.uDomeCol, 0.62, 0.66, 0.72);
+  const rp = (PALETTES[P.reliefPalette] ?? PALETTES['Living Pigment']);
+  const flat = new Float32Array(18); const n = Math.min(6, rp.length);
+  for (let i = 0; i < n; i++) { const c = hexLinear(rp[Math.round(i * (rp.length - 1) / Math.max(1, n - 1))][1]); flat.set(c, i * 3); }
+  gl.uniform3fv(u['uPal[0]'], flat); gl.uniform1i(u.uPalN, n);
+  const hueTurns = ((P.hueShift / 360) + (P.cHueCycle / 60) * currentTime);
+  gl.uniform1f(u.uHue, ((hueTurns % 1) + 1) % 1); gl.uniform1f(u.uSat, 0.85);
+  quad();
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
+  const old = hdrComp; hdrComp = out; del(old);
+}
+const sculpt = prog(POST.POST_VS, SCULPT_FS);
+const SCULPT_BG: Record<string, [string, string, string]> = { // cyc top, cyc bottom, floor
+  'Living Pigment': ['#6a737c', '#2a2f35', '#8a9096'], 'Ember Bloom': ['#74665f', '#2c2220', '#968a84'],
+  'Glacier Night': ['#4c5c76', '#1a2230', '#7a8aa0'], 'Neon Pigment': ['#62567a', '#241c2e', '#8e86a0'],
+};
+function setPalUniforms(u: any, name: string) {
+  const rp = (PALETTES[name] ?? PALETTES['Living Pigment']);
+  const flat = new Float32Array(18); const n = Math.min(6, rp.length);
+  for (let i = 0; i < n; i++) { const c = hexLinear(rp[Math.round(i * (rp.length - 1) / Math.max(1, n - 1))][1]); flat.set(c, i * 3); }
+  gl.uniform3fv(u['uPal[0]'], flat); gl.uniform1i(u.uPalN, n);
+  const hueTurns = ((P.hueShift / 360) + (P.cHueCycle / 60) * currentTime);
+  gl.uniform1f(u.uHue, ((hueTurns % 1) + 1) % 1); gl.uniform1f(u.uSat, 1.0);
+}
+// Morph "Sculpt": ray-marched metaballs in a C4D-style AO studio
+function renderSculpt(T: Trails) {
+  gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f); gl.viewport(0, 0, T.w, T.h);
+  gl.useProgram(sculpt.p);
+  const u = sculpt.u;
+  gl.uniform2f(u.uRes, T.w, T.h);
+  gl.uniform1f(u.uTime, currentTime);
+  gl.uniform1f(u.uSpeed, L.trippySpeed ?? 1);
+  gl.uniform1f(u.uBlend, P.sculptBlend);
+  gl.uniform1f(u.uAO, P.sculptAO);
+  gl.uniform1f(u.uOrbit, 1.0);
+  const bg = SCULPT_BG[P.reliefPalette] ?? SCULPT_BG['Living Pigment'];
+  const a = hexLinear(bg[0]), b = hexLinear(bg[1]), f = hexLinear(bg[2]);
+  gl.uniform3f(u.uBgTop, a[0], a[1], a[2]); gl.uniform3f(u.uBgBottom, b[0], b[1], b[2]); gl.uniform3f(u.uFloor, f[0], f[1], f[2]);
+  gl.uniform3f(u.uKeyCol, 1.1, 1.02, 0.92); gl.uniform3f(u.uDomeCol, 0.62, 0.66, 0.72);
+  setPalUniforms(u, P.reliefPalette);
+  quad();
+}
 const landscape = new LandscapeRenderer(gl);
 landscape.load('/landscape').catch((e) => console.error('Landscape load', e));
 // MilkDrop color grade: hue shift + saturation
@@ -1099,6 +1201,12 @@ function renderFractal(T: Trails, vp: number[]) {
   if (u.uAOStrength !== undefined) gl.uniform1f(u.uAOStrength, P.frAOStrength || 3.0);
   if (u.uAORadius !== undefined) gl.uniform1f(u.uAORadius, P.frAORadius || 0.15);
   if (u.uShadowSharpness !== undefined) gl.uniform1f(u.uShadowSharpness, P.frShadowSharpness || 8.0);
+  if (u.uStudio !== undefined) {
+    gl.uniform1f(u.uStudio, P.frStudio ? 1 : 0);
+    const bt = hex(P.frBgTop), bb = hex(P.frBgBottom);
+    gl.uniform3f(u.uBgTop, bt[0], bt[1], bt[2]); gl.uniform3f(u.uBgBottom, bb[0], bb[1], bb[2]);
+    gl.uniform3f(u.uDomeCol, 0.82, 0.86, 0.92);
+  }
   
   // Cosine palette (tied to unified palette system)
   if (u.uCosinePaletteA !== undefined) {
@@ -1166,7 +1274,9 @@ function renderLandscape(T: Trails, aspect: number) {
       highEnv: audioAnalyzer.state.highEnv,
       kickEnv: audioAnalyzer.state.kickEnv,
     },
-    params: { ...P, landSpeed: V.landSpeed, landBassLift: V.landBassLift, landFog: V.landFog, landFov: V.landFov, landParticleSize: V.landParticleSize, landParticleGlow: V.landParticleGlow, hueShift: V.hueShift ?? P.hueShift, saturation: V.saturation },
+    params: { ...P, landSpeed: V.landSpeed, landBassLift: V.landBassLift, landFog: V.landFog, landFov: V.landFov, landParticleSize: V.landParticleSize, landParticleGlow: V.landParticleGlow,
+      landSunEl: V.landSunEl, landSunAz: V.landSunAz, landAO: V.landAO, landAmbient: V.landAmbient, landKey: V.landKey, landFlow: V.landFlow, landPigment: V.landPigment, landGrain: V.landGrain, landBands: V.landBands, landShadowSoft: V.landShadowSoft,
+      hueShift: V.hueShift ?? P.hueShift, saturation: V.saturation },
     palette: pal,
     background: [bg[0], bg[1], bg[2]],
   });
@@ -1248,6 +1358,17 @@ function renderTrippy(T: Trails, modeIndex: number) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
+// ---------- Audio reactivity gate ----------
+const AUDIO_REACTIVE_KEYS = ['level', 'bass', 'mid', 'high', 'envelope', 'kickEnv', 'snareEnv', 'hatEnv', 'bassEnv', 'midEnv', 'highEnv',
+  'onset', 'kick', 'snare', 'hat', 'envelope8th', 'envelope16th', 'envelope32nd', 'beatPhase', 'barPhase',
+  'beatDetected', 'kickDetected', 'snareDetected', 'hatDetected'];
+let audioMutedSnapshot: Record<string, any> | null = null;
+function muteAudioForFrame(s: Record<string, any>): Record<string, any> {
+  const saved: Record<string, any> = {};
+  for (const k of AUDIO_REACTIVE_KEYS) { saved[k] = s[k]; s[k] = typeof s[k] === 'boolean' ? false : 0; }
+  return saved;
+}
+
 function tick(now: number) {
   requestAnimationFrame(tick); if (busy || gl.isContextLost()) return;
   
@@ -1299,11 +1420,14 @@ function tick(now: number) {
     }
   }
   
-  // Update audio analysis
+  // Update audio analysis (restore the real envelopes first if last frame muted them)
+  if (audioMutedSnapshot) { Object.assign(audioAnalyzer.state, audioMutedSnapshot); audioMutedSnapshot = null; }
   audioAnalyzer.update();
   
   // Update control panel (audio meters, beat pulse, modulation indicators)
   panel.update();
+  // Style-first: with audio reactivity off, every mode renders and modulates from silence
+  if (!P.audioReactive) audioMutedSnapshot = muteAudioForFrame(audioAnalyzer.state as any);
   
   // Apply modulation to eased parameters L before final copy to V
   easeParams();
@@ -1322,7 +1446,7 @@ function tick(now: number) {
     renderTrippy(T, 2);
   } else if (P.mode === 'Morph') {
     if (!P.paused) { t3 += dt * V.orbitSpeed; }
-    renderTrippy(T, 3);
+    if (P.morphSculpt) renderSculpt(T); else renderTrippy(T, 3);
   } else if (P.mode === 'Landscape') {
     if (!P.paused) { t3 += dt * V.evolution3d; }
     renderLandscape(T, previewAspect);
@@ -1499,6 +1623,9 @@ function tick(now: number) {
     quad();
   }
   
+  // Sculpt relief (C4D AO finish) for the 2D modes
+  if (RELIEF_MODES.includes(P.mode) && P.relief > 0.001 && !(P.mode === 'Morph' && P.morphSculpt)) applyRelief();
+
   // Phase 1 Post Stack: bloom → CA/distort → color grade → tonemap
   // Bloom operates on original scene T, then composited after feedback
   bloomPass(T);
@@ -2200,13 +2327,23 @@ camF.add({ tip: 'drag = orbit · wheel = zoom · right/shift-drag = pan' }, 'tip
 const ex = gui.addFolder('Export'); ex.close();
 const wsU = () => gui.controllersRecursive().forEach(c => c.updateDisplay());
 function wallDefaults() { 
-  // DJ visualizer defaults - striking look
-  P.lightPreset = 'Dramatic Rim Light'; 
+  // Style-first default: Cinema 4D ambient-occlusion studio (softbox + white dome, deep contact AO,
+  // matte clay in pigment patchwork, light gradient cyclorama)
+  P.lightPreset = 'C4D Studio Softbox'; 
   applyLightPreset(P.lightPreset); 
   P.toneMap = 'ACES'; 
-  P.bloom = 0.35; 
-  P.ao = 0.8; 
-  P.ssaoRadius = 0.4; 
+  P.bloom = 0.12; 
+  P.bloomStrength = 0.04;
+  P.ao = 1.0; 
+  P.ssaoRadius = 0.6; 
+  P.wMat = 'clay';
+  P.wPatch = true;
+  P.palette = 'Living Pigment';
+  stops = PALETTES['Living Pigment'].map((s: Stop) => [s[0], s[1]] as Stop);
+  P.cycOn = true; P.cycA = '#a7aeb6'; P.cycB = '#4b5158';
+  P.feedbackEnabled = false;
+  P.caStrength = 0; P.distortion = 0;
+  P.iridescence = 0.0;
   P.shadowSoft = 2.0; 
   P.shadowBias = 0.002; 
   P.lsFloorCol = '#1a1a1a'; 
@@ -2219,27 +2356,50 @@ function wallDefaults() {
   P.frequency = 0.7; 
   P.iridescence = 0.35;
   P.wcAuto = true; // Auto-orbit camera
-  P.wcDist = 2.8; // Pull back slightly
+  P.wcDist = 4.2; // Pull back so the sculpture sits on the cyc
   P.lsFlowU = 0.08; // Add motion
   P.lsFlowV = 0.05;
 }
+function fractalStudioDefaults() {
+  // C4D AO studio: matte pigment surface, dome + soft key, deep AO, gradient cyc, no glow
+  P.frStudio = true;
+  P.frColor1 = '#1d8ea6'; P.frColor2 = '#e0a03a'; P.frColorMix = 1.6;
+  P.frAmbient = 0.35; P.frDiffuse = 0.85; P.frGlow = 0; P.frShadow = 0.8; P.frShadowSharpness = 6;
+  P.frAOStrength = 4.0; P.frAORadius = 0.3; P.frFogDensity = 0.06; P.frFogStart = 2.0;
+  P.frLightAz = 35; P.frLightEl = 50; P.frMaxSteps = 96;
+  P.saturation = 1.0; P.bloomStrength = 0.03; P.feedbackEnabled = false; P.caStrength = 0;
+}
 function landDefaults() {
-  P.palette = 'Ember';
-  if (PALETTES['Ember']) stops = PALETTES['Ember'].map((s: Stop) => [s[0], s[1]] as Stop);
+  // C4D-style AO studio look: Living Pigment palette, gentle grade, no feedback, no audio
+  P.palette = 'Living Pigment';
+  stops = PALETTES['Living Pigment'].map((s: Stop) => [s[0], s[1]] as Stop);
   syncStops();
   P.hueShift = 0;
-  P.saturation = 1.25;
+  P.saturation = 1.0;
   P.exposure = 1.0;
-  P.bloom = 0.28;
-  P.bloomStrength = 0.1;
-  P.background = '#020208';
+  P.bloom = 0.2;
+  P.bloomStrength = 0.06;
+  P.bloomThreshold2 = 1.6;
+  P.kickBloomAmount = 0;
+  P.caStrength = 0;
+  P.distortion = 0;
+  P.saturationPost = 1.05;
+  P.vibrance = 0.1;
+  P.vignetteStrength = 0.35;
+  P.grainStrength = 0.015;
+  P.feedbackEnabled = false;
+  P.background = '#05070a';
   P.tonemapMode = 'ACES';
-  P.landSpeed = 0.7;
+  P.landLook = 'Living Pigment';
+  P.landSpeed = 1.0;
   P.landBassLift = 1.2;
-  P.landFog = 0.38;
-  P.landFov = 58;
-  P.landParticleSize = 1.6;
-  P.landParticleGlow = 0.75;
+  P.landFog = 0.5;
+  P.landFov = 50;
+  P.landSunEl = 38;
+  P.landSunAz = -40;
+  P.landAO = 1.7;
+  P.landPigment = 1.0;
+  P.landParticles = false;
   buildPalette();
 }
 const wMatF = gui.addFolder('Material');
@@ -2260,6 +2420,13 @@ landF.add(P, 'landSpeed', 0, 2, 0.01).name('flight speed');
 landF.add(P, 'landFov', 30, 90, 1).name('lens FOV');
 landF.add(P, 'landBassLift', 0, 4, 0.05).name('bass lift');
 landF.add(P, 'landFog', 0, 1.5, 0.01).name('fog');
+landF.add(P, 'landLook', LAND_LOOK_NAMES).name('look');
+landF.add(P, 'landSunEl', 5, 85, 1).name('key height');
+landF.add(P, 'landSunAz', -180, 180, 1).name('key angle');
+landF.add(P, 'landAO', 0, 4, 0.05).name('AO depth');
+landF.add(P, 'landPigment', 0, 1.5, 0.01).name('pigment');
+landF.add(P, 'landFlow', 0, 4, 0.01).name('pigment flow');
+landF.add(P, 'landParticles').name('particles (off)');
 landF.add(P, 'landParticleCount', { '16K': 16384, '65K': 65536, '262K': 262144 }).name('particles');
 landF.add(P, 'landParticleSize', 0.5, 8, 0.05).name('particle size');
 landF.add(P, 'landParticleGlow', 0.2, 2.5, 0.05).name('particle glow');

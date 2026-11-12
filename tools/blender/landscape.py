@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Procedural canyon / ridge landscape for flow-engine Landscape mode.
+"""Sculpted pigment relief for flow-engine Landscape mode (pass 2).
 
 Headless usage:
   blender -b --python tools/blender/landscape.py -- --out public/landscape
 
-Writes:
-  terrain.glb          Y-up glTF mesh with normals + vertex colors (RGB albedo, A height 0-1)
-  camera-path.json     600 samples of position + look target in the same Y-up space
-  preview.png          Eevee still, 1280x720, from a mid-path camera
+Builds a crumpled, folded "pigment sculpture" heightfield (domain-warped ridged
+multifractal + crease folds), bakes ambient occlusion with Cycles into a vertex
+color attribute, renders an Eevee reference still, and writes a compact GLB:
 
-Original MIT-licensed work for flow-engine. No Shadertoy code.
+  terrain.glb       POSITION f32, NORMAL i8n, COLOR_0 u8n = (AO, cavity, height01, pigment zone)
+                    split into <=65536-vertex chunks with u16 indices (keeps the file small)
+  camera-path.json  closed-loop camera drift (glTF Y-up), "loop": true
+  preview.png       Eevee still (1920x1080) for reference
+  meta.json         stats, bake method, timings
+
+Original MIT-licensed work for flow-engine. Perlin-style gradient noise written
+from the published algorithm (Ken Perlin, 2002 "Improving Noise"). No Shadertoy code.
 """
 from __future__ import annotations
 
@@ -17,480 +23,490 @@ import argparse
 import json
 import math
 import os
+import struct
 import sys
+import time
 
 import bpy
-import bmesh
-from mathutils import Vector, Color, Euler
+import numpy as np
 
 
 # ---------------------------------------------------------------------------
-# Deterministic value noise (no add-ons)
+# Vectorised gradient noise
 # ---------------------------------------------------------------------------
+class Noise2:
+    def __init__(self, seed: int):
+        rng = np.random.default_rng(seed)
+        p = rng.permutation(256)
+        self.perm = np.concatenate([p, p]).astype(np.int64)
+        ang = rng.uniform(0, 2 * np.pi, 256)
+        self.gx = np.cos(ang)
+        self.gy = np.sin(ang)
 
-def _hash2(ix: int, iy: int, seed: int) -> float:
-    n = (ix * 374761393 + iy * 668265263 + seed * 1442695041) & 0x7FFFFFFF
-    n = (n ^ (n >> 13)) * 1274126177
-    return ((n ^ (n >> 16)) & 0x7FFFFFFF) / 2147483647.0
+    def __call__(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        xi = np.floor(x).astype(np.int64)
+        yi = np.floor(y).astype(np.int64)
+        xf = x - xi
+        yf = y - yi
+        xi &= 255
+        yi &= 255
+        P = self.perm
+
+        def grad(ix, iy, dx, dy):
+            h = P[P[ix] + iy] & 255
+            return self.gx[h] * dx + self.gy[h] * dy
+
+        n00 = grad(xi, yi, xf, yf)
+        n10 = grad(xi + 1, yi, xf - 1, yf)
+        n01 = grad(xi, yi + 1, xf, yf - 1)
+        n11 = grad(xi + 1, yi + 1, xf - 1, yf - 1)
+        u = xf * xf * xf * (xf * (xf * 6 - 15) + 10)
+        v = yf * yf * yf * (yf * (yf * 6 - 15) + 10)
+        a = n00 + u * (n10 - n00)
+        b = n01 + u * (n11 - n01)
+        return (a + v * (b - a)) * 1.414  # ~[-1, 1]
 
 
-def _smooth(t: float) -> float:
-    return t * t * (3.0 - 2.0 * t)
-
-
-def value_noise(x: float, y: float, seed: int) -> float:
-    ix, iy = math.floor(x), math.floor(y)
-    fx, fy = x - ix, y - iy
-    u, v = _smooth(fx), _smooth(fy)
-    a = _hash2(ix, iy, seed)
-    b = _hash2(ix + 1, iy, seed)
-    c = _hash2(ix, iy + 1, seed)
-    d = _hash2(ix + 1, iy + 1, seed)
-    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v
-
-
-def fbm(x: float, y: float, seed: int, octaves: int = 5, lac: float = 2.03, gain: float = 0.5) -> float:
-    amp, freq, total, norm = 1.0, 1.0, 0.0, 0.0
+def fbm(N: Noise2, x, y, octaves=5, lac=2.0, gain=0.5):
+    amp, f, s, norm = 1.0, 1.0, 0.0, 0.0
     for i in range(octaves):
-        total += amp * value_noise(x * freq, y * freq, seed + i * 101)
+        s = s + amp * N(x * f + i * 17.3, y * f - i * 9.1)
         norm += amp
         amp *= gain
-        freq *= lac
-    return total / norm if norm else 0.0
+        f *= lac
+    return s / norm
 
 
-def ridge_noise(x: float, y: float, seed: int, octaves: int = 4) -> float:
-    # 1 - |2n-1| creases, useful for rocky ridgelines
-    amp, freq, total, norm = 1.0, 1.0, 0.0, 0.0
+def ridged(N: Noise2, x, y, octaves=5, lac=2.07, gain=0.55, sharp=2.2):
+    """Musgrave-style ridged multifractal: creased folds whose detail is weighted by the previous octave."""
+    s = np.zeros_like(x)
+    w = np.ones_like(x)
+    amp, f, norm = 1.0, 1.0, 0.0
     for i in range(octaves):
-        n = 1.0 - abs(value_noise(x * freq, y * freq, seed + 17 + i * 59) * 2.0 - 1.0)
-        n = n * n
-        total += amp * n
+        n = 1.0 - np.abs(N(x * f + i * 31.7, y * f + i * 11.3))
+        n = n ** sharp
+        n = n * w
+        w = np.clip(n * 1.6, 0.0, 1.0)
+        s = s + n * amp
         norm += amp
-        amp *= 0.5
-        freq *= 2.15
-    return total / norm if norm else 0.0
+        amp *= gain
+        f *= lac
+    return s / norm
 
 
-def smoothstep(edge0: float, edge1: float, x: float) -> float:
-    if edge0 == edge1:
-        return 0.0 if x < edge0 else 1.0
-    t = max(0.0, min(1.0, (x - edge0) / (edge1 - edge0)))
-    return t * t * (3.0 - 2.0 * t)
+def smoothstep(a, b, x):
+    t = np.clip((x - a) / (b - a), 0.0, 1.0)
+    return t * t * (3 - 2 * t)
 
 
-# Canyon meander in Blender space (X right, Y forward, Z up)
-def canyon_center_x(y: float) -> float:
-    return math.sin(y * 0.055) * 9.0 + math.sin(y * 0.021 + 0.7) * 5.5 + math.sin(y * 0.11 + 1.3) * 1.6
+def blur(h, passes=1):
+    for _ in range(passes):
+        p = np.pad(h, 1, mode="edge")
+        h = (p[:-2, :-2] + 2 * p[:-2, 1:-1] + p[:-2, 2:] + 2 * p[1:-1, :-2] + 4 * p[1:-1, 1:-1] + 2 * p[1:-1, 2:] + p[2:, :-2] + 2 * p[2:, 1:-1] + p[2:, 2:]) / 16.0
+    return h
 
 
-def terrain_height(x: float, y: float, seed: int) -> tuple[float, float, float]:
-    """Return (height, slope_proxy, normalized_height_for_color)."""
-    cx = canyon_center_x(y)
-    d = abs(x - cx)
+# ---------------------------------------------------------------------------
+# Heightfield
+# ---------------------------------------------------------------------------
+def build_heights(res: int, size: float, seed: int):
+    N1, N2, N3 = Noise2(seed), Noise2(seed + 1), Noise2(seed + 2)
+    lin = (np.arange(res) / (res - 1) - 0.5) * size
+    X, Y = np.meshgrid(lin, lin)  # rows = Y, cols = X
+    q = X / 52.0, Y / 52.0
+    # Two-level domain warp gives the poured / folded-cloth flow
+    wx = fbm(N2, q[0] + 1.7, q[1] + 9.2, 4)
+    wy = fbm(N2, q[0] + 8.3, q[1] + 2.8, 4)
+    rx, ry = q[0] + 1.25 * wx, q[1] + 1.25 * wy
+    wx2 = fbm(N3, rx * 1.9 + 4.1, ry * 1.9 - 3.3, 3)
+    wy2 = fbm(N3, rx * 1.9 - 7.7, ry * 1.9 + 5.9, 3)
+    sx, sy = rx + 0.45 * wx2, ry + 0.45 * wy2
 
-    # Macro ground + rocky detail
-    macro = fbm(x * 0.035, y * 0.035, seed, octaves=4) * 6.5
-    detail = fbm(x * 0.18, y * 0.18, seed + 3, octaves=5) * 1.35
-    ridges = ridge_noise(x * 0.09, y * 0.09, seed + 9, octaves=4) * 3.2
+    folds = ridged(N1, sx * 1.6, sy * 1.6, octaves=5, sharp=2.4)     # main creased sheets
+    crumple = ridged(N3, sx * 4.3 + 3.0, sy * 4.3 - 1.0, octaves=3, sharp=2.6)  # secondary crumple
+    mass = 0.5 + 0.5 * fbm(N2, q[0] * 0.55 - 3.0, q[1] * 0.55 + 6.0, 3)
+    mass = smoothstep(0.15, 0.85, mass)
 
-    # Carve a river canyon: tight floor, steep walls, high shoulders
-    floor = -1.6 + fbm(x * 0.08, y * 0.08, seed + 21, octaves=3) * 0.7
-    wall = smoothstep(2.8, 13.0, d)
-    shoulder = smoothstep(12.0, 24.0, d)
-    # Keep a walkable trough so the camera never clips
-    height = floor * (1.0 - wall) + (macro + 3.4) * wall + ridges * shoulder + detail * (0.35 + 0.65 * wall)
+    h = 3.0 + 17.0 * folds * (0.45 + 0.75 * mass) + 5.5 * crumple * (0.4 + 0.6 * folds) + 4.0 * mass
+    # Soft terraces on the big sheets: overlapping pigment layers
+    step = 2.6
+    k = np.floor(h / step)
+    f = h / step - k
+    terr = (k + smoothstep(0.1, 0.9, f)) * step
+    h = 0.85 * h + 0.15 * terr
+    h = blur(h, 2)
 
-    # Occasional distant peaks
-    height += shoulder * (fbm(x * 0.02 + 40, y * 0.02, seed + 41, octaves=3) ** 2) * 7.0
-
-    # Slope proxy from a small finite difference (pre-final, good enough for color)
-    slope = min(1.0, abs(d - 8.0) * 0.08 + abs(detail) * 0.25 + ridges * 0.15)
-    # Normalized 0-1 over a generous range for COLOR_0.a
-    h01 = max(0.0, min(1.0, (height + 3.0) / 22.0))
-    return height, slope, h01
-
-
-def terrain_color(h01: float, slope: float, x: float, y: float, seed: int) -> tuple[float, float, float, float]:
-    """Punchy but earthy albedo. Alpha stores normalized height."""
-    # Sand / silt floor
-    floor_c = (0.42, 0.28, 0.16)
-    # Warm sandstone mid
-    sand_c = (0.72, 0.42, 0.22)
-    # Cooler high rock
-    rock_c = (0.28, 0.30, 0.34)
-    # Lit ridge / mineral
-    ridge_c = (0.85, 0.62, 0.38)
-    # Shadowed moss flecks
-    moss_c = (0.16, 0.28, 0.14)
-
-    t_sand = smoothstep(0.12, 0.38, h01)
-    t_rock = smoothstep(0.38, 0.70, h01)
-    t_ridge = smoothstep(0.62, 0.90, h01)
-    r = floor_c[0] * (1 - t_sand) + sand_c[0] * t_sand
-    g = floor_c[1] * (1 - t_sand) + sand_c[1] * t_sand
-    b = floor_c[2] * (1 - t_sand) + sand_c[2] * t_sand
-    r = r * (1 - t_rock) + rock_c[0] * t_rock
-    g = g * (1 - t_rock) + rock_c[1] * t_rock
-    b = b * (1 - t_rock) + rock_c[2] * t_rock
-    r = r * (1 - t_ridge) + ridge_c[0] * t_ridge
-    g = g * (1 - t_ridge) + ridge_c[1] * t_ridge
-    b = b * (1 - t_ridge) + ridge_c[2] * t_ridge
-
-    # Steep faces go darker / cooler
-    r = r * (1.0 - 0.35 * slope) + 0.10 * slope
-    g = g * (1.0 - 0.28 * slope) + 0.12 * slope
-    b = b * (1.0 - 0.15 * slope) + 0.16 * slope
-
-    # Sparse moss in mid elevations, low slope
-    moss = (1.0 - slope) * max(0.0, 1.0 - abs(h01 - 0.4) * 4.0) * value_noise(x * 0.6, y * 0.6, seed + 77)
-    if moss > 0.35:
-        k = min(1.0, (moss - 0.35) * 2.2)
-        r = r * (1 - k) + moss_c[0] * k
-        g = g * (1 - k) + moss_c[1] * k
-        b = b * (1 - k) + moss_c[2] * k
-
-    return (max(0, min(1, r)), max(0, min(1, g)), max(0, min(1, b)), h01)
+    # Pigment zones: large warped regions (sharp-ish borders) like poured paint
+    zone = 0.5 + 0.5 * fbm(N1, sx * 0.9 + 12.0, sy * 0.9 - 4.0, 4)
+    zone = np.clip(zone, 0.0, 1.0)
+    return X, Y, h, zone
 
 
-# glTF Y-up conversion matching the official exporter (export_yup=True):
-# Blender (X, Y, Z) Z-up -> glTF (X, Z, -Y) Y-up
-def to_gltf(v: Vector | tuple[float, float, float]) -> list[float]:
-    x, y, z = float(v[0]), float(v[1]), float(v[2])
-    return [round(x, 5), round(z, 5), round(-y, 5)]
+def normals_from_heights(h, spacing):
+    gy, gx = np.gradient(h, spacing)  # d/drow (Y), d/dcol (X)
+    n = np.stack([-gx, -gy, np.ones_like(h)], axis=-1)  # Blender Z-up
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    return n
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
-    # Blender leaves user args after "--"
-    if "--" in argv:
-        argv = argv[argv.index("--") + 1 :]
-    else:
-        argv = []
-    p = argparse.ArgumentParser()
-    p.add_argument("--out", default="public/landscape", help="Output directory")
-    p.add_argument("--seed", type=int, default=1977)
-    p.add_argument("--res-x", type=int, default=192, help="Grid resolution across canyon (X)")
-    p.add_argument("--res-y", type=int, default=320, help="Grid resolution along flight (Y)")
-    p.add_argument("--size-x", type=float, default=80.0)
-    p.add_argument("--size-y", type=float, default=160.0)
-    p.add_argument("--samples", type=int, default=600)
-    p.add_argument("--duration", type=float, default=40.0, help="Seconds to fly the path at speed=1")
-    p.add_argument("--fov", type=float, default=55.0)
-    p.add_argument("--preview-only", action="store_true")
-    return p.parse_args(argv)
+def cavity_map(h, spacing):
+    p = np.pad(h, 2, mode="edge")
+    lap = (p[2:-2, :-4] + p[2:-2, 4:] + p[:-4, 2:-2] + p[4:, 2:-2] - 4 * h) / (2 * spacing) ** 2
+    c = np.clip(0.5 + lap * 0.9, 0.0, 1.0)  # >0.5 = concave crease, <0.5 = convex crest
+    return blur(c, 1)
 
 
-def reset_scene() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+def horizon_ao(h, spacing, dirs=16, steps=28, max_dist=14.0):
+    """Fallback heightfield AO (used only if the Cycles bake fails)."""
+    res = h.shape[0]
+    occ = np.zeros_like(h)
+    for d in range(dirs):
+        a = 2 * np.pi * d / dirs
+        dx, dy = np.cos(a), np.sin(a)
+        best = np.zeros_like(h)
+        for s in range(1, steps + 1):
+            dist = max_dist * (s / steps) ** 1.5
+            ox, oy = int(round(dx * dist / spacing)), int(round(dy * dist / spacing))
+            sh = np.roll(np.roll(h, -oy, axis=0), -ox, axis=1)
+            best = np.maximum(best, (sh - h) / max(dist, 1e-3))
+        occ += np.sin(np.arctan(best))
+    return np.clip(1.0 - occ / dirs, 0.0, 1.0)
 
 
-def build_terrain(opts) -> tuple[bpy.types.Object, dict]:
-    nx, ny = opts.res_x, opts.res_y
-    sx, sy = opts.size_x, opts.size_y
-    seed = opts.seed
-
-    bm = bmesh.new()
-    verts: list[bmesh.types.BMVert] = []
-    heights: list[float] = []
-    colors: list[tuple[float, float, float, float]] = []
-    slopes: list[float] = []
-
-    for j in range(ny):
-        v = (j / (ny - 1) - 0.5) * sy  # Y in [-sy/2, sy/2]
-        for i in range(nx):
-            u = (i / (nx - 1) - 0.5) * sx
-            h, slope, h01 = terrain_height(u, v, seed)
-            vert = bm.verts.new((u, v, h))
-            verts.append(vert)
-            heights.append(h)
-            slopes.append(slope)
-            colors.append(terrain_color(h01, slope, u, v, seed))
-
-    bm.verts.ensure_lookup_table()
-    for j in range(ny - 1):
-        for i in range(nx - 1):
-            a = verts[j * nx + i]
-            b = verts[j * nx + i + 1]
-            c = verts[(j + 1) * nx + i + 1]
-            d = verts[(j + 1) * nx + i]
-            try:
-                bm.faces.new((a, b, c, d))
-            except ValueError:
-                pass
-
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    # Smooth-ish shading via vertex normals
-    for f in bm.faces:
-        f.smooth = True
-
-    mesh = bpy.data.meshes.new("CanyonTerrain")
-    bm.to_mesh(mesh)
-    bm.free()
-    mesh.update()
-    if hasattr(mesh, "shade_smooth"):
-        try:
-            mesh.shade_smooth()
-        except Exception:
-            pass
-
-    # Point-domain float color: RGB albedo, A = normalized height
-    attr = mesh.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
-    for i, col in enumerate(colors):
-        attr.data[i].color = col
+# ---------------------------------------------------------------------------
+# Blender mesh + Cycles AO bake + Eevee preview
+# ---------------------------------------------------------------------------
+def build_mesh(X, Y, h, res):
+    nv = res * res
+    co = np.stack([X.ravel(), Y.ravel(), h.ravel()], axis=-1).astype(np.float32)
+    i = np.arange(res - 1)
+    jj, ii = np.meshgrid(i, i)  # ii row, jj col
+    a = (ii * res + jj).ravel()
+    b = a + 1
+    c = a + res + 1
+    d = a + res
+    quads = np.stack([a, b, c, d], axis=-1).astype(np.int32)  # CCW seen from +Z
+    mesh = bpy.data.meshes.new("PigmentRelief")
+    mesh.vertices.add(nv)
+    mesh.vertices.foreach_set("co", co.ravel())
+    mesh.loops.add(quads.size)
+    mesh.loops.foreach_set("vertex_index", quads.ravel())
+    mesh.polygons.add(quads.shape[0])
+    mesh.polygons.foreach_set("loop_start", np.arange(0, quads.size, 4, dtype=np.int32))
     try:
-        mesh.color_attributes.active_color = attr
+        mesh.polygons.foreach_set("loop_total", np.full(quads.shape[0], 4, dtype=np.int32))
     except Exception:
-        mesh.color_attributes.active = attr
-
-    obj = bpy.data.objects.new("CanyonTerrain", mesh)
+        pass
+    mesh.update(calc_edges=True)
+    mesh.validate()
+    mesh.polygons.foreach_set("use_smooth", np.ones(quads.shape[0], dtype=bool))
+    obj = bpy.data.objects.new("PigmentRelief", mesh)
     bpy.context.collection.objects.link(obj)
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
+    return obj, quads
 
-    # Smooth shading operator as a fallback
+
+def cycles_bake_ao(obj, nv, samples=48, distance=9.0):
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
     try:
-        bpy.ops.object.shade_smooth()
-    except Exception:
-        pass
-
-    stats = {
-        "verts": len(mesh.vertices),
-        "faces": len(mesh.polygons),
-        "hMin": min(heights),
-        "hMax": max(heights),
-        "sizeX": sx,
-        "sizeY": sy,
-        "resX": nx,
-        "resY": ny,
-    }
-    return obj, stats
-
-
-def build_camera_path(opts, stats: dict) -> list[dict]:
-    """Sample a smooth flight through the canyon trough, slightly above the floor."""
-    samples = []
-    n = opts.samples
-    sy = opts.size_y
-    y0, y1 = -sy * 0.42, sy * 0.42
-    seed = opts.seed
-    look_ahead = 10.0
-    clearance = 3.4
-
-    raw: list[tuple[Vector, Vector]] = []
-    for i in range(n):
-        t = i / (n - 1)
-        y = y0 + (y1 - y0) * t
-        cx = canyon_center_x(y)
-        # Stay in the trough (a little off-center for a more cinematic line)
-        sway = math.sin(t * math.pi * 2.0) * 0.6
-        x = cx + sway
-        h, _, _ = terrain_height(x, y, seed)
-        pos = Vector((x, y, h + clearance + 0.4 * math.sin(t * math.pi * 3.0)))
-
-        y2 = min(y1, y + look_ahead)
-        cx2 = canyon_center_x(y2)
-        h2, _, _ = terrain_height(cx2, y2, seed)
-        tgt = Vector((cx2, y2, h2 + clearance * 0.55))
-        raw.append((pos, tgt))
-
-    # Simple 5-tap smoothing so the flight does not jitter with the noise
-    def avg(idx: int, attr: int) -> Vector:
-        acc = Vector((0, 0, 0))
-        wsum = 0.0
-        for k, w in ((-2, 1), (-1, 2), (0, 3), (1, 2), (2, 1)):
-            j = max(0, min(n - 1, idx + k))
-            acc += raw[j][attr] * w
-            wsum += w
-        return acc / wsum
-
-    for i in range(n):
-        p = avg(i, 0)
-        t = avg(i, 1)
-        # Keep looking somewhat ahead even after smoothing
-        if i < n - 1:
-            ahead = avg(min(n - 1, i + 8), 0)
-            t = t.lerp(ahead, 0.45)
-        samples.append({"p": to_gltf(p), "t": to_gltf(t)})
-    return samples
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+        prefs.compute_device_type = "METAL"
+        prefs.get_devices()
+        for dev in prefs.devices:
+            dev.use = True
+        scene.cycles.device = "GPU"
+    except Exception as e:  # CPU is fine, just slower
+        print("cycles GPU unavailable:", e)
+    scene.cycles.samples = samples
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("BakeWorld")
+    scene.world.light_settings.distance = distance
+    mesh = obj.data
+    attr = mesh.color_attributes.new(name="AO", type="FLOAT_COLOR", domain="POINT")
+    mesh.color_attributes.active_color = attr
+    mat = bpy.data.materials.new("BakeMat")
+    mat.use_nodes = True
+    obj.data.materials.clear()
+    obj.data.materials.append(mat)
+    scene.render.bake.target = "VERTEX_COLORS"
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    t0 = time.time()
+    bpy.ops.object.bake(type="AO")
+    buf = np.zeros(nv * 4, dtype=np.float32)
+    attr.data.foreach_get("color", buf)
+    ao = buf.reshape(-1, 4)[:, 0]
+    return ao, time.time() - t0, scene.cycles.device
 
 
-def make_preview_camera(sample: dict, fov_deg: float) -> bpy.types.Object:
-    # sample is already glTF Y-up; convert back to Blender Z-up for the scene camera
-    def to_blender(q: list[float]) -> Vector:
-        x, y, z = q  # glTF
-        return Vector((x, -z, y))
-
-    loc = to_blender(sample["p"])
-    tgt = to_blender(sample["t"])
-    cam_data = bpy.data.cameras.new("PreviewCam")
-    cam_data.lens_unit = "FOV"
-    cam_data.angle = math.radians(fov_deg)
-    cam = bpy.data.objects.new("PreviewCam", cam_data)
-    bpy.context.collection.objects.link(cam)
-    cam.location = loc
-    direction = tgt - loc
-    # Track-to: camera looks down local -Z
-    rot = direction.to_track_quat("-Z", "Y")
-    cam.rotation_euler = rot.to_euler()
-    bpy.context.scene.camera = cam
-    return cam
+PALETTE_PREVIEW = [  # Living-pigment preview colors (linear)
+    (0.010, 0.018, 0.030), (0.020, 0.180, 0.260), (0.050, 0.520, 0.600), (0.900, 0.560, 0.120), (0.950, 0.880, 0.720),
+]
 
 
-def setup_preview_look(terrain: bpy.types.Object) -> None:
-    # Vertex-color material
-    mat = bpy.data.materials.new("CanyonPreview")
+def ramp(t):
+    t = np.clip(t, 0, 1) * (len(PALETTE_PREVIEW) - 1)
+    i = np.minimum(np.floor(t).astype(int), len(PALETTE_PREVIEW) - 2)
+    f = (t - i)[:, None]
+    P = np.array(PALETTE_PREVIEW)
+    return P[i] * (1 - f) + P[i + 1] * f
+
+
+def setup_preview(obj, ao, h01, zone, cav):
+    mesh = obj.data
+    t = np.clip(0.55 * zone + 0.45 * h01 + (0.5 - cav) * 0.25, 0, 1)
+    col = ramp(t) * (0.25 + 0.75 * ao[:, None] ** 1.4)
+    rgba = np.concatenate([col, np.ones((col.shape[0], 1))], axis=1).astype(np.float32)
+    attr = mesh.color_attributes.new(name="Preview", type="FLOAT_COLOR", domain="POINT")
+    attr.data.foreach_set("color", rgba.ravel())
+    mesh.color_attributes.active_color = attr
+    mat = bpy.data.materials.new("PreviewMat")
     mat.use_nodes = True
     nt = mat.node_tree
-    nodes, links = nt.nodes, nt.links
-    nodes.clear()
-    out = nodes.new("ShaderNodeOutputMaterial")
-    out.location = (500, 0)
-    bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-    bsdf.location = (200, 0)
-    attr = nodes.new("ShaderNodeVertexColor")
-    attr.location = (0, 0)
-    attr.layer_name = "Color"
-    links.new(attr.outputs["Color"], bsdf.inputs["Base Color"])
-    # Slightly rough rock
-    if "Roughness" in bsdf.inputs:
-        bsdf.inputs["Roughness"].default_value = 0.72
-    if "Specular IOR Level" in bsdf.inputs:
-        bsdf.inputs["Specular IOR Level"].default_value = 0.25
-    elif "Specular" in bsdf.inputs:
-        bsdf.inputs["Specular"].default_value = 0.25
-    links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
-    terrain.data.materials.append(mat)
+    bsdf = nt.nodes.get("Principled BSDF")
+    vc = nt.nodes.new("ShaderNodeVertexColor")
+    vc.layer_name = "Preview"
+    nt.links.new(vc.outputs["Color"], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.42
+    obj.data.materials.clear()
+    obj.data.materials.append(mat)
 
-    # Sun (late-day, warm)
-    sun_data = bpy.data.lights.new("Sun", "SUN")
-    sun_data.energy = 6.5
-    sun_data.angle = math.radians(4.0)
-    if hasattr(sun_data, "color"):
-        sun_data.color = (1.0, 0.82, 0.62)
-    sun = bpy.data.objects.new("Sun", sun_data)
-    bpy.context.collection.objects.link(sun)
-    sun.rotation_euler = Euler((math.radians(42), math.radians(0), math.radians(128)), "XYZ")
-
-    # Fill
-    fill_data = bpy.data.lights.new("Fill", "SUN")
-    fill_data.energy = 1.1
-    fill_data.color = (0.45, 0.55, 0.85)
-    fill = bpy.data.objects.new("Fill", fill_data)
-    bpy.context.collection.objects.link(fill)
-    fill.rotation_euler = Euler((math.radians(75), 0, math.radians(-40)), "XYZ")
-
-    # World: dusk sky
-    world = bpy.data.worlds.new("Dusk")
-    world.use_nodes = True
-    wnt = world.node_tree
-    wnt.nodes.clear()
-    wbg = wnt.nodes.new("ShaderNodeBackground")
-    wbg.inputs["Color"].default_value = (0.22, 0.28, 0.42, 1)
-    wbg.inputs["Strength"].default_value = 0.55
-    wout = wnt.nodes.new("ShaderNodeOutputWorld")
-    wnt.links.new(wbg.outputs["Background"], wout.inputs["Surface"])
-    bpy.context.scene.world = world
+    scene = bpy.context.scene
+    # Big soft studio key (area light) + rim + dark gradient world
+    key = bpy.data.lights.new("Key", "AREA")
+    key.energy = 220000
+    key.size = 120
+    key.color = (1.0, 0.93, 0.85)
+    ko = bpy.data.objects.new("Key", key)
+    ko.location = (-60, -90, 140)
+    ko.rotation_euler = (math.radians(38), 0, math.radians(-30))
+    bpy.context.collection.objects.link(ko)
+    rim = bpy.data.lights.new("Rim", "SUN")
+    rim.energy = 2.0
+    rim.color = (0.55, 0.75, 1.0)
+    ro = bpy.data.objects.new("Rim", rim)
+    ro.rotation_euler = (math.radians(70), 0, math.radians(160))
+    bpy.context.collection.objects.link(ro)
+    w = scene.world
+    w.use_nodes = True
+    bg = w.node_tree.nodes.get("Background")
+    bg.inputs["Color"].default_value = (0.012, 0.013, 0.018, 1)
+    bg.inputs["Strength"].default_value = 1.0
 
 
-def render_preview(path: str, width: int = 1280, height: int = 720) -> None:
+def render_preview(path, cam_sample, fov):
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_EEVEE"
-    scene.render.resolution_x = width
-    scene.render.resolution_y = height
-    scene.render.resolution_percentage = 100
+    scene.render.resolution_x, scene.render.resolution_y = 1920, 1080
     scene.render.image_settings.file_format = "PNG"
-    scene.render.image_settings.color_mode = "RGB"
     scene.render.filepath = path
-    scene.render.film_transparent = False
-    eevee = scene.eevee
-    if hasattr(eevee, "taa_render_samples"):
-        eevee.taa_render_samples = 32
-    if hasattr(eevee, "use_shadows"):
-        eevee.use_shadows = True
-    if hasattr(eevee, "use_raytracing"):
-        eevee.use_raytracing = False
+    try:
+        scene.view_settings.view_transform = "AgX"
+        scene.view_settings.look = "AgX - Medium High Contrast"
+    except Exception:
+        pass
+    ee = scene.eevee
+    for k, v in (("taa_render_samples", 64), ("use_shadows", True), ("use_raytracing", True), ("use_gtao", True), ("gtao_distance", 6.0)):
+        if hasattr(ee, k):
+            try:
+                setattr(ee, k, v)
+            except Exception:
+                pass
+    from mathutils import Vector
+    def to_b(q):
+        return Vector((q[0], -q[2], q[1]))
+    cd = bpy.data.cameras.new("Cam")
+    cd.lens_unit = "FOV"
+    cd.angle = math.radians(fov)
+    co = bpy.data.objects.new("Cam", cd)
+    bpy.context.collection.objects.link(co)
+    loc, tgt = to_b(cam_sample["p"]), to_b(cam_sample["t"])
+    co.location = loc
+    co.rotation_euler = (tgt - loc).to_track_quat("-Z", "Y").to_euler()
+    scene.camera = co
     bpy.ops.render.render(write_still=True)
 
 
-def export_glb(path: str) -> None:
-    # Isolate the terrain
-    bpy.ops.object.select_all(action="DESELECT")
-    terrain = bpy.data.objects.get("CanyonTerrain")
-    if terrain is None:
-        raise RuntimeError("CanyonTerrain missing")
-    terrain.select_set(True)
-    bpy.context.view_layer.objects.active = terrain
-    bpy.ops.export_scene.gltf(
-        filepath=path,
-        export_format="GLB",
-        use_selection=True,
-        export_yup=True,
-        export_apply=True,
-        export_texcoords=False,
-        export_normals=True,
-        export_tangents=False,
-        export_vertex_color="ACTIVE",
-        export_all_vertex_colors=False,
-        export_active_vertex_color_when_no_material=True,
-        export_attributes=False,
-        export_cameras=False,
-        export_lights=False,
-        export_animations=False,
-        export_skins=False,
-        export_morph=False,
-        export_materials="NONE",
-        export_extras=False,
-        export_image_format="NONE",
-    )
+# ---------------------------------------------------------------------------
+# Camera loop
+# ---------------------------------------------------------------------------
+def sample_h(h, size, res, x, y):
+    fx = (x / size + 0.5) * (res - 1)
+    fy = (y / size + 0.5) * (res - 1)
+    ix = int(np.clip(round(fx), 0, res - 1))
+    iy = int(np.clip(round(fy), 0, res - 1))
+    r = 10
+    return float(h[max(0, iy - r): iy + r + 1, max(0, ix - r): ix + r + 1].max())
+
+
+def build_camera_loop(h, size, res, n=1800):
+    pts = []
+    for i in range(n):
+        a = 2 * np.pi * i / n
+        rx, ry = 40.0 + 6.0 * math.sin(2 * a), 32.0 + 5.0 * math.cos(3 * a)
+        x, y = rx * math.cos(a), ry * math.sin(a)
+        z = sample_h(h, size, res, x, y) + 30.0 + 4.0 * math.sin(3 * a + 1.0)
+        # Look ahead along the loop and inward toward the centre of the sculpture
+        a2 = a + 0.42
+        tx = 0.55 * (40.0 * math.cos(a2))
+        ty = 0.55 * (32.0 * math.sin(a2))
+        tz = sample_h(h, size, res, tx, ty) * 0.6 + 2.0
+        pts.append(((x, y, z), (tx, ty, tz)))
+    # Circular smoothing (closed loop)
+    P = np.array([p for p, _ in pts])
+    T = np.array([t for _, t in pts])
+    for _ in range(6):
+        P = (np.roll(P, 1, 0) + 2 * P + np.roll(P, -1, 0)) / 4
+        T = (np.roll(T, 1, 0) + 2 * T + np.roll(T, -1, 0)) / 4
+    g = lambda v: [round(float(v[0]), 4), round(float(v[2]), 4), round(float(-v[1]), 4)]
+    return [{"p": g(P[i]), "t": g(T[i])} for i in range(n)]
+
+
+# ---------------------------------------------------------------------------
+# Compact GLB writer (chunked, quantized)
+# ---------------------------------------------------------------------------
+def write_glb(path, pos, nrm, col, res):
+    """pos/nrm: (res*res,3) glTF space; col: (res*res,4) 0..1. Splits rows so each chunk has <=65536 verts."""
+    rows_per = 65536 // res
+    stepr = rows_per - 1
+    bin_parts, views, accs, prims = [], [], [], []
+    offset = 0
+
+    def add_view(data: bytes, target=None, stride=None):
+        nonlocal offset
+        pad = (-len(data)) % 4
+        bin_parts.append(data + b"\x00" * pad)
+        v = {"buffer": 0, "byteOffset": offset, "byteLength": len(data)}
+        if stride:
+            v["byteStride"] = stride
+        if target:
+            v["target"] = target
+        views.append(v)
+        offset += len(data) + pad
+        return len(views) - 1
+
+    r0 = 0
+    while r0 < res - 1:
+        r1 = min(res - 1, r0 + stepr)
+        rows = r1 - r0 + 1
+        vid = np.arange(r0 * res, (r1 + 1) * res)
+        p = pos[vid].astype(np.float32)
+        n8 = np.clip(np.round(nrm[vid] * 127), -127, 127).astype(np.int8)
+        n8 = np.concatenate([n8, np.zeros((n8.shape[0], 1), np.int8)], axis=1)  # stride 4
+        c8 = np.clip(np.round(col[vid] * 255), 0, 255).astype(np.uint8)
+        i = np.arange(res - 1)
+        jj, ii = np.meshgrid(i, np.arange(rows - 1))
+        a = (ii * res + jj).ravel()
+        b, c, d = a + 1, a + res + 1, a + res
+        # (a,b,c) is CCW seen from +Z in Blender; the Z-up -> Y-up map is a proper rotation, so it stays CCW from +Y.
+        tris = np.stack([a, b, c, a, c, d], axis=-1).reshape(-1).astype(np.uint16)
+        vp = add_view(p.tobytes(), 34962)
+        vn = add_view(n8.tobytes(), 34962, 4)
+        vc = add_view(c8.tobytes(), 34962)
+        vi = add_view(tris.tobytes(), 34963)
+        cnt = len(vid)
+        accs.append({"bufferView": vp, "componentType": 5126, "count": cnt, "type": "VEC3", "min": p.min(0).tolist(), "max": p.max(0).tolist()})
+        accs.append({"bufferView": vn, "componentType": 5120, "normalized": True, "count": cnt, "type": "VEC3"})
+        accs.append({"bufferView": vc, "componentType": 5121, "normalized": True, "count": cnt, "type": "VEC4"})
+        accs.append({"bufferView": vi, "componentType": 5123, "count": int(tris.size), "type": "SCALAR"})
+        k = len(accs)
+        prims.append({"attributes": {"POSITION": k - 4, "NORMAL": k - 3, "COLOR_0": k - 2}, "indices": k - 1, "mode": 4})
+        r0 = r1
+    binary = b"".join(bin_parts)
+    gltf = {
+        "asset": {"version": "2.0", "generator": "flow-engine tools/blender/landscape.py (MIT)"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": [{"mesh": 0, "name": "PigmentRelief"}],
+        "meshes": [{"name": "PigmentRelief", "primitives": prims, "extras": {"COLOR_0": "R=AO(Cycles) G=cavity B=height01 A=pigment zone"}}],
+        "accessors": accs,
+        "bufferViews": views,
+        "buffers": [{"byteLength": len(binary)}],
+    }
+    js = json.dumps(gltf, separators=(",", ":")).encode()
+    js += b" " * ((-len(js)) % 4)
+    total = 12 + 8 + len(js) + 8 + len(binary)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2, total))
+        f.write(struct.pack("<II", len(js), 0x4E4F534A))
+        f.write(js)
+        f.write(struct.pack("<II", len(binary), 0x004E4942))
+        f.write(binary)
+    return len(prims)
 
 
 def main() -> int:
-    opts = parse_args(sys.argv)
-    out = os.path.abspath(opts.out)
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default="public/landscape")
+    ap.add_argument("--seed", type=int, default=1977)
+    ap.add_argument("--res", type=int, default=512)
+    ap.add_argument("--size", type=float, default=200.0)
+    ap.add_argument("--fov", type=float, default=50.0)
+    ap.add_argument("--duration", type=float, default=150.0)
+    ap.add_argument("--samples", type=int, default=48)
+    ap.add_argument("--no-bake", action="store_true")
+    ap.add_argument("--no-preview", action="store_true")
+    o = ap.parse_args(argv)
+    out = os.path.abspath(o.out)
     os.makedirs(out, exist_ok=True)
-    print(f"landscape.py out={out} seed={opts.seed} res={opts.res_x}x{opts.res_y}")
+    t0 = time.time()
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    res, size = o.res, o.size
+    spacing = size / (res - 1)
+    X, Y, h, zone = build_heights(res, size, o.seed)
+    print(f"heights {res}x{res} range {h.min():.2f}..{h.max():.2f} ({time.time()-t0:.1f}s)")
+    cav = cavity_map(h, spacing)
+    nrm_b = normals_from_heights(h, spacing)
+    obj, _ = build_mesh(X, Y, h, res)
 
-    reset_scene()
-    terrain, stats = build_terrain(opts)
-    print("terrain", stats)
+    bake = "cycles"
+    bake_s = 0.0
+    device = "n/a"
+    ao = None
+    if not o.no_bake:
+        try:
+            ao, bake_s, device = cycles_bake_ao(obj, res * res, samples=o.samples)
+            print(f"cycles AO bake {bake_s:.1f}s device={device} mean={ao.mean():.3f}")
+        except Exception as e:
+            print("cycles bake failed:", e)
+            ao = None
+    if ao is None:
+        bake = "horizon-numpy"
+        ao = horizon_ao(h, spacing).ravel()
+    ao = np.clip(ao, 0, 1)
+    # Stretch AO so deep creases really go dark (C4D-style contact shadow)
+    lo, hi = np.percentile(ao, 2), np.percentile(ao, 99.5)
+    ao = np.clip((ao - lo) / max(1e-3, hi - lo), 0, 1)
 
-    samples = build_camera_path(opts, stats)
-    path_json = {
-        "space": "gltf-y-up",
-        "fovDeg": opts.fov,
-        "durationSec": opts.duration,
-        "sampleCount": len(samples),
-        "seed": opts.seed,
-        "bounds": {
-            "min": [-opts.size_x / 2, stats["hMin"], -opts.size_y / 2],
-            "max": [opts.size_x / 2, stats["hMax"], opts.size_y / 2],
-            "note": "bounds listed in Blender Z-up (X,Z height,Y); samples are glTF Y-up",
-        },
-        "blender": {"sizeX": opts.size_x, "sizeY": opts.size_y, "resX": opts.res_x, "resY": opts.res_y, "verts": stats["verts"], "faces": stats["faces"]},
-        "samples": samples,
-    }
-    json_path = os.path.join(out, "camera-path.json")
-    with open(json_path, "w") as f:
-        json.dump(path_json, f, separators=(",", ":"))
-    print("wrote", json_path, "samples", len(samples), "bytes", os.path.getsize(json_path))
+    h01 = ((h - h.min()) / (h.max() - h.min())).ravel()
+    col = np.stack([ao, cav.ravel(), h01, zone.ravel()], axis=-1)
+    pos = np.stack([X.ravel(), h.ravel(), -Y.ravel()], axis=-1)
+    nrm = np.stack([nrm_b[..., 0].ravel(), nrm_b[..., 2].ravel(), -nrm_b[..., 1].ravel()], axis=-1)
 
-    setup_preview_look(terrain)
-    mid = samples[len(samples) // 2]
-    make_preview_camera(mid, opts.fov)
+    samples = build_camera_loop(h, size, res)
+    path = {"space": "gltf-y-up", "loop": True, "fovDeg": o.fov, "durationSec": o.duration, "sampleCount": len(samples), "seed": o.seed, "samples": samples}
+    with open(os.path.join(out, "camera-path.json"), "w") as f:
+        json.dump(path, f, separators=(",", ":"))
 
-    preview_path = os.path.join(out, "preview.png")
-    render_preview(preview_path)
-    print("wrote", preview_path, "bytes", os.path.getsize(preview_path) if os.path.exists(preview_path) else 0)
+    glb = os.path.join(out, "terrain.glb")
+    chunks = write_glb(glb, pos, nrm, col, res)
+    size_b = os.path.getsize(glb)
+    print(f"wrote {glb} {size_b} bytes ({size_b/1048576:.2f} MB) chunks={chunks}")
 
-    glb_path = os.path.join(out, "terrain.glb")
-    export_glb(glb_path)
-    size = os.path.getsize(glb_path)
-    print("wrote", glb_path, "bytes", size, f"({size/1024/1024:.2f} MB)")
-    if size > 10 * 1024 * 1024:
-        print("WARNING: GLB exceeds 10 MB budget")
-        return 2
-    print("OK")
-    return 0
+    if not o.no_preview:
+        setup_preview(obj, ao, h01, zone.ravel(), cav.ravel())
+        render_preview(os.path.join(out, "preview.png"), samples[len(samples) // 5], o.fov)
+    meta = {"res": res, "size": size, "verts": res * res, "tris": 2 * (res - 1) ** 2, "hMin": float(h.min()), "hMax": float(h.max()),
+            "ao": bake, "aoDevice": str(device), "aoBakeSec": round(bake_s, 1), "aoMean": float(ao.mean()), "glbBytes": size_b, "chunks": chunks,
+            "totalSec": round(time.time() - t0, 1)}
+    with open(os.path.join(out, "meta.json"), "w") as f:
+        json.dump(meta, f, indent=1)
+    print("META", json.dumps(meta))
+    return 0 if size_b < 15 * 1048576 else 2
 
 
 if __name__ == "__main__":

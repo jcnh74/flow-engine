@@ -71,6 +71,10 @@ uniform bool uSlicePlane;
 uniform float uSlicePos;
 uniform float uFoldRot;
 uniform vec4 uJuliaC;
+// Studio look (C4D AO): white dome + key, gradient cyclorama backdrop, fog into the backdrop
+uniform float uStudio;
+uniform vec3 uBgTop, uBgBottom, uDomeCol;
+vec3 studioBg(vec3 rd){ return mix(uBgBottom, uBgTop, smoothstep(-0.35, 0.65, rd.y)); }
 
 const float PI = 3.14159265359;
 
@@ -430,7 +434,19 @@ vec4 raymarch(vec3 ro, vec3 rd) {
       
       // Combine lighting
       float light = uAmbient + diffuse * shadow;
+      if (uStudio > 0.5) {
+        // Pigment bands: Color 1 -> chalk white -> Color 2 (no muddy midpoint)
+        float f = fract(trap + uPaletteOffset);
+        col = mix(mix(uColor1, vec3(0.86, 0.9, 0.89), smoothstep(0.3, 0.5, f)), uColor2, smoothstep(0.62, 0.82, f));
+        col *= col; // approx sRGB -> linear
+        // Dome light weighted by AO does most of the work; key adds soft shape
+        vec3 dome = uDomeCol * (0.55 + 0.45 * n.y) * ao;
+        vec3 lit = dome * (uAmbient * 2.2) + vec3(1.0, 0.95, 0.88) * diffuse * shadow * mix(0.6, 1.0, ao);
+        vec3 hh = normalize(uLightDir - rd);
+        col = col * lit + vec3(1.0, 0.95, 0.88) * pow(max(dot(n, hh), 0.0), 32.0) * 0.2 * shadow * ao;
+      } else {
       col = col * light * ao;
+      }
       
       // Add glow (neutral gray to not interfere with hue rotation)
       // R25: Was blue (0.3,0.5,1.0), now neutral to let hueShift control all color
@@ -440,7 +456,7 @@ vec4 raymarch(vec3 ro, vec3 rd) {
       // R25: Was blue-tinted (0.05,0.06,0.08), now neutral to preserve hue rotation
       if (uFogDensity > 0.0) {
         float fogAmount = 1.0 - exp(-uFogDensity * max(0.0, t - uFogStart));
-        vec3 fogColor = vec3(0.06);  // Neutral gray
+        vec3 fogColor = uStudio > 0.5 ? studioBg(rd) : vec3(0.06);  // Neutral gray (or the studio cyc)
         col = mix(col, fogColor, fogAmount);
       }
       
@@ -453,7 +469,7 @@ vec4 raymarch(vec3 ro, vec3 rd) {
   
   // Background with glow (neutral to not interfere with hue rotation)
   // R25: Was blue-tinted, now neutral gray to let hueShift control color
-  vec3 bg = vec3(0.02);
+  vec3 bg = uStudio > 0.5 ? studioBg(rd) : vec3(0.02);
   bg += vec3(0.5) * glow * uGlow * 0.5;
   return vec4(bg, 0.0);
 }

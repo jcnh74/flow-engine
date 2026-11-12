@@ -23,6 +23,8 @@ export type CameraPath = {
   durationSec: number;
   sampleCount: number;
   samples: CameraSample[];
+  /** Closed loop: sampling wraps instead of ping-ponging. */
+  loop?: boolean;
 };
 
 const COMP = {
@@ -345,6 +347,7 @@ export function parseCameraPath(json: unknown): CameraPath {
     durationSec: typeof o.durationSec === 'number' ? o.durationSec : 40,
     sampleCount: samples.length,
     samples,
+    loop: (o as any).loop === true,
   };
 }
 
@@ -353,6 +356,19 @@ export function parseCameraPath(json: unknown): CameraPath {
  *  Odd trips reverse so the camera never jumps from the end back to the start. */
 export function sampleCameraPath(path: CameraPath, timeSec: number, speed: number): { position: Vec3; target: Vec3; travelingBack: boolean } {
   const dur = Math.max(0.001, path.durationSec);
+  if (path.loop) {
+    // Closed loop: wrap around, interpolate both the position and the authored look target
+    const n = path.samples.length;
+    const trip = (timeSec * Math.max(0, speed)) / dur;
+    const u = trip - Math.floor(trip);
+    const f = u * n;
+    const i = Math.floor(f) % n;
+    const j = (i + 1) % n;
+    const a = f - Math.floor(f);
+    const s0 = path.samples[i], s1 = path.samples[j];
+    const lerp = (x: Vec3, y: Vec3): Vec3 => [x[0] + (y[0] - x[0]) * a, x[1] + (y[1] - x[1]) * a, x[2] + (y[2] - x[2]) * a];
+    return { position: lerp(s0.p, s1.p), target: lerp(s0.t, s1.t), travelingBack: false };
+  }
   const trip = (timeSec * Math.max(0, speed)) / dur;
   const cycle = trip - 2 * Math.floor(trip / 2); // [0, 2)
   const back = cycle >= 1;
