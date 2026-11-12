@@ -3,6 +3,9 @@
 // moves on the GPU: the field flows toward the camera along spiral arms (periodic in depth, so it loops forever),
 // petals open and close around their hinges, leaves sway and flutter. Shading: satin petals with veins and back-lit
 // translucency, waxy leaves with midrib + secondary veins, baked AO, depth haze into a glowing vortex core, DOF.
+// Pass 6: tropical motifs. The flight passes through zones — Orchids, Heliconia & Bird-of-Paradise, Monstera & Palm,
+// Ferns & Moss, Bromeliads, Lotus Water Garden. Each species has a per-motif presence; an instance picks its zone when it
+// re-enters at the far end of the tunnel (so nothing pops on screen) and the haze/core light cross-fades per zone.
 // Original MIT-licensed work for flow-engine. No Shadertoy code.
 import { compile, MsTarget, QUAD_VS, STUDIO_GLSL, setStudioEnv, lookOf, lin, dirFromAzEl, lookAt, perspective, mul, norm, srgbHex,
   type PhysFrame, type PhysScene, type Prog, type Vec3 } from './common';
@@ -11,7 +14,7 @@ const VS = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm; layout(location=2) in vec2 aUV; layout(location=3) in vec4 aAttr; layout(location=4) in vec2 aToneAO;
 layout(location=5) in vec4 iA; layout(location=6) in vec4 iB; layout(location=7) in vec4 iC;
-uniform mat4 uVP; uniform float uTime, uFlow, uSpin, uTwist, uDepth, uLeaf, uCanopy;
+uniform mat4 uVP; uniform float uTime, uFlow, uSpin, uTwist, uDepth, uLeaf, uCanopy, uZone, uForce, uDensity, uSway, uBloom; uniform float uMem[6];
 out vec3 vW; out vec3 vN; out vec2 vUV; flat out float vPart; out float vBend; out float vTone; out float vAO; flat out vec4 vInst; out float vDist;
 vec3 rotA(vec3 v, vec3 k, float a){ float c=cos(a), s=sin(a); return v*c + cross(k,v)*s + k*dot(k,v)*(1.0-c); }
 void main(){
@@ -33,17 +36,22 @@ void main(){
     Y = rotA(Y, Z, tilt*0.9-0.45); X = cross(Y, Z);
   }
   float s = sc*(0.55 + 0.11*R) * smoothstep(-4.0, -1.5, d) * (1.0 - smoothstep(D-12.0, D-4.5, d));
+  // motif zone, fixed per pass through the tunnel (chosen at the far-end wrap)
+  float vv = 0.75 + 0.5*sv; float U = uTime*uFlow*vv - d0; float kw = floor(U/D);
+  float tw_ = (kw*D + d0)/(uFlow*vv); float Lw = uFlow*tw_ + D;
+  int zone = uForce >= 0.0 ? int(uForce) : int(mod(floor(Lw/uZone), 6.0));
+  s *= uMem[zone] * step(iC.w, uDensity);
   vec3 p = aPos, n = aNrm;
   float part = aAttr.x, bend = aAttr.y;
   if (part < 0.5) { // petals open and close around their hinge (progressive curl toward the tip)
     float open = 0.5 + 0.5*sin(uTime*0.55*(0.7+0.6*sv) + ph*6.2831);
     vec3 ax = normalize(vec3(aAttr.w, 0.0, -aAttr.z));
-    float a = -(1.0-open)*0.95*bend;
+    float a = -(1.0 - clamp(open*uBloom + (uBloom - 1.0)*0.5, 0.0, 1.0))*0.95*bend;
     p = rotA(p, ax, a); n = rotA(n, ax, a);
   } else if (part > 1.5 && part < 2.5) { // leaves sway and flutter along their length
-    float sw = sin(uTime*1.6*(0.8+0.4*sv) + ph*6.2831 + p.z*1.7)*0.22*bend*bend;
+    float sw = sin(uTime*1.6*(0.8+0.4*sv) + ph*6.2831 + p.z*1.7)*0.22*bend*bend*uSway;
     p = rotA(p, vec3(1.0,0.0,0.0), sw); n = rotA(n, vec3(1.0,0.0,0.0), sw);
-    float tw = sin(uTime*2.3 + ph*9.0 + p.z*3.0)*0.12*bend;
+    float tw = sin(uTime*2.3 + ph*9.0 + p.z*3.0)*0.12*bend*uSway;
     p = rotA(p, vec3(0.0,0.0,1.0), tw); n = rotA(n, vec3(0.0,0.0,1.0), tw);
   }
   vec3 w = c + (X*p.x + Y*p.y + Z*p.z)*s;
@@ -114,11 +122,23 @@ void main(){ vec2 p = (vUv*2.0-1.0)*vec2(uAspect, 1.0); float r = length(p);
   vec3 c = mix(uHaze, uCore, exp(-r*r*3.0)); c = mix(c, uEdge, smoothstep(0.5, 1.6, r)); c += uCore*0.06*rays*exp(-r*1.5);
   o = vec4(c, 1000.0); }`;
 
+export const MOTIFS = ['Journey (cycle)', 'Orchids', 'Heliconia & Bird-of-Paradise', 'Monstera & Palm', 'Ferns & Moss', 'Bromeliads', 'Lotus Water Garden'];
+// presence of each species per motif [orchids, heliconia/BoP, monstera/palm, ferns/moss, bromeliads, lotus]
+const MOTIF_MEMBERS: Record<string, number[]> = {
+  orchid: [1.35, 0, 0.15, 0.2, 0, 0.5], hibiscus: [0.5, 1.0, 0.2, 0, 0.3, 0], heliconia: [0, 1.4, 0.25, 0, 0.2, 0], plumeria: [0.3, 0.2, 0, 0, 0, 1.35],
+  bromeliad: [0, 0.2, 0, 0.3, 1.45, 0], monstera: [0.5, 0.6, 1.45, 0.4, 0.6, 0.3], palm: [0.3, 0.9, 1.35, 0.3, 0.5, 0.2], banana: [0.2, 1.1, 1.0, 0.2, 0.4, 0.3],
+  alocasia: [0.6, 0.3, 0.9, 0.5, 0.7, 1.35], fern: [0.7, 0.3, 0.6, 1.55, 0.8, 0.4],
+};
+const MOTIF_LIGHT: { haze: string; core: string; edge: string }[] = [
+  { haze: '#2a1f3a', core: '#ffd6f0', edge: '#0d0814' }, { haze: '#3a2a0e', core: '#ffd27a', edge: '#120a02' }, { haze: '#0b2a22', core: '#ffe2a0', edge: '#03100c' },
+  { haze: '#163a34', core: '#d8f5e0', edge: '#051410' }, { haze: '#3a1510', core: '#ffb07a', edge: '#140604' }, { haze: '#0e3340', core: '#f2fbff', edge: '#04121a' },
+];
+
 export class JungleScene implements PhysScene {
   name = 'jungle'; ready = false; error: string | null = null; stats: Record<string, any> = {};
   private prog: Prog; private back: Prog; private ms: MsTarget; private emptyVao: WebGLVertexArrayObject;
   private draws: { vao: WebGLVertexArrayObject; iOff: number; iCount: number; inst: number; name: string; tris: number }[] = [];
-  private loading = false; private totalInst = 0; private totalTris = 0; private look = 'Natural'; private lookSlots: string[] = [];
+  private tj = 0; private zoneName = ''; private loading = false; private totalInst = 0; private totalTris = 0; private look = 'Natural'; private lookSlots: string[] = [];
   constructor(private gl: WebGL2RenderingContext, private base = '/pass4', private count = 3000) {
     this.prog = compile(gl, VS, FS, 'jungle'); this.back = compile(gl, QUAD_VS, BACK_FS, 'jungle-back');
     this.ms = new MsTarget(gl, 4); this.emptyVao = gl.createVertexArray()!;
@@ -197,13 +217,20 @@ export class JungleScene implements PhysScene {
     if (this.ready && want !== this.look) { for (const d of this.draws) gl.deleteVertexArray(d.vao); this.look = want; this.lookSlots = look.slots; this.ready = false; this.draws = []; }
     if (!this.ready) { this.look = want; this.lookSlots = look.slots; void this.load(); const c = srgbHex(look.bgBottom); gl.bindFramebuffer(gl.FRAMEBUFFER, f.target); gl.viewport(0, 0, f.w, f.h); gl.clearColor(c[0], c[1], c[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); return; }
     const canopy = P.variant === 'Canopy';
+    if (!P.paused) this.tj += Math.min(0.1, f.dt) * (P.speed ?? 1);
+    const ZONE = 2.2 * (P.jgCycle ?? 16);                      // zone length = flow * seconds per motif
+    const mi = MOTIFS.indexOf(P.jgMotif ?? 'Journey (cycle)') - 1;   // -1 = journey cycle
+    const zf = mi >= 0 ? mi : ((2.2 * this.tj + 18) / ZONE) % 6; const z0 = Math.floor(zf) % 6, z1 = (z0 + 1) % 6;
+    const zb = mi >= 0 ? 0 : Math.min(1, Math.max(0, ((zf % 1) - 0.75) / 0.25));
+    const zmix = (k: 'haze' | 'core' | 'edge') => { const a = lin(MOTIF_LIGHT[z0][k]), b = lin(MOTIF_LIGHT[z1][k]); return [a[0] + (b[0] - a[0]) * zb, a[1] + (b[1] - a[1]) * zb, a[2] + (b[2] - a[2]) * zb] as Vec3; };
+    this.zoneName = MOTIFS[1 + (zb > 0.5 ? z1 : z0)];
     const eye: Vec3 = [0.15 * Math.sin(f.time * 0.11), 0.1 * Math.sin(f.time * 0.07), 0];
     const tgt: Vec3 = [0, canopy ? -0.6 : 0, -10];
     const view = lookAt(eye, tgt, [Math.sin(f.time * 0.03) * 0.15, 1, 0]); const proj = perspective((P.fov ?? 62) * Math.PI / 180, f.aspect, 0.1, 80); const vp = mul(proj, view);
     const L = dirFromAzEl(P.keyAz ?? -30, P.keyEl ?? 55); const Ld = norm([L[0], L[1], -Math.abs(L[2]) * 0.6 + 0.4]);
     const env = { look, L: Ld, F: norm([-Ld[0], 0.2, 0.7]) as Vec3, fwd: [0, 0, -1] as Vec3 };
     const natural = P.mat === 'Natural' || !P.mat;
-    const haze = natural ? lin('#0b2a22') : lin(look.bgBottom, 0.55); const core = natural ? lin('#ffd98a', 0.85) : lin(look.glow, 1.1); const edge = natural ? lin('#03100c') : lin(look.bgTop, 0.4);
+    const haze = natural ? zmix('haze') : lin(look.bgBottom, 0.55); const core = natural ? zmix('core').map((x) => x * 0.85) as Vec3 : lin(look.glow, 1.1); const edge = natural ? zmix('edge') : lin(look.bgTop, 0.4);
     this.ms.ensure(f.w, f.h); this.ms.begin();
     gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.BLEND);
     gl.useProgram(this.back.p); gl.uniform3fv(this.back.u.uHaze, haze); gl.uniform3fv(this.back.u.uCore, core); gl.uniform3fv(this.back.u.uEdge, edge);
@@ -213,13 +240,14 @@ export class JungleScene implements PhysScene {
     const u = this.prog.u; gl.useProgram(this.prog.p); setStudioEnv(gl, u, env);
     if (natural) { gl.uniform3fv(u.uBgTop, lin('#2f6a52')); gl.uniform3fv(u.uBgBottom, lin('#0b2a22')); gl.uniform3fv(u.uDomeCol, lin('#a9d6b8')); gl.uniform3fv(u.uKeyCol, lin('#fff0d0')); gl.uniform1f(u.uKeyI, 1.6); gl.uniform1f(u.uDomeI, 0.45); }
     gl.uniformMatrix4fv(u.uVP, false, vp); gl.uniform3fv(u.uCamPos, eye);
-    gl.uniform1f(u.uTime, f.time); gl.uniform1f(u.uFlow, 2.2); gl.uniform1f(u.uSpin, 0.32); gl.uniform1f(u.uTwist, 0.09); gl.uniform1f(u.uDepth, 56); gl.uniform1f(u.uCanopy, canopy ? 1 : 0);
-    gl.uniform3fv(u.uHaze, haze); gl.uniform3fv(u.uCore, core); gl.uniform1f(u.uHazeK, 0.022); gl.uniform1f(u.uSat, 1.25);
+    gl.uniform1f(u.uTime, this.tj); gl.uniform1f(u.uFlow, 2.2); gl.uniform1f(u.uSpin, 0.32); gl.uniform1f(u.uTwist, 0.09); gl.uniform1f(u.uDepth, 56); gl.uniform1f(u.uCanopy, canopy ? 1 : 0);
+    gl.uniform3fv(u.uHaze, haze); gl.uniform3fv(u.uCore, core); gl.uniform1f(u.uHazeK, 0.022 * (P.jgFog ?? 1)); gl.uniform1f(u.uSat, 1.25 * (P.jgSat ?? 1));
+    gl.uniform1f(u.uZone, ZONE); gl.uniform1f(u.uForce, mi); gl.uniform1f(u.uDensity, P.jgDensity ?? 1); gl.uniform1f(u.uSway, P.jgSway ?? 1); gl.uniform1f(u.uBloom, P.jgBloom ?? 1);
     gl.uniform1f(u.uMat, ['Natural', 'Pastel', 'Iridescent'].indexOf(P.mat)); gl.uniform1f(u.uIrid, P.irid ?? 0.8);
-    for (const d of this.draws) { gl.bindVertexArray(d.vao); gl.drawElementsInstanced(gl.TRIANGLES, d.iCount, gl.UNSIGNED_INT, d.iOff * 4, d.inst); }
+    for (const d of this.draws) { gl.uniform1fv(u['uMem[0]'] ?? u.uMem, MOTIF_MEMBERS[d.name] ?? [1, 1, 1, 1, 1, 1]); gl.bindVertexArray(d.vao); gl.drawElementsInstanced(gl.TRIANGLES, d.iCount, gl.UNSIGNED_INT, d.iOff * 4, d.inst); }
     gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST);
     const tex = this.ms.resolve();
     f.dof(tex, f.target, f.w, f.h, 7.0, P.dof ?? 0.35);
-    this.stats = { instances: this.totalInst, prototypes: this.draws.length, trisPerFrame: this.totalTris };
+    this.stats = { instances: this.totalInst, prototypes: this.draws.length, trisPerFrame: this.totalTris, motif: this.zoneName };
   }
 }
