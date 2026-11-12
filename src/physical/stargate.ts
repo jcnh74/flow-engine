@@ -39,7 +39,12 @@ vec3 art(float a, float s, float side, float aa, float fam){
 }
 void main(){
   vec2 uv = vUv*2.0-1.0; uv.x *= uAspect;
-  float jit = h21(gl_FragCoord.xy + fract(uTime*7.31)*91.0);
+  // ordered (4x4 Bayer) jitter rotated every frame instead of white noise: the sub-frame / exposure offsets are
+  // spread evenly over each 4x4 block and the temporal history averages them out -> no grain at the vanishing point
+  ivec2 bp = ivec2(gl_FragCoord.xy) & 3;
+  const float BAYER[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  float bay = (BAYER[bp.y*4 + bp.x] + 0.5)/16.0;
+  float jit = fract(bay + fract(uTime*7.31)*0.618);
   float tt = uTime + (jit-0.5)*uDt*uExposure;            // stochastic sub-frame time = motion blur
   float sway = 0.035*sin(tt*0.23);
   vec3 rd = normalize(vec3(uv.x*0.62 + sway, uv.y*0.62, 1.0));
@@ -55,7 +60,7 @@ void main(){
   // slit-scan exposure: integrate the artwork forward along travel; the window grows with depth
   float E = uStreak*(0.6 + 0.12*z);
   vec3 acc = vec3(0.0); float wsum = 0.0;
-  float j2 = h21(gl_FragCoord.yx + uTime);
+  float j2 = fract(bay*0.73 + 0.381*floor(uTime*60.0));
   for (int i=0;i<28;i++){
     float u = (float(i)+j2)/28.0;
     float w = exp(-2.2*u);
@@ -63,7 +68,7 @@ void main(){
   }
   vec3 col = acc/wsum;
   // far field: the pattern is finer than a pixel, so resolve it to its average colour instead of aliasing
-  float far = smoothstep(0.12, 0.45, aa);
+  float far = max(smoothstep(0.06, 0.3, aa), smoothstep(16.0, 42.0, z));
   col = mix(col, pal(a*0.05 + side*0.3 + uTime*0.02)*0.45, far);
   // distance: streaks converge into a bright horizon line; near streaks rush past and blow out
   float near = exp(-z*0.09);
@@ -73,7 +78,8 @@ void main(){
   col *= smoothstep(0.0, 0.02, abs(across)) * 0.85 + 0.15;
   col = max(col, 0.0);
   vec3 prev = texture(uHist, vUv).rgb;
-  o = vec4(mix(col, prev, uHistW), 1.0);
+  float hw = uHistW > 0.0 ? mix(uHistW, 0.82, smoothstep(8.0, 40.0, z)) : 0.0;   // more temporal averaging where motion is slow
+  o = vec4(mix(col, prev, hw), 1.0);
 }`;
 const COPY_FS = `#version 300 es
 precision highp float; in vec2 vUv; out vec4 o; uniform sampler2D uSrc; uniform float uGain;

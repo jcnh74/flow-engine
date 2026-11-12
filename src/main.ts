@@ -2515,7 +2515,7 @@ function physDefaults(mode: string) {
   else if (id === 'paint') { P.phLook = 'Coral Peach'; P.phKeyAz = -35; P.phKeyEl = 40; P.phThickness = 1; }
   else if (id === 'jungle') { P.phLook = 'Mint Pink'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.35; P.bloomStrength = 0.05; }
   else if (id === 'city') { P.phKeyAz = -40; P.phKeyEl = 50; P.phDof = 0.2; P.phFov = 64; P.bloom = 0.3; P.bloomStrength = 0.16; P.bloomThreshold2 = 1.0; }
-  else if (id === 'stargate') { P.phPalette = 'Kubrick'; P.phStreak = 1; P.bloom = 0.35; P.bloomStrength = 0.22; P.bloomThreshold2 = 1.0; P.vignetteStrength = 0.25; P.tonemapMode = 'ACES'; }
+  else if (id === 'stargate') { P.phPalette = 'Kubrick'; P.phStreak = 1; P.bloom = 0.35; P.bloomStrength = 0.22; P.bloomThreshold2 = 1.0; P.vignetteStrength = 0.25; P.tonemapMode = 'ACES'; P.grainStrength = 0; }
   else if (id === 'pour') { P.tonemapMode = 'None'; P.bloomStrength = 0; P.vignetteStrength = 0; P.grainStrength = 0; }
 }
 const phF = gui.addFolder('Physical (pass 4)');
