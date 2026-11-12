@@ -18,7 +18,7 @@ const Z0 = -21;              // centre z of the back terrace
 const FLOOR_Z1 = 10;         // front edge of the floor (balls roll off toward the lens)
 export const CASCADE_N = 4200;
 
-type Col = { sph: boolean; cx: number; cy: number; cz: number; bx: number; by: number; bz: number; rad: number; ct: number; st: number; z0: number; z1: number; mat: number; vis: boolean };
+export type Col = { sph: boolean; cx: number; cy: number; cz: number; bx: number; by: number; bz: number; rad: number; ct: number; st: number; z0: number; z1: number; mat: number; vis: boolean };
 function tierTop(k: number) { return STEP * (K - k) + 0.1; }
 function buildLayout(): Col[] {
   const L: Col[] = [];
@@ -165,10 +165,10 @@ export class CascadeSim {
 }
 
 // ---------------- geometry ----------------
-type Geo = { pos: number[]; nrm: number[]; mat: number[]; idx: number[] };
-const newGeo = (): Geo => ({ pos: [], nrm: [], mat: [], idx: [] });
+export type Geo = { pos: number[]; nrm: number[]; mat: number[]; idx: number[] };
+export const newGeo = (): Geo => ({ pos: [], nrm: [], mat: [], idx: [] });
 /** Rounded box (core half extents b, fillet rad) tilted about x — every edge is a true radius. */
-function rbox(g: Geo, C: Col) {
+export function rbox(g: Geo, C: Col) {
   const vals = (b: number, segMid: number) => {
     const v: number[] = []; const nb = 6;
     for (let i = 0; i < nb; i++) v.push(-b - C.rad + C.rad * i / nb);
@@ -192,7 +192,7 @@ function rbox(g: Geo, C: Col) {
     for (let i = 0; i < U.length - 1; i++) for (let j = 0; j < nw - 1; j++) { const p = base + i * nw + j; g.idx.push(p, p + nw, p + nw + 1, p, p + nw + 1, p + 1); }
   }
 }
-function icosphere(sub: number) {
+export function icosphere(sub: number) {
   const t = (1 + Math.sqrt(5)) / 2;
   const v: number[][] = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map((p) => { const l = Math.hypot(p[0], p[1], p[2]); return p.map((x) => x / l); });
   let f = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
@@ -204,25 +204,25 @@ function icosphere(sub: number) {
   }
   return { pos: new Float32Array(v.flat()), idx: new Uint16Array(f.flat()) };
 }
-function sphereGeo(g: Geo, C: Col) {
+export function sphereGeo(g: Geo, C: Col) {
   const s = icosphere(4); const base = g.pos.length / 3;
   for (let i = 0; i < s.pos.length; i += 3) { g.pos.push(C.cx + s.pos[i] * C.rad, C.cy + s.pos[i + 1] * C.rad, C.cz + s.pos[i + 2] * C.rad); g.nrm.push(s.pos[i], s.pos[i + 1], s.pos[i + 2]); g.mat.push(C.mat); }
   for (const k of s.idx) g.idx.push(base + k);
 }
 
 // ---------------- shaders ----------------
-const FOG_GLSL = `
+export const FOG_GLSL = `
 uniform float uFogK, uFogStart; uniform vec3 uFogTint;
 vec3 fogged(vec3 col, vec3 P, vec3 cam){
   vec3 d = P - cam; float l = length(d);
   float f = 1.0 - exp(-max(l - uFogStart, 0.0)*uFogK);
   return mix(col, backdrop(normalize(d))*uFogTint, clamp(f, 0.0, 0.85));
 }`;
-const SURF_VS = `#version 300 es
+export const SURF_VS = `#version 300 es
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm; layout(location=2) in float aMat;
 uniform mat4 uVP; uniform float uMirror; out vec3 vW; out vec3 vN; flat out float vMat;
 void main(){ vW = aPos; vN = aNrm; vMat = aMat; vec3 p = aPos; if (uMirror > 0.5) p.y = -p.y; gl_Position = uVP*vec4(p,1.0); }`;
-const SURF_FS = `#version 300 es
+export const SURF_FS = `#version 300 es
 precision highp float;
 in vec3 vW; in vec3 vN; flat in float vMat; out vec4 o;
 uniform vec3 uCamPos; uniform vec3 uMatCol[5]; uniform float uMirror; uniform vec2 uRes;
@@ -256,14 +256,14 @@ void main(){
   col = fogged(col, vW, uCamPos);
   o = vec4(col, length(vW-uCamPos));
 }`;
-const BALL_VS = `#version 300 es
+export const BALL_VS = `#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=3) in vec4 iPR; layout(location=4) in vec4 iCM; layout(location=5) in vec4 iOcc; layout(location=6) in vec4 iNC;
 uniform mat4 uVP; uniform float uMirror;
 out vec3 vW; out vec3 vN; flat out vec4 vCM; flat out vec4 vOcc; flat out vec4 vNC; flat out float vR;
 void main(){ vec3 w = iPR.xyz + aPos*iPR.w; vW = w; vN = aPos; vCM = iCM; vOcc = iOcc; vNC = iNC; vR = iPR.w;
   vec3 p = w; if (uMirror > 0.5) p.y = -p.y; gl_Position = uVP*vec4(p,1.0); }`;
-const BALL_FS = `#version 300 es
+export const BALL_FS = `#version 300 es
 precision highp float;
 in vec3 vW; in vec3 vN; flat in vec4 vCM; flat in vec4 vOcc; flat in vec4 vNC; flat in float vR; out vec4 o;
 uniform vec3 uCamPos; uniform float uMirror, uIrid;
@@ -303,22 +303,22 @@ void main(){
   col = fogged(col, vW, uCamPos);
   o = vec4(max(col, 0.0), length(vW-uCamPos));
 }`;
-const BG_VS = `#version 300 es
+export const BG_VS = `#version 300 es
 uniform vec3 uCR, uCU, uCF; uniform vec2 uTan; out vec3 vD;
 void main(){ vec2 p = vec2((gl_VertexID<<1)&2, gl_VertexID&2)*2.0-1.0; vD = uCF + uCR*p.x*uTan.x + uCU*p.y*uTan.y; gl_Position = vec4(p, 0.9999, 1.0); }`;
-const BG_FS = `#version 300 es
+export const BG_FS = `#version 300 es
 precision highp float; in vec3 vD; out vec4 o;
 uniform vec3 uFogTint;
 ${STUDIO_GLSL}
 void main(){ vec3 d = normalize(vD); o = vec4(backdrop(d)*uFogTint*mix(1.0, 0.62, smoothstep(0.05, 0.7, d.y)), 1000.0); }   // studio ceiling falls off: depth above the cascade`;
-const SHADOW_FS = `#version 300 es
+export const SHADOW_FS = `#version 300 es
 precision mediump float; void main(){}`;
-const SPLAT_VS = `#version 300 es
+export const SPLAT_VS = `#version 300 es
 layout(location=0) in vec2 aQ; layout(location=3) in vec4 iPR; layout(location=6) in vec4 iNC;
 uniform vec4 uAORect; out vec2 vQ; out float vI;
 void main(){ float s = iPR.w*2.4; vec2 p = iPR.xz + aQ*s; vQ = aQ; vI = exp(-max(iNC.w, 0.0)/(0.9*iPR.w));
   gl_Position = vec4((p - uAORect.xy)/uAORect.zw*2.0-1.0, 0.0, 1.0); }`;
-const SPLAT_FS = `#version 300 es
+export const SPLAT_FS = `#version 300 es
 precision highp float; in vec2 vQ; in float vI; out vec4 o;
 void main(){ float r2 = dot(vQ,vQ); o = vec4(vI*0.5*exp(-r2*3.0)*(1.0-smoothstep(0.75,1.0,r2)), 0.0, 0.0, 1.0); }`;
 

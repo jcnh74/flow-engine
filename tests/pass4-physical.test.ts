@@ -3,6 +3,7 @@ import { readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { BallSim, SECTIONS, SECTION_ORDER } from '../src/physical/balls_sim';
 import { CascadeSim } from '../src/physical/cascade';
+import { ColorRoomSim } from '../src/physical/colorroom';
 
 const root = join(import.meta.dir, '..');
 const pub = (f: string) => join(root, 'public/pass4', f);
@@ -101,5 +102,17 @@ describe('pass 5 retirements', () => {
     expect(gui).not.toContain("'Tunnel'"); expect(gui).not.toContain("'Kaleido'");
     for (const m of ['Landscape', 'Morph', 'Plasma']) expect(gui).toContain(`'${m}'`);
     expect(main).toContain("} else if (P.mode === 'Tunnel') {");
+  });
+});
+
+describe('pass 6 gravity color room', () => {
+  test('drops single-colour clumps that splash, mix and recycle without NaNs or leaks', () => {
+    const sim = new ColorRoomSim(3000); sim.P.dropSize = 600; sim.P.dropEvery = 1.5;
+    let maxUp = 0;
+    for (let i = 0; i < 60 * 10; i++) { sim.step(1 / 60, 1, i % 30 === 0); for (let k = 0; k < sim.N; k += 7) if (sim.alive[k]) maxUp = Math.max(maxUp, sim.vy[k]); }
+    expect(sim.drop).toBeGreaterThanOrEqual(5);
+    expect(maxUp).toBeGreaterThan(2);          // balls really bounce back up
+    let alive = 0; for (let i = 0; i < sim.N; i++) if (sim.alive[i]) { alive++; expect(Number.isFinite(sim.px[i] + sim.py[i] + sim.pz[i])).toBe(true); }
+    expect(alive).toBeGreaterThan(300); expect(alive).toBeLessThanOrEqual(sim.N);
   });
 });

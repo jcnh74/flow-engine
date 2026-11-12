@@ -576,7 +576,7 @@ function renderPhys(T: Trails, aspect: number) {
   phTime += pdt * P.phSpeed;
   phys.render(P.mode, { target: T.a.f, w: T.w, h: T.h, aspect, dt: pdt, time: phTime,
     dof: (src, target, w, h, focus, amount) => studio.dofPass(src, target, w, h, focus, amount),
-    params: { look: P.phLook, speed: P.phSpeed, mat: P.phMat, dof: P.phDof, keyAz: P.phKeyAz, keyEl: P.phKeyEl, quality: P.resolutionScale ?? 1,
+    params: { ...P, look: P.phLook, speed: P.phSpeed, mat: P.phMat, dof: P.phDof, keyAz: P.phKeyAz, keyEl: P.phKeyEl, quality: P.resolutionScale ?? 1,
       variant: P.phVariant, density: 1, gloss: P.phGloss, irid: P.phIrid, palette: P.phPalette, streak: P.phStreak, thickness: P.phThickness,
       family: P.phFamily, fov: P.phFov, paused: !!P.paused } });
   gl.bindVertexArray(vao);
@@ -2511,7 +2511,7 @@ function physDefaults(mode: string) {
   const id = PHYS_MODES[mode];
   P.phVariant = PHYS_VARIANTS[id]?.[0] ?? ''; P.phMat = PHYS_MATS[id]?.[0] ?? '';
   if (id === 'fabric') { P.phLook = 'Cobalt Orange'; P.phKeyAz = -70; P.phKeyEl = 30; P.phDof = 0.25; }
-  else if (id === 'balls') { P.phLook = 'Cream Gold'; P.phKeyAz = 150; P.phKeyEl = 42; P.phDof = 0.3; P.phFov = 48; }   // Cascade: back key (rim + shadows toward the lens), wide lens, DOF
+  else if (id === 'balls') { P.phLook = 'Cream Gold'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.2; P.phFov = 58; }   // Color Room: front-high key so shadows rake onto the walls   // Cascade: back key (rim + shadows toward the lens), wide lens, DOF
   else if (id === 'paint') { P.phLook = 'Coral Peach'; P.phKeyAz = -35; P.phKeyEl = 40; P.phThickness = 1; }
   else if (id === 'jungle') { P.phLook = 'Mint Pink'; P.phKeyAz = -30; P.phKeyEl = 55; P.phDof = 0.35; P.bloomStrength = 0.05; }
   else if (id === 'city') { P.phKeyAz = -40; P.phKeyEl = 50; P.phDof = 0.2; P.phFov = 64; P.bloom = 0.3; P.bloomStrength = 0.16; P.bloomThreshold2 = 1.0; }
