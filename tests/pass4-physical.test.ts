@@ -23,6 +23,7 @@ describe('pass 4 physical scenes: assets', () => {
     expect(size).toBe(m.vertexBytes + m.indexCount * 4);
     expect(size).toBeLessThan(60 * MB);
     expect(m.protos.length).toBeGreaterThanOrEqual(8);
+    for (const n of ['orchid', 'heliconia', 'bromeliad', 'palm', 'monstera', 'fern', 'hibiscus']) expect(m.protos.map((p: { name: string }) => p.name)).toContain(n);
     expect(m.protos.some((p: { kind: string }) => p.kind === 'flower')).toBe(true);
     expect(m.protos.some((p: { kind: string }) => p.kind === 'leaf')).toBe(true);
   });

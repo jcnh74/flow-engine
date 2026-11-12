@@ -54,40 +54,57 @@ const FS = `#version 300 es
 precision highp float;
 in vec3 vW; in vec3 vN; in vec2 vUV; flat in float vPart; in float vBend; in float vTone; in float vAO; flat in vec4 vInst; in float vDist;
 out vec4 o;
-uniform vec3 uCamPos; uniform vec3 uPal[7]; uniform vec3 uLeafCol[4]; uniform vec3 uHaze, uCore; uniform float uMat, uIrid, uHazeK;
+uniform vec3 uCamPos; uniform vec3 uHaze, uCore; uniform float uMat, uIrid, uHazeK, uSat;
 ${STUDIO_GLSL}
+vec3 unpackC(float v){ float r = floor(v/65536.0); float g = floor((v - r*65536.0)/256.0); float b = v - r*65536.0 - g*256.0; vec3 c = vec3(r, g, b)/255.0; return c*(c*(c*0.305306 + 0.682171) + 0.012522); }
+float h21(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+float cellEdge(vec2 p){ vec2 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0;
+  for (int y=-1; y<=1; y++) for (int x=-1; x<=1; x++){ vec2 g = vec2(x,y); vec2 o2 = vec2(h21(i+g), h21(i+g+7.1)); float d = length(g + o2 - f); if (d < d1){ d2 = d1; d1 = d; } else if (d < d2) d2 = d; }
+  return d2 - d1; }
 void main(){
-  vec3 N = normalize(vN); vec3 V = normalize(uCamPos - vW); if (dot(N,V) < 0.0) N = -N;
-  int ia = int(vInst.x), ib = int(vInst.y);
-  vec3 alb; float rough; float trans;
-  if (vPart < 0.5) {               // petal: base->tip gradient, fine longitudinal veins, darker throat
-    vec3 a = uPal[ia%7], b = uPal[ib%7];
-    alb = mix(b*0.8, a, smoothstep(0.0, 0.85, vBend));
-    alb = mix(alb, alb*vec3(1.05,0.95,1.0), vTone*0.4);
-    float vein = pow(1.0 - abs(sin(vUV.x*3.14159*11.0)), 10.0) * smoothstep(0.05, 0.6, vBend);
-    alb *= 1.0 - 0.16*vein; alb *= mix(0.55, 1.0, smoothstep(0.0, 0.25, vBend));
-    rough = 0.42; trans = 0.75;
-  } else if (vPart < 1.5) {        // centre / stamens
-    alb = mix(vec3(0.16,0.07,0.02), vec3(1.0,0.72,0.16), vTone*0.8 + 0.2*vBend); rough = 0.5; trans = 0.1;
-  } else if (vPart < 2.5) {        // leaf: midrib + secondary veins, lighter margin
-    vec3 g = uLeafCol[int(vInst.w*3.99)];
-    float ax = abs(vUV.x-0.5);
-    float mid = 1.0 - smoothstep(0.0, 0.025, ax);
-    float sec = (1.0 - smoothstep(0.0, 0.05, abs(fract(vUV.y*9.0 - ax*4.0) - 0.5)*2.0 - 0.9)) * smoothstep(0.04, 0.1, ax) * (1.0-smoothstep(0.42,0.5,ax));
-    alb = g * (0.85 + 0.25*vBend) * (1.0 + 0.45*mid + 0.18*sec);
-    rough = 0.32; trans = 0.55;
-  } else { alb = uLeafCol[1]*0.8; rough = 0.5; trans = 0.2; }
-  float ao = pow(clamp(vAO, 0.0, 1.0), 1.3);
+  vec3 N = normalize(vN); vec3 V = normalize(uCamPos - vW); bool back = dot(N,V) < 0.0; if (back) N = -N;
+  vec3 tipC = unpackC(vInst.x), baseC = unpackC(vInst.y);
+  vec3 alb; float rough; float trans; float sheen = 0.0;
+  if (vPart < 0.5) {               // petal / bract: base->tip gradient, fan venation from the base, darker throat, lip tone
+    float t = vBend;
+    alb = mix(baseC, tipC, smoothstep(0.02, 0.75, t));
+    vec2 q = vec2((vUV.x - 0.5)*2.0, vUV.y);
+    float fan = atan(q.x*0.9, q.y + 0.08);
+    float vein = pow(1.0 - abs(sin(fan*13.0)), 14.0) * smoothstep(0.04, 0.4, t) * (1.0 - smoothstep(0.85, 1.0, t));
+    float vein2 = pow(1.0 - abs(sin(fan*39.0 + t*2.0)), 18.0) * smoothstep(0.2, 0.7, t) * 0.5;
+    alb = mix(alb, baseC*0.85, 0.35*vein + 0.15*vein2);
+    alb *= mix(0.62, 1.0, smoothstep(0.0, 0.22, t));
+    if (vTone > 0.9) alb = mix(baseC*0.7, vec3(1.0, 0.82, 0.25), smoothstep(0.55, 0.95, t)*0.6);       // orchid lip
+    float speck = step(0.93, h21(floor(vUV*vec2(22.0, 30.0)))) * (1.0 - smoothstep(0.1, 0.45, t)) * step(0.5, vTone + 0.6);
+    alb = mix(alb, baseC*0.45, speck*0.6);
+    rough = 0.38; trans = 0.85; sheen = 0.35;
+  } else if (vPart < 1.5) {        // centre / stamens / column
+    alb = mix(vec3(0.2, 0.08, 0.02), vec3(1.0, 0.78, 0.2), vTone*0.8 + 0.2*vBend); rough = 0.45; trans = 0.15;
+  } else if (vPart < 2.5) {        // leaf: midrib, secondary + reticulate veins, lighter margin, colour drift
+    float ax = abs(vUV.x - 0.5);
+    float mid = 1.0 - smoothstep(0.0, 0.022, ax);
+    float sec = (1.0 - smoothstep(0.0, 0.06, abs(fract(vUV.y*10.0 - ax*3.5) - 0.5)*2.0 - 0.88)) * smoothstep(0.03, 0.08, ax) * (1.0 - smoothstep(0.43, 0.5, ax));
+    vec2 rq = vec2(vUV.x*26.0, vUV.y*48.0); float ret = (1.0 - smoothstep(0.0, 0.12, abs(fract(rq.x + 0.35*sin(rq.y*1.7)) - 0.5)*2.0 - 0.8)) * (1.0 - smoothstep(0.0, 0.12, abs(fract(rq.y + 0.35*sin(rq.x*1.3)) - 0.5)*2.0 - 0.8));
+    alb = mix(baseC, tipC, smoothstep(0.0, 1.0, vBend*0.8 + 0.25*ax));
+    alb *= 1.0 + 0.55*mid + 0.22*sec + 0.08*ret;
+    alb *= 1.0 - 0.18*smoothstep(0.38, 0.5, ax)*(1.0 - vTone);       // darker margin
+    rough = 0.5; trans = 0.7; sheen = 0.25;
+  } else { alb = baseC*0.7; rough = 0.5; trans = 0.2; }
+  float ao = pow(clamp(vAO, 0.0, 1.0), 1.4);
   float nv = max(dot(N,V), 1e-3);
   vec3 f0 = vec3(0.04);
   if (uMat > 1.5) { vec3 film = thinFilm(nv + 0.2*vBend); alb = mix(alb, alb*0.5 + film*0.6, 0.5*uIrid); f0 = mix(f0, film*0.25, uIrid); }
-  vec3 col = studioShade(vW, N, V, alb, rough, f0, ao, 1.0, 0.25);
+  vec3 col = studioShade(vW, N, V, alb, rough, f0*(vPart > 1.5 ? 0.6 : 1.0), ao, 1.0, vPart > 1.5 ? 0.08 : 0.18);
   vec3 L = normalize(uLightDir);
-  col += alb*uKeyCol*uKeyI*max(-dot(N, L), 0.0)*trans*0.8*ao;            // light through thin petals / leaves
+  float bl = max(-dot(N, L), 0.0) + 0.35*max(dot(V, L)*-1.0, 0.0);
+  vec3 tcol = vPart < 1.5 ? alb*1.15 : alb*vec3(1.05, 1.25, 0.55);                // leaves transmit warm yellow-green
+  col += tcol*uKeyCol*uKeyI*bl*trans*0.9*mix(0.5, 1.0, ao);
+  col += uKeyCol*sheen*0.12*pow(1.0 - nv, 3.0)*ao;                                // waxy / velvet sheen at grazing angles
+  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = max(mix(vec3(lum), col, uSat), 0.0);
   float dist = length(vW - uCamPos);
-  float haze = 1.0 - exp(-max(dist - 2.0, 0.0)*uHazeK);
-  vec3 rd = -V; float core = exp(-dot(rd.xy, rd.xy)*14.0);
-  col = mix(col, mix(uHaze, uCore, core), haze);
+  float haze = 1.0 - exp(-max(dist - 9.0, 0.0)*uHazeK);
+  vec3 rd = -V; float core = exp(-dot(rd.xy, rd.xy)*30.0);
+  col = mix(col, mix(uHaze, uCore, core*0.6), haze);
   o = vec4(col, dist);
 }`;
 const BACK_FS = `#version 300 es
@@ -101,8 +118,8 @@ export class JungleScene implements PhysScene {
   name = 'jungle'; ready = false; error: string | null = null; stats: Record<string, any> = {};
   private prog: Prog; private back: Prog; private ms: MsTarget; private emptyVao: WebGLVertexArrayObject;
   private draws: { vao: WebGLVertexArrayObject; iOff: number; iCount: number; inst: number; name: string; tris: number }[] = [];
-  private loading = false; private totalInst = 0; private totalTris = 0;
-  constructor(private gl: WebGL2RenderingContext, private base = '/pass4', private count = 4400) {
+  private loading = false; private totalInst = 0; private totalTris = 0; private look = 'Natural'; private lookSlots: string[] = [];
+  constructor(private gl: WebGL2RenderingContext, private base = '/pass4', private count = 3000) {
     this.prog = compile(gl, VS, FS, 'jungle'); this.back = compile(gl, QUAD_VS, BACK_FS, 'jungle-back');
     this.ms = new MsTarget(gl, 4); this.emptyVao = gl.createVertexArray()!;
   }
@@ -117,20 +134,39 @@ export class JungleScene implements PhysScene {
       const vdata = new Float32Array(buf, 0, meta.vertexBytes / 4); const idata = new Uint32Array(buf, meta.vertexBytes, meta.indexCount);
       const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, vdata, gl.STATIC_DRAW);
       const eb = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, eb); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idata, gl.STATIC_DRAW);
-      // instances, grouped per prototype: flowers 40 %, leaves 60 %
-      const protos = meta.protos as any[]; const flowers = protos.filter((p) => p.kind === 'flower'), leaves = protos.filter((p) => p.kind === 'leaf');
+      // instances, grouped per prototype. Natural growth: clumps on the spiral arms (a few big leaves + smaller
+      // flowers around them), log-normal scale variety, species-true colours (packed sRGB per instance)
+      const protos = meta.protos as any[];
       let seed = 1234; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-      const D = 56; const per: Record<string, number> = {};
-      for (const p of flowers) per[p.name] = Math.round(this.count * 0.4 / flowers.length);
-      for (const p of leaves) per[p.name] = Math.round(this.count * 0.6 / leaves.length * (p.name === 'fern' ? 0.7 : p.name === 'banana' ? 1.2 : 1));
+      const D = 56; const pk = (h: string) => parseInt(h.slice(1), 16);
+      const natural = this.look === 'Natural';
+      const SPECIES: Record<string, [string, string][]> = {
+        orchid: [['#fbf4ff', '#c2378a'], ['#f58ac8', '#9c1f62'], ['#fff6e6', '#e0567a']],
+        hibiscus: [['#ff3b3b', '#7a0a24'], ['#ff7a52', '#9a1030'], ['#ffb347', '#c0202a'], ['#ff5aa8', '#7a0c40']],
+        heliconia: [['#ffd23a', '#e0202a'], ['#ffe066', '#ff4a1a']],
+        plumeria: [['#fffaf0', '#ffbf2a'], ['#ff9cbc', '#ffcf5a'], ['#fff2e0', '#ff8a5a']],
+        bromeliad: [['#ff2d55', '#ff8a3a'], ['#ff5a1f', '#ffc23a']],
+        monstera: [['#1f7a34', '#06381c']], palm: [['#3f9a24', '#0f4a1a']], banana: [['#5fb02a', '#1a5a1c']],
+        alocasia: [['#1a5a36', '#041f14']], fern: [['#4aa82a', '#0f5a1c']],
+      };
+      const lookHex = this.lookSlots;
+      const share: Record<string, number> = { orchid: 0.08, hibiscus: 0.07, heliconia: 0.06, plumeria: 0.08, bromeliad: 0.05, monstera: 0.15, palm: 0.13, banana: 0.12, alocasia: 0.11, fern: 0.15 };
+      const nClumps = Math.round(this.count / 9); const clumps: [number, number, number][] = [];
+      for (let c = 0; c < nClumps; c++) clumps.push([1.6 + Math.pow(rnd(), 0.6) * 7.2, rnd() * Math.PI * 2, rnd() * D]);
       const instAll: number[] = []; let ioff = 0;
       for (const p of protos) {
-        const n = per[p.name]; const isLeaf = p.kind === 'leaf';
+        const n = Math.round(this.count * (share[p.name] ?? 0.1)); const isLeaf = p.kind === 'leaf';
+        const big = ['monstera', 'palm', 'banana', 'alocasia'].includes(p.name);
         for (let i = 0; i < n; i++) {
-          const R = 1.3 + Math.pow(rnd(), 0.7) * 7.5; const th = rnd() * Math.PI * 2; const d0 = rnd() * D;
-          const sc = (isLeaf ? 0.75 : 0.5) * (0.7 + 0.6 * rnd()) / Math.max(0.8, p.radius * 0.6);
-          const fi = Math.floor(rnd() * 7); let fj = Math.floor(rnd() * 7); if (fj === fi) fj = (fj + 3) % 7;
-          instAll.push(R, th, d0, sc, rnd(), rnd(), rnd(), rnd(), fi, fj, isLeaf ? 1 : 0, rnd());
+          const cl = clumps[Math.floor(rnd() * clumps.length)];
+          const R = Math.max(1.2, cl[0] + (rnd() - 0.5) * (isLeaf ? 1.6 : 1.0)); const th = cl[1] + (rnd() - 0.5) * 0.5 / Math.max(1, cl[0] * 0.25); const d0 = (cl[2] + (rnd() - 0.5) * 3.0 + D) % D;
+          const ln = Math.exp((rnd() + rnd() + rnd() - 1.5) * 0.45);
+          const sc = (big ? 0.95 : isLeaf ? 0.7 : 0.48) * ln / Math.max(0.8, p.radius * 0.6);
+          let tip: string, base: string;
+          if (natural) { const opts = SPECIES[p.name] ?? [['#ff6688', '#aa2244']]; [tip, base] = opts[Math.floor(rnd() * opts.length)]; }
+          else if (isLeaf) { tip = lookHex[(i % 3) + 3] ?? '#7fcfb3'; base = '#3f9a86'; }
+          else { tip = lookHex[Math.floor(rnd() * lookHex.length)]; base = lookHex[Math.floor(rnd() * lookHex.length)]; }
+          instAll.push(R, th, d0, sc, rnd(), rnd(), rnd(), rnd(), pk(tip), pk(base), isLeaf ? 1 : 0, rnd());
         }
         const vao = gl.createVertexArray()!; gl.bindVertexArray(vao);
         gl.bindBuffer(gl.ARRAY_BUFFER, vb); const S = meta.stride * 4; const vo = p.vOff * S;
@@ -157,7 +193,9 @@ export class JungleScene implements PhysScene {
   }
   render(f: PhysFrame) {
     const gl = this.gl, P = f.params, look = lookOf(P.look);
-    if (!this.ready) { void this.load(); const c = srgbHex(look.bgBottom); gl.bindFramebuffer(gl.FRAMEBUFFER, f.target); gl.viewport(0, 0, f.w, f.h); gl.clearColor(c[0], c[1], c[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); return; }
+    const want = P.mat || 'Natural';
+    if (this.ready && want !== this.look) { for (const d of this.draws) gl.deleteVertexArray(d.vao); this.look = want; this.lookSlots = look.slots; this.ready = false; this.draws = []; }
+    if (!this.ready) { this.look = want; this.lookSlots = look.slots; void this.load(); const c = srgbHex(look.bgBottom); gl.bindFramebuffer(gl.FRAMEBUFFER, f.target); gl.viewport(0, 0, f.w, f.h); gl.clearColor(c[0], c[1], c[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); return; }
     const canopy = P.variant === 'Canopy';
     const eye: Vec3 = [0.15 * Math.sin(f.time * 0.11), 0.1 * Math.sin(f.time * 0.07), 0];
     const tgt: Vec3 = [0, canopy ? -0.6 : 0, -10];
@@ -165,7 +203,7 @@ export class JungleScene implements PhysScene {
     const L = dirFromAzEl(P.keyAz ?? -30, P.keyEl ?? 55); const Ld = norm([L[0], L[1], -Math.abs(L[2]) * 0.6 + 0.4]);
     const env = { look, L: Ld, F: norm([-Ld[0], 0.2, 0.7]) as Vec3, fwd: [0, 0, -1] as Vec3 };
     const natural = P.mat === 'Natural' || !P.mat;
-    const haze = natural ? lin('#163a33') : lin(look.bgBottom, 0.9); const core = natural ? lin('#fff1c9', 1.6) : lin(look.glow, 1.6); const edge = natural ? lin('#071512') : lin(look.bgTop, 0.7);
+    const haze = natural ? lin('#0b2a22') : lin(look.bgBottom, 0.55); const core = natural ? lin('#ffd98a', 0.85) : lin(look.glow, 1.1); const edge = natural ? lin('#03100c') : lin(look.bgTop, 0.4);
     this.ms.ensure(f.w, f.h); this.ms.begin();
     gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.BLEND);
     gl.useProgram(this.back.p); gl.uniform3fv(this.back.u.uHaze, haze); gl.uniform3fv(this.back.u.uCore, core); gl.uniform3fv(this.back.u.uEdge, edge);
@@ -173,15 +211,10 @@ export class JungleScene implements PhysScene {
     gl.bindVertexArray(this.emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.depthFunc(gl.LESS); gl.disable(gl.CULL_FACE);
     const u = this.prog.u; gl.useProgram(this.prog.p); setStudioEnv(gl, u, env);
-    if (natural) { gl.uniform3fv(u.uBgTop, lin('#3f7a68')); gl.uniform3fv(u.uBgBottom, lin('#12332b')); gl.uniform3fv(u.uDomeCol, lin('#cfe9d9')); gl.uniform3fv(u.uKeyCol, lin('#fff2d8')); }
+    if (natural) { gl.uniform3fv(u.uBgTop, lin('#2f6a52')); gl.uniform3fv(u.uBgBottom, lin('#0b2a22')); gl.uniform3fv(u.uDomeCol, lin('#a9d6b8')); gl.uniform3fv(u.uKeyCol, lin('#fff0d0')); gl.uniform1f(u.uKeyI, 1.6); gl.uniform1f(u.uDomeI, 0.45); }
     gl.uniformMatrix4fv(u.uVP, false, vp); gl.uniform3fv(u.uCamPos, eye);
     gl.uniform1f(u.uTime, f.time); gl.uniform1f(u.uFlow, 2.2); gl.uniform1f(u.uSpin, 0.32); gl.uniform1f(u.uTwist, 0.09); gl.uniform1f(u.uDepth, 56); gl.uniform1f(u.uCanopy, canopy ? 1 : 0);
-    const pal = new Float32Array(21);
-    const flowerHex = natural ? ['#ff3d6e', '#ff8a3d', '#ffd23f', '#e8f0ff', '#c13bff', '#ff6fb5', '#ff4a2a'] : look.slots;
-    flowerHex.forEach((h, i) => pal.set(srgbHex(h), i * 3)); gl.uniform3fv(u['uPal[0]'], pal);
-    const leafHex = natural ? ['#0f7a3a', '#22a04a', '#52c24f', '#0b5a3c'] : ['#5fb39a', '#7fcfb3', '#3f9a86', '#a6e3c9'];
-    const lf = new Float32Array(12); leafHex.forEach((h, i) => lf.set(srgbHex(h), i * 3)); gl.uniform3fv(u['uLeafCol[0]'], lf);
-    gl.uniform3fv(u.uHaze, haze); gl.uniform3fv(u.uCore, core); gl.uniform1f(u.uHazeK, 0.03);
+    gl.uniform3fv(u.uHaze, haze); gl.uniform3fv(u.uCore, core); gl.uniform1f(u.uHazeK, 0.022); gl.uniform1f(u.uSat, 1.25);
     gl.uniform1f(u.uMat, ['Natural', 'Pastel', 'Iridescent'].indexOf(P.mat)); gl.uniform1f(u.uIrid, P.irid ?? 0.8);
     for (const d of this.draws) { gl.bindVertexArray(d.vao); gl.drawElementsInstanced(gl.TRIANGLES, d.iCount, gl.UNSIGNED_INT, d.iOff * 4, d.inst); }
     gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST);
