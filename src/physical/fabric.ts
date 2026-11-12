@@ -55,6 +55,40 @@ void main(){
   d.y += 0.25*sin(TAU*uTime/12.0*1.0 + uv.x*3.0)*uv.x;
   o = vec4(p + d, 1.0);
 }`;
+
+// "Ribbon" variant (pass 5): a free-flying silk scarf. Its spine rides a closed 3D Lissajous loop (one lap per
+// 12 s, so the motion repeats exactly), the cross-section twists with periodic torsion, the long edges curl and
+// flutter with travelling waves (all frequencies are multiples of 1/12 Hz), and both ends taper to soft points,
+// so no straight or rectangular edge is ever shown.
+const RIB_FS = `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform vec2 uGrid; uniform float uTime;
+const float TAU = 6.2831853;
+vec3 spine(float th){ return vec3(3.5*sin(th), 1.35*sin(2.0*th + 0.5) + 0.25*sin(3.0*th), 1.7*cos(th) + 0.45*sin(3.0*th + 1.0)); }
+void main(){
+  vec2 uv = floor(gl_FragCoord.xy)/(uGrid-1.0);
+  float u = uv.x, v = uv.y - 0.5;
+  float ph = TAU*uTime/12.0;
+  float th = ph - u*3.4;                                     // head leads, tail trails along the loop
+  vec3 c = spine(th);
+  vec3 T = normalize(spine(th + 0.01) - spine(th - 0.01));
+  vec3 N0 = normalize(cross(T, vec3(0.15, 1.0, 0.1)));
+  vec3 B0 = cross(N0, T);
+  float tw = 1.15*sin(2.0*th + 0.3) + 0.7*sin(3.0*th - 2.0*ph) + 0.35*u;
+  vec3 W = cos(tw)*B0 + sin(tw)*N0;
+  vec3 ND = cross(T, W);
+  float taper = pow(sin(3.14159*clamp(u, 0.0, 1.0)), 0.55) * (0.85 + 0.15*sin(u*9.0 - 4.0*ph));
+  float wid = 2.5*taper;
+  float e = abs(v)*2.0;
+  float dn = 0.15*sin(u*36.0 - 18.0*ph + v*1.6)*(0.4 + 0.6*u)
+           + 0.06*sin(u*90.0 - 30.0*ph + v*3.0)*(0.3 + u)
+           + 0.45*pow(e, 2.2)*sin(u*13.0 - 6.0*ph + sign(v)*1.4)
+           + 0.18*v*v*4.0*sin(u*7.0 - 2.0*ph);                   // edges curl
+  float dw = -0.05*pow(e, 3.0)*sign(v)*(1.0 + sin(u*20.0 - 8.0*ph));  // curling edges pull in slightly
+  vec3 pos = c + W*(v*wid + dw) + ND*dn;
+  o = vec4(pos, 1.0);
+}`;
 const NRM_FS = `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 o;
@@ -133,11 +167,11 @@ void main(){
 export class FabricScene implements PhysScene {
   name = 'fabric'; ready = false; error: string | null = null; stats: Record<string, any> = {};
   private meta: any = null; private vat: WebGLTexture | null = null; private loading = false;
-  private up: Prog; private gen: Prog; private nr: Prog; private mesh: Prog; private sh: Prog; private back: Prog;
+  private up: Prog; private gen: Prog; private rib: Prog; private nr: Prog; private mesh: Prog; private sh: Prog; private back: Prog;
   private posFB: FB | null = null; private nrmFB: FB | null = null; private gw = 576; private gh = 384; private ebo: WebGLBuffer | null = null; private ecount = 0;
   private vao: WebGLVertexArrayObject; private ms: MsTarget; private smap: ShadowMap; private t = 0;
   constructor(private gl: WebGL2RenderingContext, private base = '/pass4') {
-    this.up = compile(gl, QUAD_VS, UP_FS, 'fabric-up'); this.gen = compile(gl, QUAD_VS, GEN_FS, 'fabric-gen'); this.nr = compile(gl, QUAD_VS, NRM_FS, 'fabric-nrm');
+    this.up = compile(gl, QUAD_VS, UP_FS, 'fabric-up'); this.gen = compile(gl, QUAD_VS, GEN_FS, 'fabric-gen'); this.rib = compile(gl, QUAD_VS, RIB_FS, 'fabric-ribbon'); this.nr = compile(gl, QUAD_VS, NRM_FS, 'fabric-nrm');
     this.mesh = compile(gl, MESH_VS, FAB_FS, 'fabric-mesh'); this.sh = compile(gl, MESH_VS, SH_FS, 'fabric-shadow'); this.back = compile(gl, QUAD_VS, BACK_FS, 'fabric-back');
     this.vao = gl.createVertexArray()!; this.ms = new MsTarget(gl, 4); this.smap = new ShadowMap(gl, 2048);
   }
@@ -175,7 +209,11 @@ export class FabricScene implements PhysScene {
     const flow = P.variant !== 'Blender Bake';
     // upsample
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.posFB!.f); gl.viewport(0, 0, this.gw, this.gh);
-    if (flow) {
+    const ribbon = P.variant === 'Ribbon' || !P.variant;
+    if (ribbon) {
+      gl.useProgram(this.rib.p); gl.uniform2f(this.rib.u.uGrid, this.gw, this.gh); gl.uniform1f(this.rib.u.uTime, this.t % 12);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    } else if (flow) {
       gl.useProgram(this.gen.p); gl.uniform2f(this.gen.u.uGrid, this.gw, this.gh); gl.uniform1f(this.gen.u.uTime, this.t % 12); gl.uniform1f(this.gen.u.uW, 6.4); gl.uniform1f(this.gen.u.uH, 3.6);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     } else {
@@ -193,10 +231,11 @@ export class FabricScene implements PhysScene {
     let eye: Vec3 = [c[0] + 2.4 + 0.3 * Math.sin(f.time * 0.05), c[1] - 0.35, c[2] + side * 4.3];
     c[1] -= 0.25;
     if (flow) { c = [0.2, 0, 0.2]; side = 1; eye = [-2.2 + 0.3 * Math.sin(f.time * 0.05), 1.0, 5.1]; }
+    if (ribbon) { c = [0, 0, 0]; side = 1; eye = [0.6 * Math.sin(f.time * 0.04), 1.0, 8.4]; }
     const view = lookAt(eye, c); const proj = perspective((P.fov ?? 36) * Math.PI / 180, f.aspect, 0.3, 40); const vp = mul(proj, view);
     const L0 = dirFromAzEl(P.keyAz ?? -40, P.keyEl ?? 48); const Ld = norm([L0[0], L0[1], side * Math.abs(L0[2])]);
     const lview = lookAt([c[0] + Ld[0] * 10, c[1] + Ld[1] * 10, c[2] + Ld[2] * 10], c, [0, 1, 0]);
-    const lvp = mul(ortho(-4.5, 4.5, -4.5, 4.5, 1, 22), lview);
+    const ext = ribbon ? 6.5 : 4.5; const lvp = mul(ortho(-ext, ext, -ext, ext, 1, 26), lview);
     const env = { look, L: Ld, F: norm([-Ld[0], 0.3, side * 0.8]) as Vec3, fwd: norm([c[0] - eye[0], c[1] - eye[1], c[2] - eye[2]]) as Vec3 };
     // shadow
     this.smap.begin(); gl.disable(gl.CULL_FACE);

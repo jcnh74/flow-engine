@@ -252,7 +252,7 @@ export class MainControlPanel {
       html += this.buildSection('Physical Scene', [
         this.buildSelect('phLook', 'Palette', STUDIO_LOOK_NAMES),
         this.buildSlider('phSpeed', 'Motion Speed', 0, 2, 0.01, true),
-        ...(mode === 'Fabric' ? [this.buildSelect('phMat', 'Cloth', ['Satin', 'Silk', 'Iridescent', 'Velvet']), this.buildSelect('phVariant', 'Motion', ['Flow', 'Blender Bake'])] : []),
+        ...(mode === 'Fabric' ? [this.buildSelect('phMat', 'Cloth', ['Satin', 'Silk', 'Iridescent', 'Velvet']), this.buildSelect('phVariant', 'Motion', ['Ribbon', 'Flow', 'Blender Bake'])] : []),
         ...(mode === 'City Vortex' ? [this.buildSelect('phMat', 'City Palette', ['Dusk Gold', 'Cobalt Night', 'Pastel Morning'])] : []),
         ...(mode === 'Jungle' ? [this.buildSelect('phMat', 'Flora', ['Natural', 'Pastel', 'Iridescent']), this.buildSelect('phVariant', 'Shot', ['Vortex', 'Canopy'])] : []),
         ...(mode === 'Stargate' ? [this.buildSelect('phPalette', 'Light Palette', ['Kubrick', 'Jupiter']), this.buildSelect('phVariant', 'Planes', ['Floor + Ceiling', 'Walls']), this.buildSlider('phStreak', 'Slit-scan Streak', 0.1, 3, 0.01, true)] : []),

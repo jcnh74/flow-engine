@@ -15,7 +15,7 @@ export const PHYS_MODES: Record<string, string> = {
 };
 export const PHYS_MODE_NAMES = Object.keys(PHYS_MODES);
 export const PHYS_VARIANTS: Record<string, string[]> = {
-  fabric: ['Flow', 'Blender Bake'], balls: ['Machine'], paint: ['Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], city: ['Vortex'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
+  fabric: ['Ribbon', 'Flow', 'Blender Bake'], balls: ['Machine'], paint: ['Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], city: ['Vortex'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
 };
 export const PHYS_MATS: Record<string, string[]> = {
   fabric: ['Satin', 'Silk', 'Iridescent', 'Velvet'], balls: ['Mixed'], paint: ['Wet Acrylic'], jungle: ['Natural', 'Pastel', 'Iridescent'], city: ['Dusk Gold', 'Cobalt Night', 'Pastel Morning'], stargate: ['Light'], pour: ['Cycles'],
