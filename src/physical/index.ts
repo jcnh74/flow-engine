@@ -3,6 +3,7 @@ import type { PhysFrame, PhysScene, PhysParams } from './common';
 import { StargateScene, STARGATE_PALETTES } from './stargate';
 import { PaintScene } from './paint';
 import { BallsScene } from './balls';
+import { CascadeScene } from './cascade';
 import { FabricScene } from './fabric';
 import { JungleScene } from './jungle';
 import { VideoLoopScene } from './videoloop';
@@ -15,7 +16,7 @@ export const PHYS_MODES: Record<string, string> = {
 };
 export const PHYS_MODE_NAMES = Object.keys(PHYS_MODES);
 export const PHYS_VARIANTS: Record<string, string[]> = {
-  fabric: ['Ribbon', 'Flow', 'Blender Bake'], balls: ['Machine'], paint: ['Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], city: ['Vortex'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
+  fabric: ['Ribbon', 'Flow', 'Blender Bake'], balls: ['Cascade', 'Machine'], paint: ['Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], city: ['Vortex'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
 };
 export const PHYS_MATS: Record<string, string[]> = {
   fabric: ['Satin', 'Silk', 'Iridescent', 'Velvet'], balls: ['Mixed'], paint: ['Wet Acrylic'], jungle: ['Natural', 'Pastel', 'Iridescent'], city: ['Dusk Gold', 'Cobalt Night', 'Pastel Morning'], stargate: ['Light'], pour: ['Cycles'],
@@ -29,7 +30,7 @@ export class PhysicalRenderer {
     if (this.scenes[id]) return this.scenes[id];
     try {
       const gl = this.gl;
-      const s: PhysScene = id === 'stargate' ? new StargateScene(gl) : id === 'paint' ? new PaintScene(gl) : id === 'balls' ? new BallsScene(gl)
+      const s: PhysScene = id === 'stargate' ? new StargateScene(gl) : id === 'paint' ? new PaintScene(gl) : id === 'balls' ? new BallsScene(gl) : id === 'cascade' ? new CascadeScene(gl)
         : id === 'fabric' ? new FabricScene(gl) : id === 'jungle' ? new JungleScene(gl) : id === 'city' ? new CityScene(gl) : new VideoLoopScene(gl, '/pass4/paint_pour.mp4');
       void s.load();
       this.scenes[id] = s;
@@ -40,12 +41,15 @@ export class PhysicalRenderer {
       return null;
     }
   }
+  private lastVariant = '';
   render(mode: string, f: PhysFrame): boolean {
-    const id = PHYS_MODES[mode]; if (!id) return false;
+    this.lastVariant = f.params.variant;
+    let id = PHYS_MODES[mode]; if (!id) return false;
+    if (id === 'balls' && f.params.variant !== 'Machine') id = 'cascade';   // Gravity: deep Cascade by default, side-on Machine kept
     const s = this.get(id); if (!s) return false;
     s.render(f);
     return true;
   }
-  stats(mode: string) { const s = this.scenes[PHYS_MODES[mode]]; return s ? { ready: s.ready, error: s.error, ...s.stats } : null; }
+  stats(mode: string) { const id = PHYS_MODES[mode]; const s = (id === 'balls' && this.scenes.cascade && this.lastVariant !== 'Machine') ? this.scenes.cascade : this.scenes[id]; return s ? { ready: s.ready, error: s.error, ...s.stats } : null; }
 }
 export type { PhysParams };

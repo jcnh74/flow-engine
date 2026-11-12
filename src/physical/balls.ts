@@ -10,17 +10,22 @@ import { compile, MsTarget, ShadowMap, QUAD_VS, STUDIO_GLSL, PCF_GLSL, setStudio
 // ---------- geometry helpers ----------
 type Geo = { pos: number[]; nrm: number[]; mat: number[]; idx: number[] };
 const newGeo = (): Geo => ({ pos: [], nrm: [], mat: [], idx: [] });
-/** Stadium (capsule profile a->b with radius r) extruded from z0 to z1 with a rounded front bevel. */
+/** Stadium (capsule profile a->b, radius r) extruded from z0 to z1 as a sculpted studio object: a concave fillet
+ *  seats it into the back wall, and the front is a full quarter-round bullnose (bevel ~ r) instead of a flat cap. */
 function stadium(g: Geo, ax: number, ay: number, bx: number, by: number, r: number, z0: number, z1: number, mat: number) {
   const th = Math.atan2(by - ay, bx - ax);
-  const ns = 14; const loop: [number, number, number, number][] = []; // x,y,nx,ny
+  const ns = 16; const loop: [number, number, number, number][] = []; // x,y,nx,ny
   for (let i = 0; i <= ns; i++) { const a = th - Math.PI / 2 + Math.PI * i / ns; loop.push([bx + Math.cos(a) * r, by + Math.sin(a) * r, Math.cos(a), Math.sin(a)]); }
   for (let i = 0; i <= ns; i++) { const a = th + Math.PI / 2 + Math.PI * i / ns; loop.push([ax + Math.cos(a) * r, ay + Math.sin(a) * r, Math.cos(a), Math.sin(a)]); }
-  const n = loop.length; const bev = Math.min(0.045, r * 0.45);
-  const rings: { z: number; s: number; nz: number }[] = [{ z: z0, s: 0, nz: 0 }, { z: z1 - bev, s: 0, nz: 0 }, { z: z1 - bev * 0.3, s: bev * 0.3, nz: 0.55 }, { z: z1, s: bev, nz: 1 }];
+  const n = loop.length;
+  const bev = Math.min(r * 0.92, 0.2, (z1 - z0) * 0.45); const fil = Math.min(0.14, r * 0.9);
+  const rings: { z: number; s: number; nr: number; nz: number }[] = [];
+  for (let k = 0; k <= 4; k++) { const a = (k / 4) * Math.PI / 2; rings.push({ z: z0 + fil * (1 - Math.cos(a)), s: -fil * (1 - Math.sin(a)), nr: Math.sin(a), nz: Math.cos(a) }); }  // wall fillet
+  for (let k = 0; k <= 7; k++) { const a = (k / 7) * Math.PI / 2; rings.push({ z: z1 - bev + Math.sin(a) * bev, s: bev - Math.cos(a) * bev, nr: Math.cos(a), nz: Math.sin(a) }); } // bullnose
   const base = g.pos.length / 3;
   for (const R of rings) for (const [x, y, nx, ny] of loop) {
-    g.pos.push(x - nx * R.s, y - ny * R.s, R.z); const k = Math.sqrt(Math.max(0, 1 - R.nz * R.nz)); g.nrm.push(nx * k, ny * k, R.nz); g.mat.push(mat);
+    const rr = Math.max(-fil, Math.min(R.s, r * 0.999));
+    g.pos.push(x - nx * rr, y - ny * rr, R.z); const l = Math.hypot(R.nr, R.nz) || 1; g.nrm.push(nx * R.nr / l, ny * R.nr / l, R.nz / l); g.mat.push(mat);
   }
   for (let k = 0; k < rings.length - 1; k++) for (let i = 0; i < n; i++) {
     const a = base + k * n + i, b = base + k * n + (i + 1) % n, c = a + n, d = b + n;
@@ -31,7 +36,12 @@ function stadium(g: Geo, ax: number, ay: number, bx: number, by: number, r: numb
   for (let i = 0; i < n; i++) g.idx.push(cc, last + i, last + (i + 1) % n);
 }
 function chain(g: Geo, c: Collider, mat: number) {
-  if (c.pts.length === 1) { stadium(g, c.pts[0][0], c.pts[0][1], c.pts[0][0] + 1e-4, c.pts[0][1], c.r, -SLAB - 0.05, SLAB + 0.02, mat); return; }
+  if (c.pts.length === 1) {
+    const [x, y] = c.pts[0];
+    stadium(g, x, y, x + 1e-4, y, c.r, -SLAB - 0.05, SLAB + 0.02, mat);
+    stadium(g, x, y, x + 1e-4, y, c.r * 1.45, SLAB - 0.04, SLAB + 0.07, 7);      // domed brass cap
+    return;
+  }
   for (let k = 0; k < c.pts.length - 1; k++) stadium(g, c.pts[k][0], c.pts[k][1], c.pts[k + 1][0], c.pts[k + 1][1], c.r, -SLAB - 0.05, SLAB + 0.02, mat);
 }
 function icosphere(sub: number) {
@@ -85,13 +95,17 @@ void main(){
   vec3 N = normalize(vN); vec3 V = normalize(uCamPos - vW); if (dot(N,V) < 0.0) N = -N;
   int m = int(vMat+0.5);
   vec3 alb = uMatCol[m];
-  // 0 ramp clay, 1 steps clay, 2 pegs satin metal, 3 bowl lacquer, 4 paddle gloss, 5 glass (unused here), 6 jelly
-  float rough = m==0||m==1 ? 0.55 : m==2 ? 0.28 : m==3 ? 0.12 : m==4 ? 0.16 : 0.08;
+  // 0 ramp glazed ceramic, 1 steps glazed ceramic, 2 pegs/hubs satin metal, 3 bowl lacquer, 4 paddle gloss, 5 glass, 6 jelly, 7 brass caps
+  if (m==7) alb = vec3(1.0, 0.78, 0.42);
+  float rough = m==0||m==1 ? 0.38 : m==2 ? 0.22 : m==3 ? 0.12 : m==4 ? 0.14 : m==7 ? 0.18 : 0.08;
   rough = clamp(rough/max(uGloss,0.05), 0.04, 0.9);
-  vec3 f0 = vec3(0.04); if (m==2) { f0 = alb*0.9; alb *= 0.2; }
+  vec3 f0 = vec3(0.04); if (m==2) { f0 = alb*0.9; alb *= 0.2; } if (m==7) { f0 = alb; alb *= 0.12; }
+  float grain = fract(sin(dot(floor(vW.xy*90.0), vec2(12.9898, 78.233)))*43758.5453);
+  if (m<=1) alb = mix(alb, alb*alb*vec3(1.0,0.92,0.85), 0.65) * (0.97 + 0.06*grain);   // deeper glaze so surfaces separate from the wall
   float sh = shadowAt(vW, N);
   float ao = clamp(0.55 + 0.45*smoothstep(-${SLAB.toFixed(2)}-0.05, -${SLAB.toFixed(2)}+0.6, vW.z), 0.0, 1.0);
   vec3 col = studioShade(vW, N, V, alb, rough, f0, ao, sh, 0.3);
+  if (m<=1 || m==3 || m==4) col += studioShade(vW, N, V, vec3(0.0), 0.06, vec3(0.04), ao, sh, 0.0)*0.55;   // clear-coat layer
   if (m==6) { // jelly: translucent body glow (light scattered through the cushion)
     float back = pow(clamp(1.0-dot(N,V),0.0,1.0), 1.5);
     col = mix(col, alb*0.55 + uKeyCol*0.05, 0.25);
@@ -211,7 +225,8 @@ export class BallsScene implements PhysScene {
     for (const c of this.sim.colliders) {
       if (c.kind === 'paddle') { const g = newGeo(); stadium(g, -c.len!, 0, c.len!, 0, c.r, -SLAB - 0.05, SLAB + 0.02, 4);
         // hub
-        stadium(g, 0, 0, 1e-4, 0, 0.16, -SLAB - 0.05, SLAB + 0.08, 2);
+        stadium(g, 0, 0, 1e-4, 0, 0.24, -SLAB - 0.05, SLAB + 0.06, 2);
+        stadium(g, 0, 0, 1e-4, 0, 0.13, SLAB + 0.02, SLAB + 0.13, 7);
         const v = this.vaoOf(g); this.paddles.push({ ...v, c }); continue; }
       chain(c.kind === 'glass' ? gg : sg, c, MAT[c.kind]);
     }

@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { BallSim, SECTIONS, SECTION_ORDER } from '../src/physical/balls_sim';
+import { CascadeSim } from '../src/physical/cascade';
 
 const root = join(import.meta.dir, '..');
 const pub = (f: string) => join(root, 'public/pass4', f);
@@ -74,8 +75,17 @@ describe('pass 4 physical scenes: wiring', () => {
     expect(main).toContain('PHYS_MODES[P.mode]');
   });
   test('shaders are GLSL ES 3.00 and the loop-critical pieces are present', () => {
-    for (const f of ['stargate', 'paint', 'balls', 'fabric', 'jungle', 'city']) expect(src(`physical/${f}.ts`)).toContain('#version 300 es');
+    for (const f of ['stargate', 'paint', 'balls', 'cascade', 'fabric', 'jungle', 'city']) expect(src(`physical/${f}.ts`)).toContain('#version 300 es');
     expect(src('physical/fabric.ts')).toContain('uTime/12.0');          // wave cloth periodic in 12 s
     expect(src('physical/paint.ts')).toContain('uGravV');               // gravity-driven paint
+  });
+  test('gravity cascade: waves of thousands of balls run down the terraces toward the camera without NaNs', () => {
+    const sim = new CascadeSim(3000);
+    for (let i = 0; i < 60 * 8; i++) sim.step(1 / 60, 1, i % 30 === 0);
+    expect(sim.stats.alive).toBeGreaterThan(1500);
+    expect(sim.wave).toBeGreaterThanOrEqual(3);
+    let maxZ = -1e9;
+    for (let i = 0; i < sim.N; i++) if (sim.alive[i]) { expect(Number.isFinite(sim.px[i] + sim.py[i] + sim.pz[i])).toBe(true); maxZ = Math.max(maxZ, sim.pz[i]); }
+    expect(maxZ).toBeGreaterThan(0);   // the surge reaches the floor in front of the terraces
   });
 });
