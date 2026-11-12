@@ -6,6 +6,7 @@ import { SplashScene } from './splash';
 import { BallsScene } from './balls';
 import { CascadeScene } from './cascade';
 import { ColorRoomScene } from './colorroom';
+import { LiquidScene } from './liquid';
 import { FabricScene } from './fabric';
 import { FabricDriftScene } from './fabricdrift';
 import { JungleScene } from './jungle';
@@ -19,11 +20,13 @@ export const PHYS_MODES: Record<string, string> = {
 };
 export const PHYS_MODE_NAMES = Object.keys(PHYS_MODES);
 export const PHYS_VARIANTS: Record<string, string[]> = {
-  fabric: ['Drift', 'Ribbon', 'Flow', 'Blender Bake'], balls: ['Color Room', 'Cascade', 'Machine'], paint: ['Splash', 'Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], city: ['Vortex'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
+  fabric: ['Drift', 'Ribbon', 'Flow', 'Blender Bake'], balls: ['Liquid', 'Color Room', 'Cascade', 'Machine'], paint: ['Splash', 'Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], city: ['Vortex'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
 };
 export const PHYS_MATS: Record<string, string[]> = {
   fabric: ['Satin', 'Silk', 'Iridescent', 'Velvet'], balls: ['Mixed'], paint: ['Wet Acrylic'], jungle: ['Natural', 'Pastel', 'Iridescent'], city: ['Dusk Gold', 'Cobalt Night', 'Pastel Morning'], stargate: ['Light'], pour: ['Cycles'],
 };
+
+const ballsId = (v: string) => v === 'Machine' ? 'balls' : v === 'Cascade' ? 'cascade' : v === 'Color Room' ? 'colorroom' : 'liquid';
 
 export class PhysicalRenderer {
   scenes: Record<string, PhysScene> = {};
@@ -33,7 +36,7 @@ export class PhysicalRenderer {
     if (this.scenes[id]) return this.scenes[id];
     try {
       const gl = this.gl;
-      const s: PhysScene = id === 'stargate' ? new StargateScene(gl) : id === 'paint' ? new PaintScene(gl) : id === 'splash' ? new SplashScene(gl) : id === 'balls' ? new BallsScene(gl) : id === 'cascade' ? new CascadeScene(gl) : id === 'colorroom' ? new ColorRoomScene(gl)
+      const s: PhysScene = id === 'stargate' ? new StargateScene(gl) : id === 'paint' ? new PaintScene(gl) : id === 'splash' ? new SplashScene(gl) : id === 'balls' ? new BallsScene(gl) : id === 'cascade' ? new CascadeScene(gl) : id === 'colorroom' ? new ColorRoomScene(gl) : id === 'liquid' ? new LiquidScene(gl)
         : id === 'fabric' ? new FabricScene(gl) : id === 'drift' ? new FabricDriftScene(gl) : id === 'jungle' ? new JungleScene(gl) : id === 'city' ? new CityScene(gl) : new VideoLoopScene(gl, '/pass4/paint_pour.mp4');
       void s.load();
       this.scenes[id] = s;
@@ -48,13 +51,13 @@ export class PhysicalRenderer {
   render(mode: string, f: PhysFrame): boolean {
     this.lastVariant = f.params.variant;
     let id = PHYS_MODES[mode]; if (!id) return false;
-    if (id === 'balls') id = f.params.variant === 'Machine' ? 'balls' : f.params.variant === 'Cascade' ? 'cascade' : 'colorroom';   // Gravity: Color Room default; Cascade + Machine kept
+    if (id === 'balls') id = ballsId(f.params.variant);   // Gravity: Liquid default (pass 7); Color Room, Cascade, Machine kept
     if (id === 'paint' && f.params.variant === 'Splash') id = 'splash';
     if (id === 'fabric' && f.params.variant === 'Drift') id = 'drift';   // Fabric: multi-ribbon drift (pass 6) default   // Paint: live screen-space splash (pass 6) default
     const s = this.get(id); if (!s) return false;
     s.render(f);
     return true;
   }
-  stats(mode: string) { const id = PHYS_MODES[mode]; const s = id === 'paint' && this.lastVariant === 'Splash' ? this.scenes.splash : id === 'fabric' && this.lastVariant === 'Drift' ? this.scenes.drift : id === 'balls' ? this.scenes[this.lastVariant === 'Machine' ? 'balls' : this.lastVariant === 'Cascade' ? 'cascade' : 'colorroom'] : this.scenes[id]; return s ? { ready: s.ready, error: s.error, ...s.stats } : null; }
+  stats(mode: string) { const id = PHYS_MODES[mode]; const s = id === 'paint' && this.lastVariant === 'Splash' ? this.scenes.splash : id === 'fabric' && this.lastVariant === 'Drift' ? this.scenes.drift : id === 'balls' ? this.scenes[ballsId(this.lastVariant)] : this.scenes[id]; return s ? { ready: s.ready, error: s.error, ...s.stats } : null; }
 }
 export type { PhysParams };

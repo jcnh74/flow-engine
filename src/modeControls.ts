@@ -4,6 +4,7 @@
 // Original MIT-licensed work for flow-engine.
 import { SPLASH_PALETTES, SPLASH_SHAPES } from './physical/splash';
 import { ROOM_PALETTES, ROOM_ORDERS, ROOM_CAMERAS } from './physical/colorroom';
+import { LIQUID_BACKDROPS, LIQUID_CAMERAS } from './physical/liquid';
 
 export type Ctl = { key: string; label: string; type: 'slider' | 'knob' | 'select' | 'check'; min?: number; max?: number; step?: number; options?: string[] };
 export type ModeSpec = { sections: { title: string; ctls: Ctl[] }[]; defaults: Record<string, any>; presets: Record<string, Record<string, any>> };
@@ -15,19 +16,25 @@ const SEL = (key: string, label: string, options: string[]): Ctl => ({ key, labe
 export const MODE_CONTROLS: Record<string, ModeSpec> = {
   'Gravity': {
     sections: [
-      { title: 'Drops', ctls: [S('grDropSize', 'Drop Size (balls)', 100, 2400, 10), S('grDropEvery', 'Drop Interval (s)', 0.6, 6, 0.05), K('grSpread', 'Drop Spread', 0, 1.5), K('grBallSize', 'Ball Size', 0.6, 1.8)] },
-      { title: 'Physics', ctls: [K('grBounce', 'Bounciness', 0.2, 0.95), K('grGravity', 'Gravity', 2, 20, 0.1), K('grRest', 'Settle → Recycle (s)', 0.5, 8, 0.1), S('phSpeed', 'Time Scale', 0.1, 2)] },
-      { title: 'Look & Camera', ctls: [SEL('phVariant', 'Scene', ['Color Room', 'Cascade', 'Machine']), SEL('grRoom', 'Room Colours', Object.keys(ROOM_PALETTES)), SEL('grOrder', 'Colour Order', Object.keys(ROOM_ORDERS)),
-        SEL('grCamera', 'Camera', ROOM_CAMERAS), K('grCamEnergy', 'Camera Energy', 0, 2.5), S('phFov', 'Lens FOV', 30, 85, 1), S('phDof', 'Depth of Field', 0, 1), S('phIrid', 'Pearl Iridescence', 0, 1)] },
+      { title: 'Pour', ctls: [K('grPour', 'Pour Rate', 0.2, 2), S('grStreams', 'Streams', 1, 10, 1), K('grBursts', 'Clump Bursts', 0, 3), K('grBallSize', 'Ball Size', 0.6, 1.6)] },
+      { title: 'Liquid Body', ctls: [K('grCohesion', 'Cohesion', 0, 2.5), K('grViscosity', 'Viscosity', 0, 2.5), K('grDrip', 'Drip / Cling', 0, 2.5), K('grTurbulence', 'Turbulence', 0, 3), K('grGravity', 'Gravity', 2, 20, 0.1), S('phSpeed', 'Time Scale', 0.1, 2)] },
+      { title: 'Look & Camera', ctls: [SEL('phVariant', 'Scene', ['Liquid', 'Color Room', 'Cascade', 'Machine']), SEL('grBackdrop', 'Backdrop (Liquid)', Object.keys(LIQUID_BACKDROPS)), SEL('grOrder', 'Colour Order', Object.keys(ROOM_ORDERS)),
+        SEL('grLqCamera', 'Camera (Liquid)', LIQUID_CAMERAS), K('grCamEnergy', 'Camera Energy', 0, 2.5), S('phFov', 'Lens FOV', 30, 85, 1), S('phDof', 'Depth of Field', 0, 1), S('phIrid', 'Pearl Iridescence', 0, 1)] },
+      { title: 'Color Room (room scene only)', ctls: [S('grDropSize', 'Drop Size (balls)', 100, 2400, 10), S('grDropEvery', 'Drop Interval (s)', 0.6, 6, 0.05), K('grSpread', 'Drop Spread', 0, 1.5), K('grBounce', 'Bounciness', 0.2, 0.95), K('grRest', 'Settle → Recycle (s)', 0.5, 8, 0.1),
+        SEL('grRoom', 'Room Colours', Object.keys(ROOM_PALETTES)), SEL('grCamera', 'Camera (Room)', ROOM_CAMERAS)] },
     ],
-    defaults: { grDropSize: 1100, grDropEvery: 2.4, grSpread: 1, grBallSize: 1, grBounce: 0.78, grGravity: 9.8, grRest: 2.5, grRoom: 'Pop Gallery', grOrder: 'Rainbow', grCamera: 'Low Wide', grCamEnergy: 1 },
+    defaults: { grPour: 1, grStreams: 8, grBursts: 1, grBallSize: 1, grCohesion: 1, grViscosity: 1, grDrip: 1, grTurbulence: 1, grGravity: 9.8, grBackdrop: 'Ink Studio', grOrder: 'Rainbow', grLqCamera: 'Drift', grCamEnergy: 1,
+      grDropSize: 1100, grDropEvery: 2.4, grSpread: 1, grBounce: 0.78, grRest: 2.5, grRoom: 'Pop Gallery', grCamera: 'Low Wide' },
     presets: {
-      'Pop Splash': { grDropSize: 1100, grDropEvery: 2.4, grBounce: 0.78, grGravity: 9.8, grRoom: 'Pop Gallery', grOrder: 'Rainbow', grCamera: 'Low Wide', grBallSize: 1 },
-      'Monsoon': { grDropSize: 2200, grDropEvery: 1.4, grBounce: 0.6, grGravity: 14, grRoom: 'Sunset Clay', grOrder: 'Warm / Cool', grCamera: 'Front Row', grBallSize: 0.8 },
-      'Moon Bounce': { grDropSize: 700, grDropEvery: 3.2, grBounce: 0.93, grGravity: 4, grRoom: 'Candy Loft', grOrder: 'Mint & Gold', grCamera: 'Orbit', grBallSize: 1.2 },
-      'Neon Duel': { grDropSize: 1500, grDropEvery: 2.0, grBounce: 0.82, grGravity: 9.8, grRoom: 'Neon Noir', grOrder: 'Duo Coral-Cobalt', grCamera: 'Overhead Dive', grBallSize: 1 },
+      'Liquid Rainbow': { phVariant: 'Liquid', grPour: 1, grStreams: 8, grBursts: 1, grCohesion: 1, grViscosity: 1, grDrip: 1, grTurbulence: 1, grGravity: 9.8, grBallSize: 1, grBackdrop: 'Ink Studio', grOrder: 'Rainbow', grLqCamera: 'Drift', phSpeed: 1 },
+      'Honey Pour': { phVariant: 'Liquid', grPour: 0.8, grStreams: 5, grBursts: 0.5, grCohesion: 1.8, grViscosity: 2.2, grDrip: 2, grTurbulence: 0.4, grGravity: 7, grBallSize: 1.1, grBackdrop: 'Sunlit Cream', grOrder: 'Mint & Gold', grLqCamera: 'Close Pour', phSpeed: 0.8 },
+      'Monsoon Drip': { phVariant: 'Liquid', grPour: 1.6, grStreams: 10, grBursts: 2.2, grCohesion: 0.7, grViscosity: 0.5, grDrip: 1.4, grTurbulence: 1.8, grGravity: 13, grBallSize: 0.8, grBackdrop: 'Deep Teal', grOrder: 'Warm / Cool', grLqCamera: 'Wide', phSpeed: 1 },
+      'Zero-G Swirl': { phVariant: 'Liquid', grPour: 1.2, grStreams: 7, grBursts: 1, grCohesion: 1.4, grViscosity: 1.2, grDrip: 0.6, grTurbulence: 3, grGravity: 3, grBallSize: 1, grBackdrop: 'Blush Void', grOrder: 'Duo Coral-Cobalt', grLqCamera: 'Low Angle', phSpeed: 0.9 },
+      'Pop Splash (room)': { phVariant: 'Color Room', grDropSize: 1100, grDropEvery: 2.4, grBounce: 0.78, grGravity: 9.8, grRoom: 'Pop Gallery', grOrder: 'Rainbow', grCamera: 'Low Wide', grBallSize: 1 },
+      'Moon Bounce (room)': { phVariant: 'Color Room', grDropSize: 700, grDropEvery: 3.2, grBounce: 0.93, grGravity: 4, grRoom: 'Candy Loft', grOrder: 'Mint & Gold', grCamera: 'Orbit', grBallSize: 1.2 },
     },
   },
+
   'Stargate': {
     sections: [
       { title: 'Flight', ctls: [S('phSpeed', 'Speed', 0, 3), K('phStreak', 'Streak Length', 0.1, 3), K('sgWarp', 'Warp', 0, 2), S('sgFov', 'Lens', 0.4, 1.2)] },
