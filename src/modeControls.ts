@@ -175,15 +175,18 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
   'Crystal Temple': {
     sections: [
       { title: 'Tunnel', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('ctSpeed', 'Dolly Speed', 0, 2.5), K('ctDensity', 'Step Density', 0.5, 1.8), K('ctAmp', 'Tendril Amplitude', 0, 2.5)] },
+      { title: 'Blocks', ctls: [K('ctBlockSpin', 'Block Spin', 0, 2.5), K('ctPhase', 'Phase Offset', 0, 2.5), K('ctDrift', 'Drift', 0, 2.5), S('ctEcho', 'Duplicate Count', 0, 3, 1), K('ctSpread', 'Echo Spread', 0, 2.5), K('ctCascade', 'Cascade Speed', 0, 2.5)] },
       { title: 'Symmetry', ctls: [CHK('ctMirror', 'Mirror'), SEL('ctFold', 'Fold Count', { '2-fold': 2, '4-fold': 4, '6-fold': 6, '8-fold': 8 })] },
       { title: 'Pulse & Look', ctls: [K('ctPulseRate', 'Pulse Rate', 0, 2.5), K('ctPulse', 'Pulse Intensity', 0, 2.5), K('ctAniso', 'Anisotropy', 0, 2.5), SEL('ctPalette', 'Palette', Object.keys(TEMPLE_PALETTES)), S('phFov', 'Lens FOV', 45, 95, 1), S('phDof', 'Depth of Field', 0, 1), K('phGloss', 'Gloss', 0.2, 2)] },
+      { title: 'Lens', ctls: [K('ctFish', 'Fisheye Amount', 0, 2.5), K('ctBreathe', 'Lens Breathe', 0, 2.5)] },
     ],
-    defaults: { ctSpeed: 1, ctDensity: 1, ctAmp: 1, ctMirror: true, ctFold: 2, ctPulseRate: 1, ctPulse: 1, ctAniso: 1, ctPalette: 'Cyan Processional' },
+    defaults: { ctSpeed: 1, ctDensity: 1, ctAmp: 1, ctMirror: true, ctFold: 2, ctPulseRate: 1, ctPulse: 1.25, ctAniso: 1.25, ctPalette: 'Cyan Processional', ctBlockSpin: 0.7, ctPhase: 1, ctDrift: 0.6, ctEcho: 1, ctSpread: 1, ctCascade: 0.85, ctFish: 1.45, ctBreathe: 1 },
     presets: {
-      'Cyan Processional': { ctPalette: 'Cyan Processional', ctSpeed: 1, ctDensity: 1, ctAmp: 1, ctMirror: true, ctFold: 2, ctPulseRate: 1, ctPulse: 1, ctAniso: 1.15, phFov: 74, phGloss: 1.2, phSpeed: 1 },
-      'Tight Nave': { ctPalette: 'Cyan Processional', ctSpeed: 1.25, ctDensity: 1.45, ctAmp: 0.7, ctMirror: true, ctFold: 2, ctPulseRate: 1.4, ctPulse: 1.3, ctAniso: 1.8, phFov: 62, phGloss: 1.35, phSpeed: 1 },
-      'Wide Sanctum': { ctPalette: 'Ice Temple', ctSpeed: 0.7, ctDensity: 0.8, ctAmp: 1.6, ctMirror: true, ctFold: 2, ctPulseRate: 0.7, ctPulse: 0.85, ctAniso: 0.85, phFov: 88, phGloss: 1.05, phDof: 0.2, phSpeed: 0.85 },
-      'Kaleido Crypt': { ctPalette: 'Magenta Night', ctSpeed: 1.1, ctDensity: 1.2, ctAmp: 1.15, ctMirror: true, ctFold: 4, ctPulseRate: 1.2, ctPulse: 1.4, ctAniso: 1.3, phFov: 80, phGloss: 1.25, phSpeed: 1.1 },
+      'Cyan Processional': { ctPalette: 'Cyan Processional', ctSpeed: 1, ctDensity: 1, ctAmp: 1, ctMirror: true, ctFold: 2, ctPulseRate: 1, ctPulse: 1.25, ctAniso: 1.35, ctBlockSpin: 0.7, ctPhase: 1, ctDrift: 0.6, ctEcho: 1, ctSpread: 1, ctCascade: 0.85, ctFish: 1.45, ctBreathe: 1, phFov: 74, phGloss: 1.25, phSpeed: 1 },
+      'Tight Nave': { ctPalette: 'Cyan Processional', ctSpeed: 1.25, ctDensity: 1.35, ctAmp: 0.7, ctMirror: true, ctFold: 2, ctPulseRate: 1.4, ctPulse: 1.5, ctAniso: 1.8, ctBlockSpin: 1.4, ctPhase: 1.3, ctDrift: 1.1, ctEcho: 2, ctSpread: 1.1, ctCascade: 1.3, ctFish: 1.2, ctBreathe: 0.7, phFov: 62, phGloss: 1.4, phSpeed: 1 },
+      'Wide Sanctum': { ctPalette: 'Ice Temple', ctSpeed: 0.7, ctDensity: 0.85, ctAmp: 1.6, ctMirror: true, ctFold: 2, ctPulseRate: 0.7, ctPulse: 1.1, ctAniso: 1.0, ctBlockSpin: 0.55, ctPhase: 0.8, ctDrift: 0.6, ctEcho: 1, ctSpread: 0.85, ctCascade: 0.6, ctFish: 1.6, ctBreathe: 1.2, phFov: 88, phGloss: 1.1, phDof: 0.18, phSpeed: 0.85 },
+      'Kaleido Crypt': { ctPalette: 'Magenta Night', ctSpeed: 1.1, ctDensity: 1.05, ctAmp: 1.15, ctMirror: true, ctFold: 4, ctPulseRate: 1.2, ctPulse: 1.5, ctAniso: 1.4, ctBlockSpin: 1.2, ctPhase: 1.15, ctDrift: 1, ctEcho: 2, ctSpread: 1.2, ctCascade: 1.15, ctFish: 1.55, ctBreathe: 1, phFov: 80, phGloss: 1.3, phSpeed: 1.1 },
+      'Echo Storm': { ctPalette: 'Cyan Processional', ctSpeed: 1.2, ctDensity: 0.9, ctAmp: 1.4, ctMirror: true, ctFold: 2, ctPulseRate: 1.6, ctPulse: 1.85, ctAniso: 1.9, ctBlockSpin: 2.1, ctPhase: 1.8, ctDrift: 1.85, ctEcho: 3, ctSpread: 2.1, ctCascade: 2.0, ctFish: 2.15, ctBreathe: 1.5, phFov: 82, phGloss: 1.45, phSpeed: 1.15 },
     },
   },
   '3D Fractal': {

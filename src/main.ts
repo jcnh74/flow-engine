@@ -2529,7 +2529,7 @@ function physDefaults(mode: string) {
     P.phLook = 'Cobalt Orange'; P.phKeyAz = -18; P.phKeyEl = 50; P.phDof = 0.12; P.phFov = 74;
     P.phGloss = 1.2; P.phIrid = 0.3; P.audioReactive = false;
     P.tonemapMode = 'ACES'; P.vignetteStrength = 0.28; P.grainStrength = 0.012; P.saturation = 1.12; P.exposure = 1.0;
-    P.bloom = 0.28; P.bloomStrength = 0.14; P.bloomThreshold2 = 1.25;
+    P.bloom = 0.34; P.bloomStrength = 0.20; P.bloomThreshold2 = 1.08;
   }
 }
 const phF = gui.addFolder('Physical (pass 4)');
