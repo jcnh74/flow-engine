@@ -100,8 +100,11 @@ void main(){
   float halfW = uSize * 0.22;
   float halfH = uSize * 0.13;
   vec3 lp = aPos;
+  float ln = length(lp);
+  lp = mix(lp, lp / max(ln, 1e-4), 0.38);           // slight chamfer / rounded tile
+  vec3 nrm = mix(aNrm, normalize(lp), 0.38);
   vW = C + T * (lp.z * halfT) + N * (lp.x * halfW) + B * (lp.y * halfH);
-  vN = normalize(T * (aNrm.z) + N * (aNrm.x) + B * (aNrm.y));
+  vN = normalize(T * (nrm.z) + N * (nrm.x) + B * (nrm.y));
   gl_Position = uVP * vec4(vW, 1.0);
 }`;
 
@@ -134,7 +137,8 @@ void main(){
     float gap = clamp(uGap, 0.0, 0.8);
     float along = (6.2831853 * length(kn(t+0.01,uP,uQ,uR,uRad) - kn(t-0.01,uP,uQ,uR,uRad)) / 0.02) / float(nB);
     float halfT = along * 0.5 * (1.0 - gap) * 0.92;
-    vW = C + T * (aPos.z * halfT) + N * (aPos.x * uSize * 0.22) + B * (aPos.y * uSize * 0.13);
+    vec3 lp = aPos; float ln = length(lp); lp = mix(lp, lp / max(ln, 1e-4), 0.38);
+    vW = C + T * (lp.z * halfT) + N * (lp.x * uSize * 0.22) + B * (lp.y * uSize * 0.13);
   }
   gl_Position = uVP * vec4(vW, 1.0);
 }`;

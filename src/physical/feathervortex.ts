@@ -107,10 +107,11 @@ void main(){
   float ao = 0.5 + 0.5 * abs(N.z);
   vec3 col = studioShade(vW, N, V, alb, rough, f0, ao, sh, 0.25);
   col += aniso(N, T, V, uLightDir, alb * 1.4 + vec3(0.15), rough) * 0.85 * uGloss;
-  // darken the hollow core so the vortex reads
+  // darken the hollow core so the vortex reads as a well, not a blown-out lamp
   float rad = length(vW.xy);
-  float hole = smoothstep(0.12 * uCore, 0.9 * uCore, rad);
-  col *= mix(0.08, 1.0, hole);
+  float hole = smoothstep(0.5 * uCore, 1.5 * uCore, rad);
+  col *= mix(0.025, 1.0, hole);
+  col *= mix(0.2, 1.0, hole);
   col *= mix(1.0, 0.55, smoothstep(2.6, 3.8, abs(vW.z)));
   o = vec4(col, length(uCamPos - vW));
 }`;
@@ -146,10 +147,10 @@ void main(){
   vec4 a = uInvVP * vec4(vUv*2.0-1.0, 1.0, 1.0);
   vec3 rd = normalize(a.xyz/a.w - uCamPos);
   // dark well with a faint warm/cool rim, no cheap texture
-  float z = rd.z;
-  float v = pow(max(0.0, 1.0 - length(rd.xy) * 0.85), 2.0);
-  vec3 col = mix(uCool0, uWarm0, 0.5 + 0.5 * rd.x) * 0.07 * v;
-  col *= 0.25 + 0.75 * smoothstep(0.05, 0.55, length(rd.xy));
+  float rad = length(rd.xy);
+  float v = pow(max(0.0, 1.0 - rad * 0.85), 2.0);
+  vec3 col = mix(uCool0, uWarm0, 0.5 + 0.5 * rd.x) * 0.035 * v;
+  col *= smoothstep(0.18, 0.7, rad);
   o = vec4(col, 1000.0);
 }`;
 
@@ -162,10 +163,12 @@ void main(){
   vec2 p = vec2(ca * d.x - sa * d.y, sa * d.x + ca * d.y) * 0.985 + 0.5;
   vec4 curr = texture(uCurr, vUv);
   vec4 prev = texture(uPrev, p);
-  float k = clamp(uTrail, 0.0, 0.92);
-  // keep the trail from blowing out: decay highlights a little faster
-  prev.rgb *= 0.92;
-  o = vec4(curr.rgb + prev.rgb * k, curr.a);
+  float k = clamp(uTrail, 0.0, 0.85);
+  float well = smoothstep(0.12, 0.42, length(d));
+  prev.rgb *= 0.88 * mix(0.25, 1.0, well);
+  vec3 sum = curr.rgb + prev.rgb * k;
+  sum = min(sum, vec3(2.2));
+  o = vec4(sum, curr.a);
 }`;
 
 export class FeatherVortexScene implements PhysScene {

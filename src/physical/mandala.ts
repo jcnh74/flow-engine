@@ -62,7 +62,7 @@ function curl(x0: number, y0: number, z0: number, ang: number, len: number, bend
 /** Original bilateral "guardian" mask: arches, orbital lobes, curling tendrils and bubble clusters. */
 function buildMask(density: number, lobes: number, seed: number) {
   const dst: number[] = [];
-  const sp = 0.048 / Math.max(0.5, density);
+  const sp = 0.038 / Math.max(0.5, density);
   const zRel = (x: number, y: number) => 0.55 * Math.exp(-(x * x + y * y) * 0.18);
   const lift = (pts: Vec3[]) => pts.map(([x, y, z]) => [x, y, z + zRel(x, y)] as Vec3);
 
@@ -110,7 +110,7 @@ function buildMask(density: number, lobes: number, seed: number) {
   ];
   const nL = Math.max(0, Math.min(1, lobes));
   for (const [x, y, z] of bubbles) {
-    const R = (0.07 + 0.08 * hash(x * 9.1 + seed)) * (0.6 + 1.2 * nL);
+    const R = (0.045 + 0.05 * hash(x * 9.1 + seed)) * (0.55 + 0.9 * nL);
     if (dst.length / 8 >= MAX) break;
     dst.push(x, y, z + zRel(x, y), R, 2, 0, 1, 0);
     // satellite dots around the lobe
