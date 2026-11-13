@@ -5,13 +5,15 @@
 import { SPLASH_PALETTES, SPLASH_SHAPES } from './physical/splash';
 import { ROOM_PALETTES, ROOM_ORDERS, ROOM_CAMERAS } from './physical/colorroom';
 import { LIQUID_BACKDROPS, LIQUID_CAMERAS } from './physical/liquid';
+import { STUDIO_LOOK_NAMES, STUDIO_MATS } from './studio';
 
-export type Ctl = { key: string; label: string; type: 'slider' | 'knob' | 'select' | 'check'; min?: number; max?: number; step?: number; options?: string[] };
+export type Ctl = { key: string; label: string; type: 'slider' | 'knob' | 'select' | 'check'; min?: number; max?: number; step?: number; options?: string[] | Record<string, string | number> };
 export type ModeSpec = { sections: { title: string; ctls: Ctl[] }[]; defaults: Record<string, any>; presets: Record<string, Record<string, any>> };
 
 const S = (key: string, label: string, min: number, max: number, step = 0.01): Ctl => ({ key, label, type: 'slider', min, max, step });
 const K = (key: string, label: string, min: number, max: number, step = 0.01): Ctl => ({ key, label, type: 'knob', min, max, step });
-const SEL = (key: string, label: string, options: string[]): Ctl => ({ key, label, type: 'select', options });
+const SEL = (key: string, label: string, options: string[] | Record<string, string | number>): Ctl => ({ key, label, type: 'select', options });
+const CHK = (key: string, label: string): Ctl => ({ key, label, type: 'check' });
 
 export const MODE_CONTROLS: Record<string, ModeSpec> = {
   'Gravity': {
@@ -120,6 +122,50 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
       'Jewel Satin': { fbCount: 9, phSpeed: 0.8, fbFlutter: 0.7, fbWidth: 1.3, fbPalette: 'Triad Jewel', phMat: 'Satin', fbWeave: 0.8, fbSheen: 1.5 },
       'Sunset Drift': { fbCount: 5, phSpeed: 0.5, fbFlutter: 1.4, fbWidth: 1.6, fbPalette: 'Analog Sunset', phMat: 'Silk', fbWeave: 1.3, fbSheen: 1 },
       'Pearl Velvet': { fbCount: 6, phSpeed: 0.7, fbFlutter: 0.5, fbWidth: 1.1, fbPalette: 'Monochrome Pearl', phMat: 'Velvet', fbWeave: 1.8, fbSheen: 0.6 },
+    },
+  },
+
+  '3D Fractal': {
+    sections: [
+      { title: 'Form', ctls: [
+        SEL('frType', 'Type', { 'Mandelbulb': 0, 'Mandelbox': 1, 'Menger Sponge': 2, 'Sierpinski': 3, 'Kaleidoscopic': 4, 'Quaternion Julia': 5 }),
+        S('frPower', 'Power', 2, 16, 0.1), S('frIter', 'Iterations', 4, 24, 1), S('frBailout', 'Bailout', 1, 10, 0.1), S('frScale', 'Scale', -3, 3, 0.1),
+      ] },
+      { title: 'Studio', ctls: [
+        CHK('frStudio', 'Studio cove look'), SEL('stLook', 'Look', STUDIO_LOOK_NAMES), SEL('stMat', 'Material', STUDIO_MATS),
+        S('stRim', 'Rim Light', 0, 1.5, 0.01), S('frRes', 'Internal Resolution', 0.35, 1, 0.05),
+      ] },
+      { title: 'Camera', ctls: [
+        S('frCamDist', 'Distance', 1, 10, 0.1), S('frCamFov', 'FOV', 30, 90, 1), S('frRotSpeed', 'Rotation', 0, 0.5, 0.01),
+        CHK('frCamOrbit', 'Camera Orbit'), S('frCamOrbitSpeed', 'Orbit Speed', 0, 1, 0.01),
+      ] },
+      { title: 'Light', ctls: [
+        S('frLightAz', 'Azimuth', 0, 360, 1), S('frLightEl', 'Elevation', -90, 90, 1),
+        K('frAmbient', 'Ambient', 0, 1), K('frDiffuse', 'Diffuse', 0, 2), K('frGlow', 'Glow', 0, 2),
+        S('frShadow', 'Shadow Strength', 0, 1, 0.01), S('frShadowSharpness', 'Shadow Sharpness', 0.5, 32, 0.5),
+        S('frAOStrength', 'AO Strength', 0, 10, 0.2), S('frAORadius', 'AO Radius', 0.01, 1, 0.02),
+        S('frFogDensity', 'Fog Density', 0, 1.5, 0.05), S('frFogStart', 'Fog Start', 0, 5, 0.1),
+      ] },
+      { title: 'Motion & Quality', ctls: [
+        S('frMorph', 'Morph Amount', 0, 1, 0.01), CHK('frJuliaOrbit', 'Julia C Orbit'), S('frJuliaSpeed', 'Julia Orbit Speed', 0, 2, 0.01),
+        S('frFoldRot', 'Fold Rotation', 0, 360, 1), CHK('frSlicePlane', 'Slice Plane'), S('frSlicePos', 'Slice Position', -2, 2, 0.01),
+        S('frMaxSteps', 'Ray Steps', 64, 256, 1), S('frMaxDist', 'Max Distance', 10, 50, 1),
+      ] },
+    ],
+    defaults: {
+      frStudio: true, stLook: 'Lilac Dream', stMat: 'Gloss', stRim: 0.35, frRes: 0.45,
+      frType: 0, frPower: 8, frIter: 10, frBailout: 4, frScale: -1.5,
+      frCamDist: 2.5, frCamFov: 50, frRotSpeed: 0.15, frCamOrbit: true, frCamOrbitSpeed: 0.3,
+      frLightAz: 35, frLightEl: 50, frAmbient: 0.42, frDiffuse: 0.85, frGlow: 0, frShadow: 0.8, frShadowSharpness: 6,
+      frAOStrength: 4, frAORadius: 0.3, frFogDensity: 0.04, frFogStart: 2.0, frMaxSteps: 80, frMaxDist: 20,
+      frMorph: 0, frJuliaOrbit: false, frJuliaSpeed: 0.2, frFoldRot: 0, frSlicePlane: false, frSlicePos: 0,
+    },
+    presets: {
+      'Lilac Bulb': { frType: 0, frPower: 8, frIter: 10, frCamDist: 2.5, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.15, frStudio: true, stLook: 'Lilac Dream', stMat: 'Gloss', stRim: 0.35 },
+      'Coral Bulb': { frType: 0, frPower: 5, frIter: 10, frCamDist: 2.6, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.12, frStudio: true, stLook: 'Coral Peach', stMat: 'Gloss', stRim: 0.4 },
+      'Mandelbox Deep': { frType: 1, frScale: -1.8, frIter: 12, frCamDist: 7, frRes: 0.5, frMaxSteps: 120, frAmbient: 0.38, frFogDensity: 0.06, frRotSpeed: 0.08, frStudio: true, stLook: 'Cobalt Orange', stMat: 'Satin metal', stRim: 0.5 },
+      'Menger Studio': { frType: 2, frIter: 5, frCamDist: 4, frRes: 0.5, frMaxSteps: 80, frAmbient: 0.45, frAOStrength: 5, frFogDensity: 0.05, frRotSpeed: 0.1, frStudio: true, stLook: 'Cream Gold', stMat: 'Matte', stRim: 0.3 },
+      'Julia Drift': { frType: 5, frIter: 10, frCamDist: 3.2, frJuliaOrbit: true, frJuliaSpeed: 0.35, frRotSpeed: 0.08, frGlow: 0.15, frFogDensity: 0.05, frStudio: true, stLook: 'Mint Pink', stMat: 'Iridescent', stRim: 0.55 },
     },
   },
   'Landscape': {

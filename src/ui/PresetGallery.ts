@@ -56,12 +56,13 @@ export class PresetGallery {
 
   private getModeIcon(mode: string): string {
     const icons: Record<string, string> = {
-      'Wall Studio': '◉',
+      'Paint': '◍',
+      'Paint Pour': '◉',
+      'City Vortex': '▣',
+      'Jungle': '❀',
+      'Stargate': '✧',
+      'Fabric': '≋',
       '3D Fractal': '✦',
-      'Tunnel': '○',
-      'Kaleido': '❖',
-      'Plasma': '∿',
-      'Morph': '●'
     };
     return icons[mode] || '○';
   }

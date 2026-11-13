@@ -9,6 +9,7 @@ import { LIGHTING_RIGS, applyLightingRig, type LightingRig } from './LightingPre
 import { STUDIO_LOOK_NAMES, STUDIO_MATS } from '../studio';
 import { LAND_LOOK_NAMES } from '../landscape';
 import { MODE_CONTROLS, presetNames, applyModePreset, saveModePreset, deleteModePreset, applyModeDefaults, type Ctl } from '../modeControls';
+import { LINEUP_MODES } from '../lineup';
 
 interface ControlConfig {
   params: any;
@@ -68,7 +69,7 @@ export class MainControlPanel {
 
     // Scene section (always visible)
     html += this.buildSection('Scene', [
-      this.buildSelect('mode', 'Mode', ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Wall Studio', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']),
+      this.buildSelect('mode', 'Mode', [...LINEUP_MODES]),
       this.buildSlider('seed', 'Seed', 0, 999999, 1),
       this.buildSlider('resolutionScale', 'Quality / Resolution', 0.5, 1.0, 0.05, false),
       this.buildCheckbox('autoQuality', 'Auto Quality (60fps)'),
@@ -283,62 +284,11 @@ export class MainControlPanel {
       ]);
       html += this.buildPostSection();
     } else if (mode === '3D Fractal') {
-      html += this.buildSection('Fractal', [
-        this.buildSelect('frType', 'Type', { 
-          'Mandelbulb': 0, 
-          'Mandelbox': 1, 
-          'Menger Sponge': 2, 
-          'Sierpinski': 3, 
-          'Kaleidoscopic': 4, 
-          'Quaternion Julia': 5 
-        }),
-        this.buildSlider('frPower', 'Power', 2, 16, 0.1, true),
-        this.buildSlider('frIter', 'Iterations', 4, 24, 1, true),
-        this.buildSlider('frBailout', 'Bailout', 1, 10, 0.1, true),
-        this.buildSlider('frScale', 'Scale', -3, 3, 0.1, true),
-      ]);
-      html += this.buildSection('Studio', [
-        this.buildCheckbox('frStudio', 'Studio cove look'),
-        this.buildSelect('stLook', 'Look', STUDIO_LOOK_NAMES),
-        this.buildSelect('stMat', 'Material', STUDIO_MATS),
-        this.buildSlider('stRim', 'Rim Light', 0, 1.5, 0.01, true),
-        this.buildSlider('frRes', 'Internal Resolution', 0.35, 1, 0.05, false),
-      ]);
-      html += this.buildSection('Camera', [
-        this.buildSlider('frCamDist', 'Distance', 1, 10, 0.1, true),
-        this.buildSlider('frCamFov', 'FOV', 30, 90, 1, true),
-        this.buildSlider('frRotSpeed', 'Rotation', 0, 0.5, 0.01, true),
-      ]);
-      html += this.buildSection('Lighting', [
-        this.buildSlider('frLightAz', 'Azimuth', 0, 360, 1, true),
-        this.buildSlider('frLightEl', 'Elevation', -90, 90, 1, true),
-        this.buildSlider('frAmbient', 'Ambient', 0, 1, 0.01, true),
-        this.buildSlider('frDiffuse', 'Diffuse', 0, 2, 0.1, true),
-        this.buildSlider('frGlow', 'Glow', 0, 2, 0.1, true),
-        this.buildSlider('frShadow', 'Shadow Strength', 0, 1, 0.01, true),
-        this.buildSlider('frShadowSharpness', 'Shadow Sharpness', 0.5, 32, 0.5, true),
-        this.buildSlider('frAOStrength', 'AO Strength', 0, 10, 0.2, true),
-        this.buildSlider('frAORadius', 'AO Radius', 0.01, 1.0, 0.02, true),
-        this.buildSlider('frFogDensity', 'Fog Density', 0, 1.5, 0.05, true),
-        this.buildSlider('frFogStart', 'Fog Start', 0, 5, 0.1, true),
-      ]);
-      html += this.buildSection('Motion', [
-        this.buildSlider('frMorph', 'Morph Amount', 0, 1, 0.01, true),
-        this.buildCheckbox('frJuliaOrbit', 'Julia C Orbit'),
-        this.buildSlider('frJuliaSpeed', 'Julia Orbit Speed', 0, 2, 0.01, true),
-        this.buildSlider('frFoldRot', 'Fold Rotation', 0, 360, 1, true),
-        this.buildCheckbox('frCamOrbit', 'Camera Orbit'),
-        this.buildSlider('frCamOrbitSpeed', 'Orbit Speed', 0, 1, 0.01, true),
-        this.buildCheckbox('frSlicePlane', 'Slice Plane'),
-        this.buildSlider('frSlicePos', 'Slice Position', -2, 2, 0.01, true),
-      ]);
-      html += this.buildSection('Quality', [
-        this.buildSlider('frMaxSteps', 'Ray Steps', 64, 256, 1, true),
-        this.buildSlider('frMaxDist', 'Max Distance', 10, 50, 1, true),
-      ]);
+      html += this.buildModeControls(mode);
+      html += this.buildPostSection();
     }
 
-    // Unified Color section (always visible, mode-aware)
+        // Unified Color section (always visible, mode-aware)
     html += this.buildColorSection(mode);
 
     // Unified Lighting section (3D modes only)

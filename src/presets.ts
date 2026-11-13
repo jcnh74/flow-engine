@@ -1,5 +1,8 @@
 // Curated preset gallery for DJ visualizer
 import { STUDIO_LOOKS } from './studio';
+import { isRetiredMode, LINEUP_MODES } from './lineup';
+import { MODE_CONTROLS } from './modeControls';
+export { RETIRED_MODES, LINEUP_MODES, DEFAULT_MODE, resolveMode } from './lineup';
 
 export interface Preset {
   name: string;
@@ -49,7 +52,7 @@ export const STUDIO_PRESETS: Preset[] = [
 ];
 
 /** Every preset ever authored (retired modes included, so their code paths stay reachable from code/tests). */
-export const ALL_PRESETS: Preset[] = [
+const LEGACY_PRESETS: Preset[] = [
   {
     name: 'Living Pigment',
     mode: 'Landscape',
@@ -582,9 +585,24 @@ export const ALL_PRESETS: Preset[] = [
   }
 ];
 
-/** Pass 5: Tunnel and Kaleido are retired from the UI (code kept). */
-export const RETIRED_MODES = ['Tunnel', 'Kaleido'];
-export const PRESET_GALLERY: Preset[] = ALL_PRESETS.filter((p) => !RETIRED_MODES.includes(p.mode));
+function lineupScenePresets(): Preset[] {
+  const out: Preset[] = [];
+  for (const mode of LINEUP_MODES) {
+    const spec = MODE_CONTROLS[mode];
+    if (!spec) continue;
+    for (const [name, params] of Object.entries(spec.presets)) {
+      out.push({ name: `${mode} · ${name}`, mode, description: `${mode}: ${name}`, params: { ...params }, beatLinks: [] });
+    }
+  }
+  return out;
+}
+
+/** Every preset ever authored (retired modes included, so their code paths stay reachable from code/tests). */
+export const ALL_PRESETS: Preset[] = [...LEGACY_PRESETS, ...lineupScenePresets()];
+
+/** Pass 8: retired modes (Gravity paused, plus legacy visualizers) leave the gallery. Their presets stay in ALL_PRESETS. */
+export const PRESET_GALLERY: Preset[] = ALL_PRESETS.filter((p) => !isRetiredMode(p.mode));
+
 
 // Random preset selection
 export function getRandomPreset(): Preset {

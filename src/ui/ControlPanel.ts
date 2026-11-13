@@ -23,7 +23,7 @@ interface ControlDef {
 // Mode-aware control definitions
 const CONTROL_DEFS: Record<string, ControlDef[]> = {
   Scene: [
-    { name: 'mode', label: 'Mode', type: 'select', options: ['2D flow', '3D fabric', 'Particle Fabric', 'Grass Field', 'Wall Studio', '3D Fractal'] },
+    { name: 'mode', label: 'Mode', type: 'select', options: ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal'] },
     // 3D Fractal specific
     { name: 'frType', label: 'Fractal Type', type: 'select', options: ['Mandelbulb', 'Mandelbox'], modes: ['3D Fractal'] },
     { name: 'frPower', label: 'Power', type: 'slider', min: 1, max: 20, step: 0.1, modulatable: true, modes: ['3D Fractal'] },

@@ -17,7 +17,7 @@ export interface ControlDef {
 // Universal controls (visible in all modes)
 export const UNIVERSAL_CONTROLS: ControlDef[] = [
   { param: 'mode', label: 'Render Mode', type: 'select', section: 'Scene',
-    options: ['Wall Studio', '3D Fractal', 'Grass Field', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'] },
+    options: ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal'] },
   { param: 'seed', label: 'Seed', type: 'slider', min: 0, max: 999999, step: 1, section: 'Scene' },
   { param: 'paused', label: 'Paused', type: 'checkbox', section: 'Scene' },
   { param: 'exposure', label: 'Exposure', type: 'slider', min: 0.4, max: 4, step: 0.01, modulatable: true, section: 'Color' },

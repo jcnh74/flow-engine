@@ -6,7 +6,7 @@ import * as FS from './fractal_shaders';
 import * as TRIPPY from './trippy_shaders';
 import * as TONEMAP from './tonemap_shaders';
 import * as POST from './post_shaders';
-import { PRESET_GALLERY, getRandomPreset } from './presets';
+import { PRESET_GALLERY, ALL_PRESETS, getRandomPreset } from './presets';
 import AudioAnalyzer from './audio';
 import ModulationSystem from './modulation';
 import { MidiManager } from './midi';
@@ -21,6 +21,7 @@ import { RELIEF_DOWN_FS, RELIEF_HEIGHT_FS, RELIEF_SHADE_FS } from './relief_shad
 import { SCULPT_FS } from './sculpt_shaders';
 import { StudioRenderer, STUDIO_LOOKS, STUDIO_LOOK_NAMES, STUDIO_MATS, srgbHex } from './studio';
 import { PhysicalRenderer, PHYS_MODES, PHYS_VARIANTS, PHYS_MATS, STARGATE_PALETTES } from './physical';
+import { LINEUP_MODES, DEFAULT_MODE, resolveMode } from './lineup';
 import './ui/panel.css';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -251,7 +252,7 @@ function updateMilkDropPresetDisplay(name: string) {
 }
 
 // Track active mode separately from P.mode to detect actual changes
-let activeMode: string = 'Wall Studio';
+let activeMode: string = '';
 let lastModeChangeTime: number = 0;
 
 // Centralized mode switching - handles init/dispose and UI rebuild
@@ -293,7 +294,7 @@ function setMode(newMode: string) {
 
 // ---------- params ----------
 const P: any = {
-  mode: 'Wall Studio', seed: 1977, // Start on Wall Studio
+  mode: DEFAULT_MODE, seed: 1977, // Start on Jungle (pass 8 lineup default)
   performanceMode: false, // Performance mode: fullscreen, no UI, no cursor
   // Trippy mode params
   trippyMode: 0, trippySpeed: 1.0,
@@ -2154,7 +2155,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());
 
 // ---------- UI ----------
 const gui = new GUI({ title: 'Flow Engine — controls', width: 330 });
-gui.add(P, 'mode', ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Wall Studio', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
+gui.add(P, 'mode', [...LINEUP_MODES]).name('render mode').onChange(() => { setMode(P.mode); wsU(); });
 gui.add({ r() { recover('button', true); } }, 'r').name('⛑ Reset / Recover (Esc)');
 gui.add(P, 'seed', 0, 999999, 1).onFinishChange(reset);
 gui.add({ randomize }, 'randomize').name('🎲 Randomize (R)');
@@ -2701,8 +2702,10 @@ remoteSync = new RemoteSync(P,
 
 // Preset loading function with beat-link support
 function loadPresetFromGallery(preset: any) {
+  const mode = resolveMode(preset.mode);
+  setMode(mode);
   load(preset.params, true);
-  P.mode = preset.mode;
+  P.mode = mode;
   
   // Apply beat links if present
   if (preset.beatLinks && Array.isArray(preset.beatLinks)) {
@@ -2765,10 +2768,8 @@ function load(o: any, quiet = false) {
   const lights = o.lights, wells = o.wells, modMappings = o.modulationMappings;
   o = { ...o }; 
   
-  // Migrate removed modes to Wall Studio
-  if (o.mode === 'Grass Field' || o.mode === '2D Fractal') {
-    o.mode = 'Wall Studio';
-  }
+  // Retired / unknown modes fall back to the current default (Jungle)
+  if (o.mode) o.mode = resolveMode(o.mode);
   
   delete o.lights; delete o.wells; delete o.modulationMappings;
   if (Array.isArray(wells)) wells.forEach((w: any, i: number) => P.wells[i] && Object.assign(P.wells[i], w)); 
@@ -2863,38 +2864,20 @@ addEventListener('keydown', (e: KeyboardEvent) => {
 const q = new URLSearchParams(location.search);
 const rec = sessionStorage.getItem('flow-recover'); if (rec) { sessionStorage.removeItem('flow-recover'); Object.assign(P, JSON.parse(rec)); }
 
-// Accept any real mode name, case-insensitive, plus legacy aliases
-const VALID_MODES = ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow'];
-const MODE_ALIASES: Record<string, string> = {
-  '2d': '2D flow',
-  'particles': 'Particle Fabric',
-  'spheres': 'Liquid Spheres',
-  '3d': '3D fabric',
-  'canyon': 'Landscape',
-  'landscape': 'Landscape'
-};
-
-if (q.has('mode')) {
-  const modeParam = q.get('mode')!;
-  let targetMode: string | null = null;
-  
-  // Check aliases first
-  if (MODE_ALIASES[modeParam.toLowerCase()]) {
-    targetMode = MODE_ALIASES[modeParam.toLowerCase()];
+// Lineup modes stay; retired / unknown URL names fall back to DEFAULT_MODE (Jungle).
+const galleryRequested = !!(q.get('galleryPreset') || q.get('gallery'));
+if (!galleryRequested) {
+  if (q.has('mode')) setMode(resolveMode(q.get('mode')));
+  else if (rec) {
+    const recovered = resolveMode(P.mode);
+    if (recovered !== P.mode) setMode(recovered);
+    else { activeMode = recovered; updateFolders(); }
   } else {
-    // Check for exact mode name (case-insensitive)
-    targetMode = VALID_MODES.find(m => m.toLowerCase() === modeParam.toLowerCase()) || null;
+    setMode(DEFAULT_MODE);
   }
-  
-  if (targetMode) {
-    setMode(targetMode);
-  }
-} else if (isW()) {
-  wallDefaults();
 }
 if (q.get('wmat')) P.wMat = q.get('wmat')!; if (q.get('wobj')) P.wObj = q.get('wobj') === '1'; if (q.get('omat')) P.wObjMat = q.get('omat')!; if (q.get('wview')) applyWView(q.get('wview')!);
 if (q.get('wlight')) { P.lightPreset = q.get('wlight')!; applyLightPreset(P.lightPreset); }
-if (q.get('mode') === '3d') P.mode = '3D fabric';
 if (q.get('glight')) { P.gLight = Object.keys(G_LIGHTS).find(k => k.toLowerCase().startsWith(q.get('glight')!.toLowerCase())) ?? P.gLight; }
 if (q.get('gview')) { P.gcView = Object.keys(G_VIEWS).find(k => k.toLowerCase().startsWith(q.get('gview')!.toLowerCase())) ?? P.gcView; applyGView(P.gcView); }
 applyGLight(P.gLight);
@@ -2923,12 +2906,15 @@ if (q.get('grav')) P.gStrength = +q.get('grav')!;
 if (q.get('under')) P.fabricUnder = +q.get('under')!;
 if (q.get('preset')) { P.exportPreset = PRESETS.find(p => p.name.startsWith(q.get('preset')!))?.name ?? P.exportPreset; if (DEFAULT_ORIENT[P.exportPreset]) P.orientation = DEFAULT_ORIENT[P.exportPreset]; }
 // Gallery preset selection via URL (use galleryPreset or gallery param)
-if (q.get('galleryPreset') || q.get('gallery')) {
+if (galleryRequested) {
   const gpName = q.get('galleryPreset') || q.get('gallery');
-  const gp = PRESET_GALLERY.find(p => p.name.toLowerCase().includes(gpName!.toLowerCase()));
+  const gp = PRESET_GALLERY.find(p => p.name.toLowerCase().includes(gpName!.toLowerCase()))
+    || ALL_PRESETS.find(p => p.name.toLowerCase().includes(gpName!.toLowerCase()));
   if (gp) {
     loadPresetFromGallery(gp);
     presetGallery.setCurrentPreset(gp.name);
+  } else {
+    setMode(DEFAULT_MODE);
   }
 }
 if (q.get('orient')) P.orientation = q.get('orient');
@@ -2946,14 +2932,8 @@ if (q.get('nolight')) { P.lights.forEach((x: Light) => x.shadow = false); P.ao =
 applyPreset(); SMOOTH.forEach(k => L[k] = P[k]); rebuildStops(); buildPalette(); reset(); gui.controllersRecursive().forEach(c => c.updateDisplay());
 updateFolders();
 
-// Load startup preset if no URL params override
-// Skip if galleryPreset was already loaded via URL param
-if (!q.get('mode') && !q.get('galleryPreset') && !q.get('gallery') && !rec) {
-  const startupPreset = PRESET_GALLERY.find(p => p.name === 'Deep House Wall') || PRESET_GALLERY[0];
-  loadPresetFromGallery(startupPreset);
-  presetGallery.setCurrentPreset(startupPreset.name);
-  log(`Loaded startup preset: ${startupPreset.name}`);
-}
+// First load (no mode / gallery / recover) already called setMode(DEFAULT_MODE) above.
+// Retired gallery names still resolve: look in the full catalog, then fall back inside loadPresetFromGallery.
 
 // Initialize MIDI
 midiManager.init().then(success => {
