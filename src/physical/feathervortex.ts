@@ -82,7 +82,7 @@ const FS = `#version 300 es
 precision highp float;
 in vec3 vW; in vec3 vN; in vec3 vT; in vec2 vUv; flat in float vWarm; out vec4 o;
 uniform vec3 uCamPos; uniform vec3 uWarm[3]; uniform vec3 uCool[3];
-uniform float uGloss, uCore; uniform vec3 uLightDir;
+uniform float uGloss, uCore;
 ${STUDIO_GLSL}
 // Kajiya-Kay style anisotropic highlight along the blade rachis (the tangent).
 vec3 aniso(vec3 N, vec3 T, vec3 V, vec3 L, vec3 tint, float rough){

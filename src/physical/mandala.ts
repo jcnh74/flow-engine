@@ -173,7 +173,7 @@ void main(){
 const FS = `#version 300 es
 precision highp float;
 in vec2 vQ; in vec3 vC; in float vRad; flat in int vCol; out vec4 o;
-uniform mat4 uVP; uniform vec3 uCamPos; uniform vec3 uPal[6]; uniform vec3 uLightDir; uniform float uGloss, uIrid;
+uniform mat4 uVP; uniform vec3 uCamPos; uniform vec3 uPal[6]; uniform float uGloss, uIrid;
 ${STUDIO_GLSL}
 void main(){
   float d = dot(vQ, vQ);
