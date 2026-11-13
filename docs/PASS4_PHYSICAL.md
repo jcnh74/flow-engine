@@ -73,3 +73,18 @@ All code here is original and was written for this project. It is not derived fr
 
 ### Jungle — forest floor
 - The background pass now ray-casts the vortex tunnel wall (cylinder r=10.5) and shades it as dirt / moss / grass (value-noise fbm, grass streaks along the flow, pebbles, bump-lit with AO, wet sheen), scrolling with the plants' flow and spin. The lower half reads as a grassy dirt floor, the top as a mossy bank. Per-motif earth palette (MOTIF_EARTH) blended with the motif transition, fogged into the motif haze so the tunnel's glowing end remains. `jgFloor` (Forest Floor) control, 0 = old haze backdrop.
+
+## Pass 8 (2026-11-12) — lineup
+
+The app's visible mode list is now the new physical scenes plus 3D Fractal. Gravity is paused and hidden (code kept on this branch; unfinished close-up work stays on `gravity-pass8-wip`).
+
+| Shown | Hidden (code kept) |
+|---|---|
+| Paint (Splash default, plus Paint Pour as its own mode), City Vortex, Jungle (motifs + forest floor), Stargate, Fabric (Drift), 3D Fractal | Gravity (paused), Landscape, Morph, Plasma, Wall Studio, MilkDrop, 3D fabric, Liquid Spheres, Particle Fabric, 2D flow, Tunnel, Kaleido |
+
+- First load defaults to **Jungle**.
+- Menus (main panel, lil-gui), the preset gallery and the remote/phone UI only list the lineup. Per-mode built-in presets for the lineup are added to the gallery as `Mode · Preset`.
+- Old URLs (`?mode=landscape`, `?mode=3d`, `?mode=gravity`, …) and old presets/recover snapshots resolve through `resolveMode()` in `src/lineup.ts` and fall back to Jungle with no errors. Retired gallery names are still found in `ALL_PRESETS`, then loaded in the default mode.
+- 3D Fractal now uses the same `MODE_CONTROLS` panel (sliders, knobs, selectors, 5 studio presets, user save/load) as the physical scenes.
+- Files: `src/lineup.ts`, `src/main.ts`, `src/presets.ts`, `src/modeControls.ts`, `src/ui/MainControlPanel.ts`, `remote.html`, `tests/lineup.test.ts`.
+

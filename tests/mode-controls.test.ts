@@ -3,7 +3,7 @@ import { MODE_CONTROLS, presetNames, applyModePreset, captureModeValues, applyMo
 import { readFileSync } from 'fs';
 
 describe('pass 6 per-mode controls + presets', () => {
-  const modes = ['Gravity', 'Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Fabric', 'Stargate', 'Landscape', 'Morph', 'Plasma'];
+  const modes = ['Gravity', 'Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Fabric', 'Stargate', '3D Fractal', 'Landscape', 'Morph', 'Plasma'];
   test('every mode has its own panel with sliders/knobs/selectors and 3+ presets', () => {
     for (const m of modes) {
       const spec = MODE_CONTROLS[m]; expect(spec).toBeDefined();
@@ -15,7 +15,10 @@ describe('pass 6 per-mode controls + presets', () => {
         if (!keys.has(k)) throw new Error(`${m} preset ${name} sets ${k} which has no control`);
       }
       for (const c of ctls) if (c.type === 'slider' || c.type === 'knob') { expect(c.max!).toBeGreaterThan(c.min!); }
-      for (const c of ctls) if (c.type === 'select') expect(c.options!.length).toBeGreaterThan(0);
+      for (const c of ctls) if (c.type === 'select') {
+        const n = Array.isArray(c.options) ? c.options.length : Object.keys(c.options || {}).length;
+        expect(n).toBeGreaterThan(0);
+      }
     }
   });
   test('presets apply live onto params and round-trip through capture', () => {

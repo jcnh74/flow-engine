@@ -1,23 +1,21 @@
 # Flow Engine
 
-A real-time **WebGL2 generative fabric / wall renderer** for studio-style motion art. A folding, undulating fabric wall is lit like a 3D studio render, can be switched between materials, covered with thousands of pinned primitives, colored with patchwork palettes, and exported as print-size tiled stills or 1080p60 video. Everything runs locally in the browser (Vite + TypeScript, no framework).
-
-![Wall Studio, wide view](docs/images/wall-wide.jpg)
-
-![Wall animation](docs/images/wall.gif)
+A real-time **WebGL2** engine for Cinema-4D-style studio motion art. The visible lineup is a set of physical scenes (paint, city, jungle, stargate, fabric) plus a 3D fractal, all with live per-mode controls and presets. Everything runs locally in the browser (Vite + TypeScript, no framework).
 
 ## Features
 
-- **Wall Studio mode (default):** a single front-facing wavy fabric wall with fold, warp and flow controls.
-- **Materials:** silk (glossy and iridescent), water, glass, clay, fur and grass. Each takes a solid color, or a palette patchwork when no objects are attached.
-- **Attached objects:** up to 131K pinned primitives (sphere, rounded cube, capsule, torus, teardrop or mixed), ray-marched impostors that cast and receive shadows. Object materials are glossy, chrome, glass and clay. Size and rotation can be randomized.
-- **Color system:** editable palettes with randomize and save, per-layer palettes, blend modes, mix and opacity, hue shift and cycling, gradient direction, contrast and saturation. **Patchwork** mode paints large color regions (Voronoi, noise blobs or bands) with controls for scale, softness, seed, jitter and drift.
-- **Lighting:** PBR (GGX) shading, PCSS soft shadow maps, SSAO contact shadows, bloom, and ACES / filmic (AgX-style) / exponential tone mapping. There is a gradient cyclorama backdrop and film grain.
-- **Lighting presets:** C4D Studio Softbox, Rim Dramatic, High-key White, Colored Gels, Studio 3-point, Softbox top, Rim/backlit and more. Custom lights are supported.
-- **Camera:** Front, 3/4 left, 3/4 right, Close-up and Wide presets. Mouse orbit, pan and zoom, sliders, reset, and clamping that keeps the wall edges out of frame.
-- **Other modes:** Grass Field (instanced wind-blown blades with sun/sky lighting and camera presets), Liquid Spheres, Particle Fabric (GPU particles with gravity wells), classic 3D fabric and 2D curl-noise flow.
+- **Lineup (default = Jungle):** Paint (Splash, plus Paint Pour), City Vortex, Jungle (tropical motifs and a forest-floor tunnel wall), Stargate, Fabric (Drift ribbons) and 3D Fractal. Each mode has its own sliders, knobs, selectors and 3–6 presets.
+- **Paint:** live screen-space splashes thrown at the camera (default), plus the classic pour / drip-wall canvases and a separate Paint Pour loop (Cycles viscous-liquid bake).
+- **City Vortex:** a flight through neighbourhoods of glass downtown, brownstones, industrial blocks and a waterfront, with traffic and window lights.
+- **Jungle:** a vortex of flowers and leaves that journeys through orchids, heliconia, monstera, ferns, bromeliads and a lotus garden, over a mossy dirt/grass floor.
+- **Stargate:** a 2001-style slit-scan light corridor, with density, warp, glow and lens controls.
+- **Fabric:** several woven silk ribbons drifting toward the camera, with complementary palettes and anisotropic sheen.
+- **3D Fractal:** Mandelbulb, Mandelbox and related forms in a C4D studio cove, with the same per-mode preset panel as the others.
+- **Studio look:** pastel palettes, soft AO, gloss, Khronos Neutral / ACES tonemap, bloom and a gentle grade. Audio reactivity is off by default.
 - **Deterministic:** the same seed and parameters give the same frame, so stills and video re-simulate from frame 0.
 - **Export:** tiled stills at 4K, 8K, Topsheet 20400×3900 and Wrap 4500×19500 portrait (with PDF), plus custom sizes and a CMYK-safe toggle. 1080p60 MP4 video uses ffmpeg.
+
+Older visualizers (Wall Studio, Landscape, Morph, Plasma, MilkDrop, 3D fabric, Liquid Spheres, Particle Fabric, 2D flow, Tunnel, Kaleido) and the paused Gravity scene keep their code. They are hidden from the menus, the preset gallery and the remote UI. Old URLs and presets that name them fall back to Jungle.
 
 ## Screenshots
 
@@ -51,15 +49,14 @@ Still and video export use the dev server's helper middleware (`vite.config.js`)
 
 ## Controls
 
-- **Panel (lil-gui):** only the folders for the current mode are shown. In Wall Studio these are Wall, Material, Objects, Lighting, Camera, Color and Export.
-- **Mouse (Wall Studio / Grass Field):** drag to orbit, right-drag or shift-drag to pan, and scroll to zoom.
+- **Panel:** the mode's own sliders, knobs, selectors and presets, plus shared Color, Lighting, Audio and Export sections. Press `G` for the legacy lil-gui.
 - **Keys:** `Space` pauses, `R` randomizes, and `Esc` resets and recovers.
 
 ## URL parameters
 
 | Param | Example | Meaning |
 |---|---|---|
-| `mode` | `grass`, `spheres`, `particles`, `3d`, `2d` | Start in another mode (default is Wall Studio) |
+| `mode` | `Jungle`, `Paint`, `Paint Pour`, `City Vortex`, `Stargate`, `Fabric`, `3D Fractal` (aliases: `city`, `fractal`, `paint-pour`) | Start in a lineup mode (default is Jungle). Retired names such as `landscape`, `wall`, `3d`, `2d`, `gravity` fall back to Jungle. |
 | `wmat` | `silk` `water` `glass` `clay` `fur` `grass` | Wall material |
 | `wobj` | `1` | Attach objects |
 | `omat` | `glossy` `chrome` `glass` `clay` | Object material |

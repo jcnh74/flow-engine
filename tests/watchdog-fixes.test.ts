@@ -61,26 +61,10 @@ describe('Watchdog False Positive Fixes', () => {
 });
 
 describe('Mode Query Parameter', () => {
-  test('should define valid modes list', () => {
-    expect(mainSrc).toContain("const VALID_MODES = ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Wall Studio', 'Tunnel', 'Kaleido', 'Plasma', 'Morph', 'Landscape', '3D Fractal', 'MilkDrop', '3D fabric', 'Liquid Spheres', 'Particle Fabric', '2D flow']");
-  });
-
-  test('should define mode aliases', () => {
-    expect(mainSrc).toContain("const MODE_ALIASES: Record<string, string> = {");
-    expect(mainSrc).toContain("'2d': '2D flow'");
-    expect(mainSrc).toContain("'particles': 'Particle Fabric'");
-    expect(mainSrc).toContain("'spheres': 'Liquid Spheres'");
-    expect(mainSrc).toContain("'3d': '3D fabric'");
-  });
-
-  test('should check aliases first', () => {
-    expect(mainSrc).toContain('if (MODE_ALIASES[modeParam.toLowerCase()])');
-    expect(mainSrc).toContain('targetMode = MODE_ALIASES[modeParam.toLowerCase()]');
-  });
-
-  test('should do case-insensitive mode matching', () => {
-    expect(mainSrc).toContain('targetMode = VALID_MODES.find(m => m.toLowerCase() === modeParam.toLowerCase())');
-    expect(mainSrc).toContain('setMode(targetMode)');
+  test('routes URL mode through resolveMode and keeps aliases in the lineup module', () => {
+    expect(mainSrc).toContain("import { LINEUP_MODES, DEFAULT_MODE, resolveMode } from './lineup'");
+    expect(mainSrc).toContain("setMode(resolveMode(q.get('mode')))");
+    expect(mainSrc).toContain('setMode(DEFAULT_MODE)');
   });
 });
 

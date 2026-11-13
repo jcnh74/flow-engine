@@ -68,12 +68,16 @@ describe('pass 4 physical scenes: gravity sim', () => {
 describe('pass 4 physical scenes: wiring', () => {
   test('modes are registered in main and the panel', () => {
     const main = src('main.ts'), ui = src('ui/MainControlPanel.ts'), idx = src('physical/index.ts');
+    const lineup = src('lineup.ts');
     for (const m of ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour']) {
-      expect(idx).toContain(`'${m}'`.replace(/^'(\w+)'$/, '$1'));
-      expect(main).toContain(`'${m}'`);
+      expect(idx).toContain(`'${m}'`);
       expect(ui).toContain(`'${m}'`);
     }
+    for (const m of ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric']) {
+      expect(lineup).toContain(`'${m}'`);
+    }
     expect(main).toContain('PHYS_MODES[P.mode]');
+    expect(main).toContain('LINEUP_MODES');
   });
   test('shaders are GLSL ES 3.00 and the loop-critical pieces are present', () => {
     for (const f of ['stargate', 'paint', 'balls', 'cascade', 'fabric', 'jungle', 'city']) expect(src(`physical/${f}.ts`)).toContain('#version 300 es');
@@ -91,16 +95,21 @@ describe('pass 4 physical scenes: wiring', () => {
   });
 });
 
-describe('pass 5 retirements', () => {
-  test('Tunnel and Kaleido are hidden from the mode lists and presets (code kept)', async () => {
+describe('pass 8 lineup retirements', () => {
+  test('legacy modes and paused Gravity are hidden from the mode lists and presets (code kept)', async () => {
     const { PRESET_GALLERY, ALL_PRESETS } = await import('../src/presets');
-    expect(PRESET_GALLERY.some((p) => p.mode === 'Tunnel' || p.mode === 'Kaleido')).toBe(false);
+    const { isRetiredMode, LINEUP_MODES } = await import('../src/lineup');
+    expect(PRESET_GALLERY.some((p) => isRetiredMode(p.mode))).toBe(false);
     expect(ALL_PRESETS.some((p) => p.mode === 'Tunnel')).toBe(true);
+    expect(ALL_PRESETS.some((p) => p.mode === 'Landscape')).toBe(true);
     const fs = await import('fs');
     const main = fs.readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
     const gui = main.split('\n').find((l) => l.startsWith("gui.add(P, 'mode'"))!;
-    expect(gui).not.toContain("'Tunnel'"); expect(gui).not.toContain("'Kaleido'");
-    for (const m of ['Landscape', 'Morph', 'Plasma']) expect(gui).toContain(`'${m}'`);
+    expect(gui).toContain('LINEUP_MODES');
+    for (const m of ['Gravity', 'Tunnel', 'Kaleido', 'Landscape', 'Morph', 'Plasma', 'Wall Studio']) {
+      expect(gui).not.toContain(`'${m}'`);
+    }
+    expect(main).toContain('LINEUP_MODES');
     expect(main).toContain("} else if (P.mode === 'Tunnel') {");
   });
 });

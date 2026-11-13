@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parseGlb, parseCameraPath } from '../src/gltf';
 import { STUDIO_LOOKS, STUDIO_MATS, invert } from '../src/studio';
 import { PRESET_GALLERY, STUDIO_PRESETS } from '../src/presets';
+import { isRetiredMode } from '../src/lineup';
 import { LAND_LOOKS } from '../src/landscape';
 
 const SCENES = ['tunnel', 'kaleido', 'plasma'];
@@ -55,13 +56,13 @@ describe('studio looks + presets', () => {
     for (const p of STUDIO_PRESETS) {
       per[p.mode] = (per[p.mode] ?? 0) + 1;
       // pass 5: retired modes (Tunnel, Kaleido) keep their presets in ALL_PRESETS but leave the gallery
-      expect(PRESET_GALLERY.includes(p)).toBe(!['Tunnel', 'Kaleido'].includes(p.mode));
+      expect(PRESET_GALLERY.includes(p)).toBe(!isRetiredMode(p.mode));
       expect(p.params.audioReactive).toBe(false);
       expect(STUDIO_LOOKS[p.params.stLook]).toBeDefined();
       expect(STUDIO_MATS).toContain(p.params.stMat);
       if (p.params.landLook) expect(LAND_LOOKS[p.params.landLook]).toBeDefined();
       // gallery lookup uses substring match: the full name must resolve to this preset
-      if (!['Tunnel', 'Kaleido'].includes(p.mode)) expect(PRESET_GALLERY.find((g) => g.name.toLowerCase().includes(p.name.toLowerCase()))).toBe(p);
+      if (!isRetiredMode(p.mode)) expect(PRESET_GALLERY.find((g) => g.name.toLowerCase().includes(p.name.toLowerCase()))).toBe(p);
     }
     for (const m of ['Tunnel', 'Kaleido', 'Plasma', 'Morph', '3D Fractal', 'Wall Studio', 'Landscape']) {
       expect(per[m]).toBeGreaterThanOrEqual(2);
