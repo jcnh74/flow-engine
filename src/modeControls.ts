@@ -220,17 +220,17 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
     defaults: {
       frStudio: true, stLook: 'Lilac Dream', stMat: 'Matte', stRim: 0.12, frRes: 0.45,
       frType: 0, frPower: 8, frIter: 10, frBailout: 4, frScale: -1.5,
-      frCamDist: 2.5, frCamFov: 50, frRotSpeed: 0.15, frCamOrbit: true, frCamOrbitSpeed: 0.3,
+      frCamDist: 2.5, frCamFov: 50, frRotSpeed: 0.10, frCamOrbit: false, frCamOrbitSpeed: 0.12,
       frLightAz: 35, frLightEl: 50, frAmbient: 0.42, frDiffuse: 0.85, frGlow: 0, frShadow: 0.8, frShadowSharpness: 6,
-      frAOStrength: 5, frAORadius: 0.3, frFogDensity: 0.04, frFogStart: 2.0, frMaxSteps: 80, frMaxDist: 20,
+      frAOStrength: 5, frAORadius: 0.3, frFogDensity: 0.0, frFogStart: 2.0, frMaxSteps: 128, frMaxDist: 30,
       frMorph: 0, frJuliaOrbit: false, frJuliaSpeed: 0.12, frFoldRot: 0, frSlicePlane: false, frSlicePos: 0,
     },
     presets: {
-      'Lilac Bulb': { frType: 0, frPower: 8, frIter: 10, frCamDist: 2.5, frCamFov: 50, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.15, frStudio: true, stLook: 'Lilac Dream', stMat: 'Matte', stRim: 0.12 },
-      'Coral Bulb': { frType: 0, frPower: 5, frIter: 10, frCamDist: 2.6, frCamFov: 50, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.12, frStudio: true, stLook: 'Coral Peach', stMat: 'Matte', stRim: 0.12 },
-      'Mandelbox Deep': { frType: 1, frScale: -1.8, frIter: 12, frCamDist: 6.5, frCamFov: 45, frRes: 0.5, frMaxSteps: 120, frAmbient: 0.4, frFogDensity: 0.06, frRotSpeed: 0.08, frStudio: true, stLook: 'Cobalt Orange', stMat: 'Matte', stRim: 0.12 },
-      'Kaleido Garden': { frType: 2, frIter: 8, frScale: 1.85, frCamDist: 3.6, frCamFov: 48, frFoldRot: 22, frRes: 0.5, frMaxSteps: 100, frAmbient: 0.45, frAOStrength: 5, frFogDensity: 0.05, frRotSpeed: 0.1, frStudio: true, stLook: 'Cream Gold', stMat: 'Matte', stRim: 0.12 },
-      'Julia Drift': { frType: 3, frIter: 9, frCamDist: 2.8, frCamFov: 50, frJuliaOrbit: true, frJuliaSpeed: 0.12, frRotSpeed: 0.08, frGlow: 0, frFogDensity: 0.04, frMaxSteps: 100, frStudio: true, stLook: 'Mint Pink', stMat: 'Matte', stRim: 0.12 },
+      'Lilac Bulb': { frType: 0, frPower: 8, frIter: 10, frCamDist: 2.5, frCamFov: 50, frRes: 0.55, frMaxSteps: 128, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.0, frRotSpeed: 0.10, frCamOrbit: false, frStudio: true, stLook: 'Lilac Dream', stMat: 'Matte', stRim: 0.16 },
+      'Coral Bulb': { frType: 0, frPower: 5, frIter: 10, frCamDist: 2.6, frCamFov: 50, frRes: 0.55, frMaxSteps: 128, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.0, frRotSpeed: 0.10, frCamOrbit: false, frStudio: true, stLook: 'Coral Peach', stMat: 'Matte', stRim: 0.16 },
+      'Mandelbox Deep': { frType: 1, frScale: -1.8, frIter: 12, frCamDist: 6.5, frCamFov: 45, frRes: 0.6, frMaxSteps: 160, frMaxDist: 30, frAmbient: 0.4, frFogDensity: 0.0, frRotSpeed: 0.08, frCamOrbit: false, frStudio: true, stLook: 'Cobalt Orange', stMat: 'Matte', stRim: 0.16 },
+      'Kaleido Garden': { frType: 2, frIter: 8, frScale: 1.85, frCamDist: 3.6, frCamFov: 48, frFoldRot: 22, frRes: 0.55, frMaxSteps: 128, frAmbient: 0.45, frAOStrength: 5, frFogDensity: 0.0, frRotSpeed: 0.10, frCamOrbit: false, frStudio: true, stLook: 'Cream Gold', stMat: 'Matte', stRim: 0.16 },
+      'Julia Drift': { frType: 3, frIter: 10, frCamDist: 2.8, frCamFov: 50, frJuliaOrbit: false, frJuliaSpeed: 0.08, frRotSpeed: 0.08, frGlow: 0, frFogDensity: 0.0, frMaxSteps: 140, frCamOrbit: false, frStudio: true, stLook: 'Mint Pink', stMat: 'Matte', stRim: 0.16 },
     },
   },
   'Landscape': {
@@ -298,16 +298,17 @@ export function fractalTypeName(t: number): string {
 export function applyFractalTypeDefaults(P: Record<string, any>, type: number) {
   const t = normalizeFrType(Number(type));
   P.frType = t;
-  P.frRotSpeed = P.frRotSpeed ?? 0.12;
+  P.frRotSpeed = P.frRotSpeed ?? 0.10;
   P.frSlicePlane = false;
+  P.frSurfDist = 0.85;
   if (t === 0) {
-    P.frIter = 10; P.frPower = 8; P.frBailout = 4; P.frCamDist = 2.5; P.frCamFov = 50;
+    P.frIter = 10; P.frPower = 8; P.frBailout = 4; P.frCamDist = 2.5; P.frCamFov = 50; P.frMaxSteps = 128;
   } else if (t === 1) {
-    P.frIter = 12; P.frScale = -1.8; P.frCamDist = 6.5; P.frCamFov = 45; P.frMaxSteps = 120;
+    P.frIter = 12; P.frScale = -1.8; P.frCamDist = 6.5; P.frCamFov = 45; P.frMaxSteps = 160; P.frMaxDist = 30;
   } else if (t === 2) {
-    P.frIter = 8; P.frScale = 1.85; P.frFoldRot = 22; P.frCamDist = 3.6; P.frCamFov = 48; P.frMaxSteps = 100;
+    P.frIter = 8; P.frScale = 1.85; P.frFoldRot = 22; P.frCamDist = 3.6; P.frCamFov = 48; P.frMaxSteps = 128;
   } else if (t === 3) {
-    P.frIter = 10; P.frCamDist = 2.8; P.frCamFov = 50; P.frBailout = 4; P.frMaxSteps = 120; P.frSurfDist = 1;
+    P.frIter = 10; P.frCamDist = 2.8; P.frCamFov = 50; P.frBailout = 4; P.frMaxSteps = 140;
   }
 }
 

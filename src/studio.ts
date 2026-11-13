@@ -34,6 +34,22 @@ export const STUDIO_LOOKS: Record<string, StudioLook> = {
     key: '#fff1dc', fill: '#fff8ef', rim: '#fff3e0', dome: '#fff4e6', keyI: 1.1, domeI: 0.62 },
 };
 export const STUDIO_LOOK_NAMES = Object.keys(STUDIO_LOOKS);
+
+/** Object pigments that stay distinct from each look's cove (bgTop / bgBottom).
+ *  Used by 3D Fractal so clay bands cannot disappear into the backdrop. */
+export const FRACTAL_PIGMENT: Record<string, { c1: string; mid: string; c2: string }> = {
+  'Lilac Dream':   { c1: '#d45a86', mid: '#d9b56a', c2: '#4f54c8' },
+  'Coral Peach':   { c1: '#c43a32', mid: '#e08940', c2: '#3d4cc0' },
+  'Cobalt Orange': { c1: '#ff8a2a', mid: '#ffc05e', c2: '#f6e8d4' },
+  'Mint Pink':     { c1: '#c44878', mid: '#2aae9e', c2: '#5a3fa8' },
+  'Cream Gold':    { c1: '#8c6648', mid: '#c4955c', c2: '#5c3a22' },
+  'Red Studio':    { c1: '#3ec8c0', mid: '#eaa43c', c2: '#f4e4d2' },
+};
+
+export function fractalPigment(lookName: string): { c1: string; mid: string; c2: string } {
+  return FRACTAL_PIGMENT[lookName] ?? FRACTAL_PIGMENT['Lilac Dream'];
+}
+
 export const STUDIO_MATS = ['Scene', 'Matte', 'Gloss', 'Iridescent', 'Satin metal'];
 
 export function srgbHex(h: string): Vec3 {

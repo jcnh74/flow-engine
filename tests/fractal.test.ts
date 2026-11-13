@@ -82,3 +82,47 @@ describe('Fractal Parameter Bounds', () => {
 });
 
 export {};
+
+
+import { readFileSync } from 'fs';
+import { FRACTAL_PIGMENT, STUDIO_LOOKS, fractalPigment } from '../src/studio';
+
+test('ray march is conservative and does not fade hits into the backdrop', () => {
+  const src = readFileSync(new URL('../src/fractal_shaders.ts', import.meta.url), 'utf8');
+  expect(src).toContain('t += d * 0.75');
+  expect(src).toContain('float eps = max(0.00025, t * 0.0002)');
+  expect(src).toContain('0.65 * length(pos)');
+  expect(src).not.toContain('col = mix(col, fogColor, fogAmount)');
+  expect(src).toContain('col *= 1.0 - 0.3 * fogAmount');
+  expect(src).toContain('Edge / contact darkening');
+});
+
+test('object spin uses a continuous clock, not a camera-chasing wrap', () => {
+  const src = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+  expect(src).toContain('const t = frClock');
+  expect(src).not.toMatch(/camAngle = t \* V\.frRotSpeed/);
+  expect(src).toContain('if (P.frCamOrbit) camAngle += t * (P.frCamOrbitSpeed || 0)');
+  expect(src).toContain('frClock += Math.min(0.1, dt)');
+});
+
+function luma(hex: string) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const f = (c: number) => {
+    c /= 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const r = f((n >> 16) & 255), g = f((n >> 8) & 255), b = f(n & 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+test('every studio look has fractal pigments distinct from the cove', () => {
+  for (const name of Object.keys(STUDIO_LOOKS)) {
+    const look = STUDIO_LOOKS[name];
+    const pig = fractalPigment(name);
+    expect(FRACTAL_PIGMENT[name]).toBeTruthy();
+    const bg = 0.5 * (luma(look.bgTop) + luma(look.bgBottom));
+    for (const hex of [pig.c1, pig.mid, pig.c2]) {
+      expect(Math.abs(luma(hex) - bg)).toBeGreaterThan(0.08);
+    }
+  }
+});

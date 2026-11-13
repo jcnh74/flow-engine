@@ -20,7 +20,7 @@ import { ButterchurnRenderer } from './butterchurn-integration';
 import { LandscapeRenderer, LAND_LOOK_NAMES } from './landscape';
 import { RELIEF_DOWN_FS, RELIEF_HEIGHT_FS, RELIEF_SHADE_FS } from './relief_shaders';
 import { SCULPT_FS } from './sculpt_shaders';
-import { StudioRenderer, STUDIO_LOOKS, STUDIO_LOOK_NAMES, STUDIO_MATS, srgbHex } from './studio';
+import { StudioRenderer, STUDIO_LOOKS, STUDIO_LOOK_NAMES, STUDIO_MATS, srgbHex, fractalPigment } from './studio';
 import { normalizeFrType, fractalTypeName, applyFractalTypeDefaults } from './modeControls';
 import { PhysicalRenderer, PHYS_MODES, PHYS_VARIANTS, PHYS_MATS, STARGATE_PALETTES } from './physical';
 import { setColorParams } from './physical/common';
@@ -1160,6 +1160,7 @@ const sphereHooks = {
 // ---------- preview ----------
 // Timing state (real time from performance.now())
 let startTime = 0, currentTime = 0, dt = 0, lastFrameTime = 0;
+let frClock = 0; // paused-aware 3D Fractal time; not reset with the frame counter
 let frame = 0; // Frame counter (for compatibility, but timing uses currentTime)
 let trails: Trails | undefined, frameRect = [0, 0, 1, 1], previewAspect = 16 / 9;
 let lastCycleBar = -1; // For MilkDrop auto-cycle
@@ -1222,17 +1223,18 @@ function renderFractal(T: Trails, vp: number[]) {
   } else { gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f); gl.viewport(0, 0, T.w, T.h); }
   gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
   
-  const t = frame * DT;
+  // Continuous paused-aware clock (not frame * DT, which jumped whenever
+  // recover() reset the frame counter, and which also drove the camera at the
+  // same rate as the object so the spin cancelled and appeared to hitch).
+  const t = frClock;
   const camDist = V.frCamDist;
-  
-  // Camera orbit. Quaternion Julia is a solid of revolution around the real (x)
-  // axis, so a 0° yaw would look down the rings; start that type on the z side.
-  let camAngle = t * V.frRotSpeed;
-  if (P.frCamOrbit) {
-    camAngle += t * P.frCamOrbitSpeed;
-  }
+
+  // Object spin is applied in the shader from uRotSpeed. The camera only
+  // orbits when Camera Orbit is on, and only at Orbit Speed — never at
+  // Rotation Speed — so the solid turns continuously with no visible snap.
   const frT = normalizeFrType(P.frType);
-  if (frT === 3) camAngle += Math.PI * 0.5;
+  let camAngle = frT === 3 ? Math.PI * 0.5 : 0.35;
+  if (P.frCamOrbit) camAngle += t * (P.frCamOrbitSpeed || 0);
   const camLift = frT === 3 ? 0.45 : 0.3;
   const camPos = [Math.cos(camAngle) * camDist, camDist * camLift, Math.sin(camAngle) * camDist];
   const camTarget = [0, 0, 0];
@@ -1258,7 +1260,8 @@ function renderFractal(T: Trails, vp: number[]) {
   gl.uniform1f(u.uMinRadius, V.frMinR);
   gl.uniform1f(u.uFixedRadius, V.frFixedR);
   
-  const c1 = P.frStudio ? hex(lookOf().slots[0]) : hex(P.frColor1), c2 = P.frStudio ? hex(lookOf().slots[2]) : hex(P.frColor2);
+  const pigment = P.frStudio ? fractalPigment(P.stLook) : null;
+  const c1 = hex(pigment ? pigment.c1 : P.frColor1), c2 = hex(pigment ? pigment.c2 : P.frColor2);
   gl.uniform3f(u.uColor1, c1[0], c1[1], c1[2]);
   gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
   gl.uniform1f(u.uColorMix, V.frColorMix);
@@ -1290,7 +1293,7 @@ function renderFractal(T: Trails, vp: number[]) {
     gl.uniform3f(u.uBgTop, bt[0], bt[1], bt[2]); gl.uniform3f(u.uBgBottom, bb[0], bb[1], bb[2]);
     gl.uniform3f(u.uDomeCol, dm[0] * lk.domeI * 1.3, dm[1] * lk.domeI * 1.3, dm[2] * lk.domeI * 1.3);
     gl.uniform3f(u.uKeyColS, ky[0] * lk.keyI, ky[1] * lk.keyI, ky[2] * lk.keyI); gl.uniform3f(u.uRimCol, rm[0], rm[1], rm[2]);
-    const md = hex(lk.slots[3]); gl.uniform3f(u.uMid, md[0], md[1], md[2]);
+    const md = hex((pigment ? pigment.mid : null) || lk.slots[3]); gl.uniform3f(u.uMid, md[0], md[1], md[2]);
     {
       const mat = String(P.stMat || '');
       let gloss = 1;
@@ -1316,7 +1319,7 @@ function renderFractal(T: Trails, vp: number[]) {
   }
   
   // Reduce max steps for Auto mode
-  const maxSteps = P.autoQuality ? Math.max(32, Math.floor(P.frMaxSteps * qualityScale)) : P.frMaxSteps;
+  const maxSteps = P.autoQuality ? Math.max(96, Math.floor(P.frMaxSteps * qualityScale)) : P.frMaxSteps;
   gl.uniform1i(u.uMaxSteps, maxSteps);
   gl.uniform1f(u.uMaxDist, P.frMaxDist);
   gl.uniform1f(u.uSurfDist, V.frSurfDist);
@@ -1562,7 +1565,7 @@ function tick(now: number) {
     if (!P.paused) { t3 += dt * V.evolution3d; }
     renderLandscape(T, previewAspect);
   } else if (P.mode === '3D Fractal') {
-    if (!P.paused) frame++;
+    if (!P.paused) frClock += Math.min(0.1, dt);
     renderFractal(T, [0, 1, 0, 1]);
   } else if (P.mode === 'MilkDrop') {
     if (!P.paused) {
@@ -2463,14 +2466,16 @@ function wallDefaults() {
 }
 function fractalStudioDefaults() {
   // C4D AO clay: matte pigment, no reflection or specular, dome + soft key, deep AO.
-  P.frStudio = true; studioPost(); P.stLook = 'Lilac Dream'; P.stMat = 'Matte'; P.stRim = 0.12; P.frRes = 0.45;
+  P.frStudio = true; studioPost(); P.stLook = 'Lilac Dream'; P.stMat = 'Matte'; P.stRim = 0.16; P.frRes = 0.55;
   P.phGloss = 0; P.phIrid = 0;
   P.frType = normalizeFrType(P.frType);
   applyFractalTypeDefaults(P, P.frType);
-  P.frColor1 = lookOf().slots[0]; P.frColor2 = lookOf().slots[2]; P.frColorMix = 1.6;
+  const pig = fractalPigment(P.stLook);
+  P.frColor1 = pig.c1; P.frColor2 = pig.c2; P.frColorMix = 1.6;
   P.frAmbient = 0.42; P.frDiffuse = 0.85; P.frGlow = 0; P.frShadow = 0.8; P.frShadowSharpness = 6;
-  P.frAOStrength = 5.0; P.frAORadius = 0.3; P.frFogDensity = 0.04; P.frFogStart = 2.0;
-  P.frLightAz = 35; P.frLightEl = 50; P.frMaxSteps = 80;
+  P.frAOStrength = 5.0; P.frAORadius = 0.3; P.frFogDensity = 0.0; P.frFogStart = 2.0;
+  P.frLightAz = 35; P.frLightEl = 50; P.frMaxSteps = 128; P.frSurfDist = 0.85;
+  P.frRotSpeed = 0.10; P.frCamOrbit = false;
   P.saturation = 1.0; P.bloomStrength = 0.03; P.feedbackEnabled = false; P.caStrength = 0;
 }
 function landDefaults() {
@@ -3152,6 +3157,7 @@ log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mod
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
 (window as any).engine = { P, renderStill, reset, recover, renderVideo, studio, phys, fractal,
   hideUI, showUI, enterPerformanceMode, exitPerformanceMode, getStageState,
+  getFrClock: () => frClock,
   syncStage: () => stageChrome.sync(getStageState()),
   lastFullscreenResult,
   buildPalette,

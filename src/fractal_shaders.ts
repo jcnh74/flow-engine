@@ -168,8 +168,9 @@ float deMandelbox(vec3 pos) {
     
     if (dot(pos, pos) > uBailout * uBailout) break;
   }
-  
-  return length(pos) / abs(dr);
+
+  // The raw box DE can overestimate and overstep, punching holes in the solid.
+  return 0.65 * length(pos) / max(abs(dr), 1e-6);
 }
 
 // Kaleidoscopic IFS distance estimator.
@@ -197,7 +198,7 @@ float deKaleidoscopic(vec3 p) {
     der *= scale;
   }
 
-  return (length(p) - 0.8) / der;
+  return 0.8 * (length(p) - 0.8) / max(der, 1e-6);
 }
 
 // Quaternion multiplication
@@ -340,7 +341,9 @@ vec4 raymarch(vec3 ro, vec3 rd) {
     // Accumulate glow
     glow += exp(-10.0 * abs(d)) * 0.01;
     
-    if (d < 0.001) {
+    // Distance-relative hit epsilon so close and far surfaces both register.
+    float eps = max(0.00025, t * 0.0002);
+    if (d < eps) {
       // Hit surface
       vec3 n = calcNormal(p);
       
@@ -379,26 +382,32 @@ vec4 raymarch(vec3 ro, vec3 rd) {
         vec3 env = studioBg(R) + uKeyColS * pow(max(dot(R, uLightDir), 0.0), 40.0) * 2.0;
         float fr = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
         col = col * lit + env * fr * uGlossS * ao + uRimCol * uRimS * pow(1.0 - nv, 3.0) * ao;
+        // Edge / contact darkening so the solid stays readable against a light cove.
+        float edge = pow(1.0 - nv, 1.6);
+        float contact = (1.0 - ao);
+        col *= (1.0 - 0.42 * edge) * (1.0 - 0.28 * contact);
       } else {
-      col = col * light * ao;
+        col = col * light * ao;
+        float nv2 = max(dot(n, -rd), 0.0);
+        col *= (1.0 - 0.4 * pow(1.0 - nv2, 1.6)) * (1.0 - 0.25 * (1.0 - ao));
       }
       
       // Add glow (neutral gray to not interfere with hue rotation)
       // R25: Was blue (0.3,0.5,1.0), now neutral to let hueShift control all color
       col += vec3(0.5) * glow * uGlow;
       
-      // Fog (exponential distance-based, neutral gray)
-      // R25: Was blue-tinted (0.05,0.06,0.08), now neutral to preserve hue rotation
+      // Depth darkening only — never fade the solid into the backdrop color,
+      // which made clay bands disappear against the lilac / cream cove.
       if (uFogDensity > 0.0) {
         float fogAmount = 1.0 - exp(-uFogDensity * max(0.0, t - uFogStart));
-        vec3 fogColor = uStudio > 0.5 ? studioBg(rd) : vec3(0.06);  // Neutral gray (or the studio cyc)
-        col = mix(col, fogColor, fogAmount);
+        col *= 1.0 - 0.3 * fogAmount;
       }
       
       return vec4(col, 1.0);
     }
     
-    t += d;
+    // Conservative step so slightly-overestimated DEs cannot skip the surface.
+    t += d * 0.75;
     if (t > uMaxDist) break;
   }
   
