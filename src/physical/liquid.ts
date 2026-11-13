@@ -13,15 +13,19 @@ import { rbox, sphereGeo, icosphere, newGeo, type Col, SURF_VS, SURF_FS, BALL_VS
 import { compile, MsTarget, ShadowMap, setStudioEnv, lookOf, lookAt, perspective, ortho, mul, norm, srgbHex,
   type PhysFrame, type PhysScene, type Prog, type Vec3 } from './common';
 
-export const LIQUID_N = 16000;
-export const LIQUID_BACKDROPS: Record<string, { bgTop: string; bgBottom: string; chrome: string; pearl: string }> = {
-  'Ink Studio': { bgTop: '#2a2438', bgBottom: '#0d0b14', chrome: '#c9ccd6', pearl: '#f4ece6' },
-  'Blush Void': { bgTop: '#ffe6ee', bgBottom: '#f3b8c9', chrome: '#e8e3ea', pearl: '#fff7f0' },
-  'Deep Teal': { bgTop: '#14444c', bgBottom: '#041519', chrome: '#bfe3e0', pearl: '#f1fbf8' },
-  'Sunlit Cream': { bgTop: '#fff4e2', bgBottom: '#f0d2a8', chrome: '#e6dccd', pearl: '#ffffff' },
+export const LIQUID_N = 12500;
+// pass 8 framing: tight camera on three layers of flow in front of a leaning backdrop wall that catches their shadows
+const WALL_TILT = 1.05;
+export const LQ = { tgtY: 2.4, tgtZ: -1.6, camDist: 10.2, aspect: 16 / 9, frontZ: 0.3, midZ: -1.3, wallZ: -3.4, wallY: 2.4,
+  wallCT: Math.cos(WALL_TILT), wallST: Math.sin(WALL_TILT), target: 9800, filmShare: 0.42, maxHeads: 15, layers: [2, 1, 0, 2, 1, 2, 1, 0, 2, 1, 2, 1, 0, 2, 1] };
+export const LIQUID_BACKDROPS: Record<string, { bgTop: string; bgBottom: string; chrome: string; pearl: string; wall: string }> = {
+  'Ink Studio': { bgTop: '#2a2438', bgBottom: '#0d0b14', chrome: '#c9ccd6', pearl: '#f4ece6', wall: '#7a6c84' },
+  'Blush Void': { bgTop: '#ffe6ee', bgBottom: '#f3b8c9', chrome: '#e8e3ea', pearl: '#fff7f0', wall: '#e2a2b6' },
+  'Deep Teal': { bgTop: '#14444c', bgBottom: '#041519', chrome: '#bfe3e0', pearl: '#f1fbf8', wall: '#3d7a7e' },
+  'Sunlit Cream': { bgTop: '#fff4e2', bgBottom: '#f0d2a8', chrome: '#e6dccd', pearl: '#ffffff', wall: '#dcb88a' },
 };
-export type LiquidParams = { pour: number; streams: number; cohesion: number; viscosity: number; turbulence: number; drip: number; gravity: number; ballSize: number; order: string; bursts: number };
-export const LIQUID_DEFAULTS: LiquidParams = { pour: 1, streams: 8, cohesion: 1, viscosity: 1, turbulence: 1, drip: 1, gravity: 9.8, ballSize: 1, order: 'Rainbow', bursts: 1 };
+export type LiquidParams = { zoom: number; tanV: number; pour: number; streams: number; cohesion: number; viscosity: number; turbulence: number; drip: number; gravity: number; ballSize: number; order: string; bursts: number };
+export const LIQUID_DEFAULTS: LiquidParams = { zoom: 1, tanV: Math.tan(18 * Math.PI / 180), pour: 1, streams: 15, cohesion: 1, viscosity: 1, turbulence: 1, drip: 1, gravity: 9.8, ballSize: 1, order: 'Rainbow', bursts: 1 };
 
 function forms(): Col[] {
   const L: Col[] = [];
@@ -29,38 +33,37 @@ function forms(): Col[] {
     const ext = Math.hypot(by + rad, bz + rad); L.push({ sph: false, cx, cy, cz, bx, by, bz, rad, ct: Math.cos(tilt), st: Math.sin(tilt), z0: cz - ext, z1: cz + ext, mat, vis: true });
   };
   const sph = (cx: number, cy: number, cz: number, R: number, mat: number) => L.push({ sph: true, cx, cy, cz, bx: 0, by: 0, bz: 0, rad: R, ct: 1, st: 0, z0: cz - R, z1: cz + R, mat, vis: true });
-  box(0.6, 5.2, -2.4, 3.4, 0.08, 1.3, 0.12, 0.42, 2);   // tilted chrome lip: sheet flow toward the lens, drips off its edge
-  sph(-2.9, 3.4, -1.2, 1.35, 2);                        // chrome orb streams coat and drip from
-  sph(2.7, 1.0, 0.2, 1.0, 4);                           // pearl orb
-  sph(-0.6, -0.6, 1.4, 0.65, 2);                        // small chrome bead low in frame
-  box(-2.2, 0.6, -0.6, 1.6, 0.07, 1.0, 0.1, -0.5, 4);    // low pearl lip tipped the other way: sheets fold back across
-  sph(0.6, 6.8, -0.8, 0.7, 4);                          // high pearl bead splits a stream
+  box(0, LQ.wallY, LQ.wallZ, 11, 0.12, 6.2, 0.12, WALL_TILT, 0);  // leaning backdrop wall right behind the flow: film runs down it, catches shadows
+  sph(-2.0, 4.7, -1.5, 0.55, 2);                        // high chrome bead splits the mid streams
+  sph(2.4, 2.2, -2.2, 0.9, 2);                          // chrome orb between mid layer and wall
+  sph(-3.4, 1.0, 0.2, 0.6, 4);                          // pearl bead the front streams split around
+  box(2.0, 0.6, 0.0, 1.3, 0.06, 0.7, 0.1, -0.45, 1);     // low pearl lip tipped back toward the wall
   return L;
 }
 
 export class LiquidSim {
   N: number; px: Float32Array; py: Float32Array; pz: Float32Array; vx: Float32Array; vy: Float32Array; vz: Float32Array; r: Float32Array; r0: Float32Array;
   alive: Uint8Array; mat: Uint8Array; col: Float32Array; occ: Float32Array; ncol: Float32Array; gap: Float32Array;
-  cols = forms(); t = 0; stats = { stepMs: 0, contacts: 0, alive: 0 }; P: LiquidParams = { ...LIQUID_DEFAULTS };
+  cols = forms(); t = 0; stats = { stepMs: 0, contacts: 0, alive: 0, avgMs: 0, budget: 1 }; P: LiquidParams = { ...LIQUID_DEFAULTS };
   private seed = 424242; private dead: number[] = [];
   private heads: { x: number; z: number; ph: number; sec: number; acc: number; w: number }[] = [];
-  private cs: Int32Array; private cc: Int32Array; private so: Int32Array; private ky: Int32Array;
+  film: Uint8Array = new Uint8Array(0); private cs: Int32Array; private cc: Int32Array; private so: Int32Array; private ky: Int32Array;
     private static STENCIL = (() => { const o = [0, 0, 0]; for (let z = -1; z <= 1; z++) for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) { if (x === 0 && y === 0 && z === 0) continue; if (z > 0 || (z === 0 && (y > 0 || (y === 0 && x > 0)))) o.push(x, y, z); } return o; })();
   private pal: Record<string, number[][]> = {}; private nextBurst = 3; private secTick = 0;
   constructor(N = LIQUID_N) {
     this.N = N; const f = () => new Float32Array(N);
     this.px = f(); this.py = f(); this.pz = f(); this.vx = f(); this.vy = f(); this.vz = f(); this.r = f(); this.r0 = f(); this.gap = f();
-    this.alive = new Uint8Array(N); this.mat = new Uint8Array(N); this.col = new Float32Array(N * 3); this.occ = new Float32Array(N * 4); this.ncol = new Float32Array(N * 3);
-    const NC = 94 * 57 * 70; this.cs = new Int32Array(NC); this.cc = new Int32Array(NC); this.so = new Int32Array(N); this.ky = new Int32Array(N);
+    this.alive = new Uint8Array(N); this.film = new Uint8Array(N); this.mat = new Uint8Array(N); this.col = new Float32Array(N * 3); this.occ = new Float32Array(N * 4); this.ncol = new Float32Array(N * 3);
+    const NC = Math.ceil(28 / 0.26) * Math.ceil(17 / 0.26) * Math.ceil(21 / 0.26); this.cs = new Int32Array(NC); this.cc = new Int32Array(NC); this.so = new Int32Array(N); this.ky = new Int32Array(N);
     for (const k of Object.keys(SECTIONS)) this.pal[k] = SECTIONS[k].map((h) => srgbHex(h) as unknown as number[]);
-    for (let i = N - 1; i >= 0; i--) { this.dead.push(i); const u = this.rnd(); this.r0[i] = 0.085 + 0.05 * u * u; this.py[i] = -100; }
-    for (let k = 0; k < 10; k++) this.heads.push({ x: -4 + k * 0.9, z: -1.5 + this.rnd() * 2, ph: this.rnd() * 10, sec: k, acc: 0, w: 0.8 + this.rnd() * 0.6 });
+    for (let i = N - 1; i >= 0; i--) { this.dead.push(i); const u = this.rnd(); this.r0[i] = 0.068 + 0.035 * u * u; this.py[i] = -100; }
+    for (let k = 0; k < LQ.maxHeads; k++) this.heads.push({ x: -4 + k * 0.9, z: -1.5 + this.rnd() * 2, ph: this.rnd() * 10, sec: k, acc: 0, w: 0.8 + this.rnd() * 0.6 });
   }
   pack(d: Float32Array): number {
     let n = 0;
     for (let i = 0; i < this.N; i++) if (this.alive[i]) {
       const o = n * 16;
-      d[o] = this.px[i]; d[o + 1] = this.py[i]; d[o + 2] = this.pz[i]; d[o + 3] = this.r[i];
+      d[o] = this.px[i]; d[o + 1] = this.py[i]; d[o + 2] = this.pz[i]; d[o + 3] = this.r[i] * (this.film[i] ? 1.8 : 1);   // film on the wall drawn as flattened puddles: covers with fewer balls
       d[o + 4] = this.col[i * 3]; d[o + 5] = this.col[i * 3 + 1]; d[o + 6] = this.col[i * 3 + 2]; d[o + 7] = this.mat[i];
       d[o + 8] = this.occ[i * 4]; d[o + 9] = this.occ[i * 4 + 1]; d[o + 10] = this.occ[i * 4 + 2]; d[o + 11] = this.occ[i * 4 + 3];
       d[o + 12] = this.ncol[i * 3]; d[o + 13] = this.ncol[i * 3 + 1]; d[o + 14] = this.ncol[i * 3 + 2]; d[o + 15] = this.gap[i];
@@ -72,54 +75,83 @@ export class LiquidSim {
   private sortTick = 0;
   // cache locality: every 20 steps permute particle storage into grid-cell order (alive first) so neighbour reads hit nearby memory
   private reorder() {
-    const N = this.N, ky = this.ky; const idx = new Int32Array(N); for (let i = 0; i < N; i++) idx[i] = i;
-    const key = (i: number) => (this.alive[i] ? ky[i] : 1e9 + i);
-    const keys = new Float64Array(N); for (let i = 0; i < N; i++) keys[i] = key(i);
-    idx.sort((a, b) => keys[a] - keys[b]);
-    const perm1 = (a: Float32Array | Uint8Array) => { const c = a.slice(); for (let q = 0; q < N; q++) a[q] = c[idx[q]]; };
-    const permK = (a: Float32Array, k: number) => { const c = a.slice(); for (let q = 0; q < N; q++) for (let m = 0; m < k; m++) a[q * k + m] = c[idx[q] * k + m]; };
-    for (const a of [this.px, this.py, this.pz, this.vx, this.vy, this.vz, this.r, this.r0, this.gap, this.alive, this.mat]) perm1(a);
+    // permutation straight from the grid's counting sort (cell order, alive first): O(N), no comparator sort hitch
+    const N = this.N; const idx = new Int32Array(N); let q = 0;
+    const GXYZ = this.lastCells; for (let c = 0; c < GXYZ; c++) { const s0 = this.cs[c], s1 = s0 + this.cc[c]; for (let t = s0; t < s1; t++) { const i = this.so[t]; if (this.alive[i]) idx[q++] = i; } }
+    const seen = new Uint8Array(N); for (let t = 0; t < q; t++) seen[idx[t]] = 1; for (let i = 0; i < N; i++) if (!seen[i]) idx[q++] = i;
+    const perm1 = (a: Float32Array | Uint8Array) => { const c = a.slice(); for (let t = 0; t < N; t++) a[t] = c[idx[t]]; };
+    const permK = (a: Float32Array, k: number) => { const c = a.slice(); for (let t = 0; t < N; t++) for (let m = 0; m < k; m++) a[t * k + m] = c[idx[t] * k + m]; };
+    for (const a of [this.px, this.py, this.pz, this.vx, this.vy, this.vz, this.r, this.r0, this.gap, this.alive, this.mat, this.film]) perm1(a);
     permK(this.col, 3); permK(this.ncol, 3); permK(this.occ, 4);
     this.dead = []; for (let i = N - 1; i >= 0; i--) if (!this.alive[i]) this.dead.push(i);
   }
-  private kill(i: number) { this.alive[i] = 0; this.dead.push(i); this.py[i] = -100; }
+  private filmAlive = 0; private lastCells = 0; private emaMs = 8; budgetK = 1;
+  private kill(i: number) { this.alive[i] = 0; this.film[i] = 0; this.dead.push(i); this.py[i] = -100; }
   private emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, sec: string) {
     const i = this.dead.pop(); if (i === undefined) return;
     const pal = this.pal[sec] ?? this.pal.coral; const s = this.P.ballSize;
     this.px[i] = x; this.py[i] = y; this.pz[i] = z; this.vx[i] = vx; this.vy[i] = vy; this.vz[i] = vz; this.r[i] = this.r0[i] * s; this.alive[i] = 1; this.gap[i] = 1;
     const c = pal[Math.floor(this.rnd() * pal.length) % pal.length]; this.col[i * 3] = c[0]; this.col[i * 3 + 1] = c[1]; this.col[i * 3 + 2] = c[2];
-    const m = this.rnd(); this.mat[i] = m < 0.8 ? 0 : m < 0.88 ? 1 : m < 0.97 ? 2 : 3;
+    const m = this.rnd(); this.mat[i] = m < 0.94 ? 0 : m < 0.97 ? 1 : m < 0.995 ? 2 : 3;   // mostly lacquer: fewer odd beads in the flow
+  }
+  /** camera-space framing shared by the sim (frustum spawn/cull) and the scene camera */
+  eyeZ() { return LQ.tgtZ + LQ.camDist * this.P.zoom; }
+  private inView(x: number, y: number, z: number, m: number) {
+    const dz = this.eyeZ() - z; const tv = this.P.tanV, th = tv * LQ.aspect;
+    return dz > 0.6 && Math.abs(y - LQ.tgtY) < dz * tv + m && Math.abs(x) < dz * th + m;
   }
   step(dt: number, gather = true) {
     const t0 = performance.now(); const P = this.P; const order = ROOM_ORDERS[P.order] ?? SECTION_ORDER;
-    // pour heads: wander, pulse, and step through the colour order
-    this.secTick += dt; if (this.secTick > 3.2) { this.secTick = 0; const h = this.heads[Math.floor(this.rnd() * this.heads.length)]; h.sec++; }
-    const nh = Math.max(1, Math.min(10, Math.round(P.streams)));
+    this.secTick += dt; if (this.secTick > 2.6) { this.secTick = 0; const h = this.heads[Math.floor(this.rnd() * this.heads.length)]; h.sec++; }
+    // pour heads in three depth layers (front stream, mid stream, back film running down the wall), spaced densely
+    // across exactly the visible width at their depth so streams merge into a curtain; spawn just above the view top
+    const nh = Math.max(3, Math.min(LQ.maxHeads, Math.round(P.streams)));
+    const ez = this.eyeZ(), tv = P.tanV, th = tv * LQ.aspect;
+    const target = Math.min(this.N - 400, LQ.target * Math.sqrt(Math.max(0.2, P.pour)) / (P.ballSize * P.ballSize)) * this.budgetK;   // fixed physics budget + governor
+    // steady count: separate feedback for the wall film and the free streams so neither starves the other
+    const fbOf = (n: number, tg: number) => Math.max(0.05, Math.min(2.5, 2.6 * (1 - n / tg) + 0.15));
+    const fbFilm = fbOf(this.filmAlive, target * LQ.filmShare), fbStream = fbOf(this.stats.alive - this.filmAlive, target * (1 - LQ.filmShare));
+    const LAY = LQ.layers; const perLayer = [0, 0, 0], idxIn: number[] = []; for (let k = 0; k < nh; k++) { idxIn.push(perLayer[LAY[k]]); perLayer[LAY[k]]++; }
     for (let k = 0; k < nh; k++) {
-      const h = this.heads[k]; const tt = this.t * 0.23 * h.w + h.ph;
-      const hx = Math.sin(tt) * 3.2 + Math.sin(tt * 2.7 + 1.3) * 1.4 + (k - (nh - 1) / 2) * 1.2, hz = h.z + Math.sin(tt * 1.7) * 0.9;
-      const pulse = (Math.max(0, Math.sin(this.t * (0.9 + 0.3 * k) + h.ph * 3) + Math.sin(this.t * 2.3 + k) * 0.25 + 0.2) / 1.45) ** 0.7;   // gaps let streams break into slugs and drips
-      h.acc += dt * 3600 * P.pour * pulse / Math.pow(nh, 0.3);
+      const h = this.heads[k]; const layer = LAY[k], j = idxIn[k], nl = perLayer[layer];
+      const tt = this.t * 0.31 * h.w + h.ph;
+      const pulse = 0.55 + 0.45 * Math.max(0, Math.sin(this.t * (0.8 + 0.27 * k) + h.ph * 3) + 0.3 * Math.sin(this.t * 2.1 + k)) ** 0.8;
       const sec = order[h.sec % order.length];
-      while (h.acc >= 1) { h.acc -= 1; const a = this.rnd() * 6.283, rr = Math.sqrt(this.rnd()) * (0.3 + 0.35 * pulse);
-        this.emit(hx + Math.cos(a) * rr, 9.4 + this.rnd() * 0.3, hz + Math.sin(a) * rr, Math.sin(tt * 1.3) * 0.6, -3.5 - this.rnd(), Math.cos(tt) * 0.3 + 0.25, sec); }
+      let zc = layer === 0 ? LQ.frontZ : layer === 1 ? LQ.midZ : LQ.wallZ;
+      const dz = ez - zc; const halfW = dz * th * 1.04; const sp = 2 * halfW / nl;
+      const x0 = -halfW + sp * (j + 0.5 + (layer === 1 ? 0.5 : 0)) + Math.sin(tt) * sp * 0.45;
+      let y0 = LQ.tgtY + dz * tv + (layer === 2 ? 1.0 : 0.35);
+      const rate = (layer === 2 ? 3400 : 2400) * P.pour * pulse * (layer === 2 ? fbFilm : fbStream) * (15 / nh);
+      h.acc += dt * rate;
+      if (layer === 2) {                                   // back film: spawn on the wall face, sliding down it
+        const s_ = -(y0 - LQ.wallY) / LQ.wallST; zc = LQ.wallZ + s_ * LQ.wallCT + LQ.wallCT * 0.0 + 0.32 * LQ.wallST; y0 = LQ.wallY - s_ * LQ.wallST + 0.32 * LQ.wallCT;
+      }
+      const nz = layer === 2 ? 0.25 : 0.2 + 0.14 * pulse;   // narrow nozzles: streams leave packed, so cohesion keeps them one body
+      while (h.acc >= 1) { h.acc -= 1;
+        const xs = layer === 2 ? (this.rnd() - 0.5) * sp * 1.3 : (this.rnd() - 0.5) * 2 * nz * 1.3;
+        const zs = layer === 2 ? 0 : (this.rnd() - 0.5) * 2 * nz;
+        this.emit(x0 + xs, y0 + this.rnd() * 0.25, zc + zs, Math.sin(tt * 1.3) * 0.3, layer === 2 ? -1.0 : -2.2 - this.rnd() * 0.6, 0, sec); }
     }
-    // the odd clump burst: a fat blob dropped onto a form for a splashy, random beat
+    // the odd clump burst into the front / mid layers for a splashy beat
     if (this.t > this.nextBurst && P.bursts > 0) {
       this.nextBurst = this.t + (4 + this.rnd() * 5) / P.bursts;
-      const sec = order[Math.floor(this.rnd() * order.length)]; const cx = (this.rnd() * 2 - 1) * 3.5, cz = -1.5 + this.rnd() * 2.5; const n = 500 + Math.floor(this.rnd() * 500);
+      const sec = order[Math.floor(this.rnd() * order.length)]; const cz = LQ.midZ + this.rnd() * (LQ.frontZ - LQ.midZ); const dz = ez - cz;
+      const cx = (this.rnd() * 2 - 1) * dz * th * 0.7; const n = Math.max(0, Math.min(700, Math.floor((target - this.stats.alive) + 400)));
       for (let k = 0; k < n; k++) { let x = 0, y = 0, z = 0; do { x = this.rnd() * 2 - 1; y = this.rnd() * 2 - 1; z = this.rnd() * 2 - 1; } while (x * x + y * y + z * z > 1);
-        this.emit(cx + x * 0.9, 10.2 + y * 0.9, cz + z * 0.9, x * 0.3, -6, z * 0.3, sec); }
+        this.emit(cx + x * 0.7, LQ.tgtY + dz * tv + 0.9 + y * 0.7, cz + z * 0.5, x * 0.3, -5, z * 0.2, sec); }
     }
     const contacts = this.substep(dt, gather);
     if (++this.sortTick % 20 === 0) this.reorder();
     this.t += dt;
-    let a = 0; for (let i = 0; i < this.N; i++) a += this.alive[i];
-    this.stats = { stepMs: performance.now() - t0, contacts, alive: a };
+    let a = 0, fa = 0; for (let i = 0; i < this.N; i++) { a += this.alive[i]; fa += this.alive[i] & this.film[i]; } this.filmAlive = fa;
+    const ms = performance.now() - t0; this.emaMs += (ms - this.emaMs) * 0.05;
+    // perf governor: keep the step comfortably under one 60 Hz frame (no slow motion) by trimming the live-ball target
+    if (gather) { if (this.emaMs > 13) this.budgetK = Math.max(0.55, this.budgetK * 0.996); else if (this.emaMs < 11) this.budgetK = Math.min(1, this.budgetK * 1.004); }
+    this.stats = { stepMs: ms, contacts, alive: a, avgMs: this.emaMs, budget: this.budgetK };
   }
   private substep(h: number, gather: boolean): number {
     const { N, px, py, pz, vx, vy, vz, r, alive } = this; const cols = this.cols; const P = this.P;
-    const g = P.gravity, drag = 1 - 1.5 * h; const turb = P.turbulence * 5.0, t = this.t;
+    const g = P.gravity, drag = 1 - 2.4 * h; const turb = P.turbulence * 3.5, t = this.t;
     const adh = 7 * P.drip;
     for (let i = 0; i < N; i++) {
       if (!alive[i]) continue;
@@ -142,22 +174,22 @@ export class LiquidSim {
           if (l < 1e-6) { ex = 0; ey = 1; ez = 0; l = 1; d = -(C.by - ly) - C.rad; } else d = l - C.rad;
           ex /= l; ey /= l; ez /= l; nx = ex; ny = ey * C.ct - ez * C.st; nz = ey * C.st + ez * C.ct;
         }
-        const sep = d - r[i]; gmin = Math.min(gmin, sep);
+        const sep = d - r[i]; gmin = Math.min(gmin, sep); if (c === 0) this.film[i] = sep < 0.12 ? 1 : 0;
         if (sep < 0) {
           px[i] -= nx * sep; py[i] -= ny * sep; pz[i] -= nz * sep;
           const vn = vx[i] * nx + vy[i] * ny + vz[i] * nz;
           if (vn < 0) { const e = vn < -2.5 ? 1.25 : 1.0; vx[i] -= e * vn * nx; vy[i] -= e * vn * ny; vz[i] -= e * vn * nz; }
-          const f = 1 - 2.2 * h * P.viscosity; const vn2 = vx[i] * nx + vy[i] * ny + vz[i] * nz;   // viscous wall friction: slow runny film
+          const f = Math.max(0.5, 1 - (c === 0 ? 6.0 : 2.2) * h * P.viscosity); /* c 0 = backdrop wall: thick slow film */ const vn2 = vx[i] * nx + vy[i] * ny + vz[i] * nz;   // viscous wall friction: slow runny film
           vx[i] = (vx[i] - vn2 * nx) * f + vn2 * nx; vy[i] = (vy[i] - vn2 * ny) * f + vn2 * ny; vz[i] = (vz[i] - vn2 * nz) * f + vn2 * nz;
         } else if (sep < 0.25) {                    // adhesion: a thin band that holds drips until their weight wins
           const k = adh * (1 - sep / 0.25) * h; vx[i] -= nx * k; vy[i] -= ny * k; vz[i] -= nz * k;
         }
       }
       this.gap[i] = gmin;
-      if (py[i] < -4.5 || pz[i] > 9 || Math.abs(px[i]) > 14 || pz[i] < -12) this.kill(i);
+      if (pz[i] < -9 || pz[i] > LQ.frontZ + 1.1 || !this.inView(px[i], py[i], pz[i], 0.6)) this.kill(i);   // frustum cull (+margin): no work spent off screen
     }
     // dense uniform grid (cell >= interaction range) + half-stencil pair loop: each pair visited once, no hashing
-    const RANGE = 0.09; const H = Math.max(0.3, 2 * 0.135 * P.ballSize + RANGE + 0.01), OX = -14, OY = -5, OZ = -12;
+    const RANGE = 0.09; const H = Math.max(0.26, 2 * 0.103 * P.ballSize + RANGE + 0.005), OX = -14, OY = -5, OZ = -12;
     const GX = Math.ceil(28 / H), GY = Math.ceil(17 / H), GZ = Math.ceil(21 / H);
     const cs = this.cs, cc = this.cc, so = this.so, ky = this.ky; cc.fill(0, 0, GX * GY * GZ);
     for (let i = 0; i < N; i++) {
@@ -166,11 +198,11 @@ export class LiquidSim {
       cx = cx < 0 ? 0 : cx >= GX ? GX - 1 : cx; cy = cy < 0 ? 0 : cy >= GY ? GY - 1 : cy; cz = cz < 0 ? 0 : cz >= GZ ? GZ - 1 : cz;
       const k = (cz * GY + cy) * GX + cx; ky[i] = k; cc[k]++;
     }
-    let acc = 0; const NC = GX * GY * GZ; for (let k = 0; k < NC; k++) { cs[k] = acc; acc += cc[k]; cc[k] = 0; }
+    let acc = 0; const NC = GX * GY * GZ; this.lastCells = NC; for (let k = 0; k < NC; k++) { cs[k] = acc; acc += cc[k]; cc[k] = 0; }
     for (let i = 0; i < N; i++) { const k = ky[i]; if (k >= 0) { so[cs[k] + cc[k]] = i; cc[k]++; } }
-    const occ = this.occ, ncol = this.ncol, col = this.col;
+    const occ = this.occ, ncol = this.ncol, col = this.col; const film = this.film;
     if (gather) { occ.fill(0); ncol.fill(0); }
-    const coh = 18 * P.cohesion * h, visc = Math.min(0.45, 3.2 * P.viscosity * h);
+    const coh = 20 * P.cohesion * h, visc = Math.min(0.45, 3.2 * P.viscosity * h);
     const ST = LiquidSim.STENCIL;
     let contacts = 0;
     for (let i = 0; i < N; i++) {
@@ -198,7 +230,7 @@ export class LiquidSim {
           const vb = visc * w * 0.5; const rvx = (vx[j] - vx[i]) * vb, rvy = (vy[j] - vy[i]) * vb, rvz = (vz[j] - vz[i]) * vb;
           vx[i] += rvx; vy[i] += rvy; vz[i] += rvz; vx[j] -= rvx; vy[j] -= rvy; vz[j] -= rvz;
           if (d >= R) {                         // cohesion: pull the pair together, strongest mid-range, zero at range end
-            const x = (d - R) / RANGE; const f = coh * (2 * x * (1 - x) + 0.15 * w);
+            const x = (d - R) / RANGE; const f = coh * (film[i] & film[j] ? 0.25 : 1) * (2 * x * (1 - x) + 0.15 * w);   // film on the wall spreads instead of beading up
             vx[i] += nx * f; vy[i] += ny * f; vz[i] += nz * f; vx[j] -= nx * f; vy[j] -= ny * f; vz[j] -= nz * f;
             continue;
           }
@@ -213,7 +245,10 @@ export class LiquidSim {
   }
 }
 
-export const LIQUID_CAMERAS = ['Drift', 'Close Pour', 'Wide', 'Low Angle'];
+export const LIQUID_CAMERAS = ['Drift', 'Still', 'Slow Pan', 'Low Angle'];
+// liquid ball shader: radius inflation + neighbour-gradient normals so a packed stream reads as one smooth glossy body
+const LBALL_VS = BALL_VS.replace('uniform mat4 uVP;', 'uniform mat4 uVP; uniform float uInflate;').replace('aPos*iPR.w', 'aPos*iPR.w*uInflate');
+const LBALL_FS = BALL_FS.replace('uniform vec3 uCamPos;', 'uniform vec3 uCamPos; uniform float uSmooth;').replace('vec3 N = normalize(vN);', 'vec3 N = normalize(vN); { float c_ = vOcc.w; vec3 d_ = c_ > 1e-3 ? vOcc.xyz/c_ : vec3(0.0); N = normalize(N - d_*uSmooth*1.1*clamp(c_/3.0, 0.0, 1.0)); }');
 
 export class LiquidScene implements PhysScene {
   name = 'liquid'; ready = false; error: string | null = null; stats: Record<string, any> = {};
@@ -228,9 +263,9 @@ export class LiquidScene implements PhysScene {
   private static AO_W = 512; private static AO_H = 512; private static AO_RECT = [-8, -8, 16, 16];
   constructor(private gl: WebGL2RenderingContext) {
     this.ms = new MsTarget(gl, 4); this.sm = new ShadowMap(gl, 4096);
-    this.pSurf = compile(gl, SURF_VS, SURF_FS, 'liq-surf'); this.pBall = compile(gl, BALL_VS, BALL_FS, 'liq-ball');
+    this.pSurf = compile(gl, SURF_VS, SURF_FS, 'liq-surf'); this.pBall = compile(gl, LBALL_VS, LBALL_FS, 'liq-ball');
     this.pBg = compile(gl, BG_VS, BG_FS, 'liq-bg'); this.pShS = compile(gl, SURF_VS, SHADOW_FS, 'liq-sh-s');
-    this.pShB = compile(gl, BALL_VS, SHADOW_FS, 'liq-sh-b'); this.pSplat = compile(gl, SPLAT_VS, SPLAT_FS, 'liq-splat');
+    this.pShB = compile(gl, LBALL_VS, SHADOW_FS, 'liq-sh-b'); this.pSplat = compile(gl, SPLAT_VS, SPLAT_FS, 'liq-splat');
     this.instData = new Float32Array(this.sim.N * 16);
     this.blank = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, this.blank); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
     this.build(); this.ready = true;
@@ -268,7 +303,7 @@ export class LiquidScene implements PhysScene {
   // physics runs in a Web Worker (liquidWorker.ts) so the ~10 ms CPU step overlaps rendering instead of adding to it;
   // the worker ping-pongs packed instance buffers back. Falls back to stepping inline when Worker is unavailable.
   private worker: Worker | null = null; private pending = false; private spare: ArrayBuffer[] = []; private nInst = 0;
-  private wstats = { stepMs: 0, contacts: 0, alive: 0, t: 0 };
+  private wstats = { stepMs: 0, contacts: 0, alive: 0, avgMs: 0, budget: 1, t: 0 };
   private initWorker() {
     try {
       this.worker = new Worker(new URL('./liquidWorker.ts', import.meta.url), { type: 'module' });
@@ -291,6 +326,8 @@ export class LiquidScene implements PhysScene {
     sp.pour = P.grPour ?? sp.pour; sp.streams = P.grStreams ?? sp.streams; sp.cohesion = P.grCohesion ?? sp.cohesion; sp.viscosity = P.grViscosity ?? sp.viscosity;
     sp.turbulence = P.grTurbulence ?? sp.turbulence; sp.drip = P.grDrip ?? sp.drip; sp.gravity = P.grGravity ?? sp.gravity; sp.ballSize = P.grBallSize ?? sp.ballSize;
     sp.order = P.grOrder ?? sp.order; sp.bursts = P.grBursts ?? sp.bursts;
+    sp.zoom = P.grZoom ?? sp.zoom; sp.tanV = Math.tan((P.grLens ?? 36) * Math.PI / 360);   // own long lens: compresses the layers, smaller beads
+    const inflate = 1 + 0.26 * (P.grSmooth ?? 1), smooth = P.grSmooth ?? 1;
     const bd = LIQUID_BACKDROPS[P.grBackdrop as string] ?? LIQUID_BACKDROPS['Ink Studio'];
     if (!this.prerolled) { this.prerolled = true; if (typeof Worker !== 'undefined') this.initWorker(); if (!this.worker) for (let i = 0; i < 60 * 5; i++) this.sim.step(1 / 60, false); }
     if (!P.paused) { this.acc += Math.min(0.05, f.dt) * P.speed; this.ct += Math.min(0.05, f.dt) * P.speed; }
@@ -309,13 +346,14 @@ export class LiquidScene implements PhysScene {
     }
     const t = this.ct; const cam = (P.grLqCamera as string) ?? 'Drift'; const en = P.grCamEnergy ?? 1;
     let eye: Vec3, tgt: Vec3;
-    if (cam === 'Close Pour') { eye = [Math.sin(t * 0.15) * 1.5 * en, 3.6 + Math.sin(t * 0.2) * 0.6 * en, 6.2]; tgt = [Math.sin(t * 0.11) * 1.2 * en, 3.0, -1]; }
-    else if (cam === 'Wide') { eye = [Math.sin(t * 0.08) * 3 * en, 2.4, 14]; tgt = [0, 2.0, -1]; }
-    else if (cam === 'Low Angle') { eye = [Math.sin(t * 0.12) * 2 * en, -2.5, 8.5]; tgt = [0, 3.5, -1]; }
-    else { eye = [Math.sin(t * 0.13) * 2.6 * en, 2.6 + Math.sin(t * 0.21) * 0.9 * en, 8.0 + Math.sin(t * 0.07) * 1.0 * en]; tgt = [Math.sin(t * 0.09) * 1.0 * en, 2.4 + Math.sin(t * 0.17) * 0.5 * en, -1]; }
-    const fovy = (P.fov ?? 50) * Math.PI / 180;
+    const ez = LQ.tgtZ + LQ.camDist * sp.zoom, ty = LQ.tgtY;    // same framing the sim culls / spawns against
+    if (cam === 'Still') { eye = [0, ty + 0.25, ez]; tgt = [0, ty, LQ.tgtZ]; }
+    else if (cam === 'Slow Pan') { eye = [Math.sin(t * 0.07) * 1.0 * en, ty + 0.25, ez]; tgt = [Math.sin(t * 0.07) * 0.8 * en, ty, LQ.tgtZ]; }
+    else if (cam === 'Low Angle') { eye = [Math.sin(t * 0.1) * 0.4 * en, ty - 0.9, ez]; tgt = [0, ty + 0.3, LQ.tgtZ]; }
+    else { eye = [Math.sin(t * 0.13) * 0.5 * en, ty + 0.25 + Math.sin(t * 0.21) * 0.2 * en, ez + Math.sin(t * 0.07) * 0.25 * en]; tgt = [Math.sin(t * 0.09) * 0.25 * en, ty + Math.sin(t * 0.17) * 0.12 * en, LQ.tgtZ]; }
+    const fovy = (P.grLens ?? 36) * Math.PI / 180;
     const view = lookAt(eye, tgt); const proj = perspective(fovy, f.aspect, 0.2, 140); const vp = mul(proj, view);
-    const az = (P.keyAz ?? -35) * Math.PI / 180, el = (P.keyEl ?? 50) * Math.PI / 180;
+    const az = (P.grKeyAz ?? -28) * Math.PI / 180, el = (P.grKeyEl ?? 34) * Math.PI / 180;
     const Ld = norm([Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)]);
     const ctr: Vec3 = [0, 2.5, -1];
     const lview = lookAt([ctr[0] + Ld[0] * 40, ctr[1] + Ld[1] * 40, ctr[2] + Ld[2] * 40], ctr);
@@ -323,11 +361,11 @@ export class LiquidScene implements PhysScene {
     const fwd = norm([tgt[0] - eye[0], tgt[1] - eye[1], tgt[2] - eye[2]]);
     const look = { ...lookOf('Coral Peach'), bgTop: bd.bgTop, bgBottom: bd.bgBottom, glow: bd.bgTop };
     const env = { look, L: Ld, F: norm([0.6, 0.5, 0.6]) as Vec3, fwd };
-    const matCols = new Float32Array(15); [bd.chrome, bd.chrome, bd.chrome, bd.chrome, bd.pearl].forEach((h, i) => matCols.set(srgbHex(h), i * 3));
+    const matCols = new Float32Array(15); [bd.wall, bd.pearl, bd.chrome, bd.chrome, bd.pearl].forEach((h, i) => matCols.set(srgbHex(h), i * 3));
     this.sm.begin(); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
     gl.useProgram(this.pShS.p); gl.uniformMatrix4fv(this.pShS.u.uVP, false, lvp); gl.uniform1f(this.pShS.u.uMirror, 0);
     gl.bindVertexArray(this.surfVao); gl.drawElements(gl.TRIANGLES, this.surfCount, gl.UNSIGNED_INT, 0);
-    gl.useProgram(this.pShB.p); gl.uniformMatrix4fv(this.pShB.u.uVP, false, lvp); gl.uniform1f(this.pShB.u.uMirror, 0);
+    gl.useProgram(this.pShB.p); gl.uniformMatrix4fv(this.pShB.u.uVP, false, lvp); gl.uniform1f(this.pShB.u.uMirror, 0); gl.uniform1f(this.pShB.u.uInflate, inflate);
     gl.bindVertexArray(this.ballLo); gl.drawElementsInstanced(gl.TRIANGLES, this.ballLoCount, gl.UNSIGNED_SHORT, 0, nInst);
     this.sm.end();
     const R = LiquidScene.AO_RECT;
@@ -357,12 +395,12 @@ export class LiquidScene implements PhysScene {
       gl.uniform3fv(u.uCR, right); gl.uniform3fv(u.uCU, up); gl.uniform3fv(u.uCF, fwd); gl.uniform2f(u.uTan, Math.tan(fovy / 2) * f.aspect, Math.tan(fovy / 2));
       gl.depthMask(false); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.depthMask(true); }
     common(this.pSurf, f.w, f.h); gl.bindVertexArray(this.surfVao); gl.drawElements(gl.TRIANGLES, this.surfCount, gl.UNSIGNED_INT, 0);
-    common(this.pBall, f.w, f.h); gl.bindVertexArray(this.ball); gl.drawElementsInstanced(gl.TRIANGLES, this.ballCount, gl.UNSIGNED_SHORT, 0, nInst);
+    { const ub = common(this.pBall, f.w, f.h); gl.uniform1f(ub.uInflate, inflate); gl.uniform1f(ub.uSmooth, smooth); } gl.bindVertexArray(this.ball); gl.drawElementsInstanced(gl.TRIANGLES, this.ballCount, gl.UNSIGNED_SHORT, 0, nInst);
     gl.disable(gl.DEPTH_TEST); gl.bindVertexArray(null); gl.activeTexture(gl.TEXTURE0);
     const tex = this.ms.resolve();
-    const focus = Math.hypot(eye[0] - tgt[0], eye[1] - tgt[1], eye[2] - tgt[2]) * 0.82;
-    f.dof(tex, f.target, f.w, f.h, P.grFocus ?? focus, P.dof ?? 0.3);
+    const focus = eye[2] - LQ.midZ;
+    f.dof(tex, f.target, f.w, f.h, P.grFocus ?? focus, P.grDof ?? 0.5);
     const st = this.worker ? this.wstats : { ...this.sim.stats, t: this.sim.t };
-    this.stats = { balls: nInst, contacts: st.contacts, physicsMs: +st.stepMs.toFixed(2), simTime: +st.t.toFixed(1), worker: this.worker ? 1 : 0 };
+    this.stats = { balls: nInst, contacts: st.contacts, physicsMs: +st.stepMs.toFixed(2), physicsAvgMs: +st.avgMs.toFixed(2), budget: +st.budget.toFixed(2), simTime: +st.t.toFixed(1), worker: this.worker ? 1 : 0 };
   }
 }

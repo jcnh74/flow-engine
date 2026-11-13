@@ -22,14 +22,14 @@ describe('pass 6 per-mode controls + presets', () => {
     const P: Record<string, any> = {};
     applyModeDefaults(P, 'Gravity'); expect(P.grDropSize).toBe(1100);
     expect(P.grCohesion).toBe(1);
-    expect(applyModePreset(P, 'Gravity', 'Honey Pour')).toBe(true); expect(P.grViscosity).toBe(2.2); expect(P.phVariant).toBe('Liquid');
-    const cap = captureModeValues(P, 'Gravity'); expect(cap.grViscosity).toBe(2.2);
+    expect(applyModePreset(P, 'Gravity', 'Honey Pour')).toBe(true); expect(P.grViscosity).toBe(1.8); expect(P.phVariant).toBe('Liquid'); expect(P.grZoom).toBe(0.85);
+    const cap = captureModeValues(P, 'Gravity'); expect(cap.grViscosity).toBe(1.8);
     expect(presetNames('Stargate')).toContain('Hyperdrive');
   });
   test('scenes read the control keys (bound to real dynamics)', () => {
     const src = (f: string) => readFileSync(new URL(`../src/physical/${f}`, import.meta.url), 'utf8');
     for (const k of ['grDropSize', 'grDropEvery', 'grBounce', 'grGravity', 'grRoom', 'grCamera']) expect(src('colorroom.ts')).toContain(`P.${k}`);
-    for (const k of ['grPour', 'grStreams', 'grCohesion', 'grViscosity', 'grTurbulence', 'grDrip', 'grGravity', 'grBallSize', 'grBursts', 'grBackdrop', 'grLqCamera', 'grOrder']) expect(src('liquid.ts')).toContain(`P.${k}`);
+    for (const k of ['grPour', 'grStreams', 'grCohesion', 'grViscosity', 'grTurbulence', 'grDrip', 'grGravity', 'grBallSize', 'grBursts', 'grBackdrop', 'grLqCamera', 'grOrder', 'grZoom', 'grLens', 'grDof', 'grKeyEl', 'grKeyAz', 'grSmooth']) expect(src('liquid.ts')).toContain(`P.${k}`);
     for (const k of ['spRate', 'spSize', 'spSpeed', 'spGravity', 'spPalette', 'spShape', 'spDroplets', 'spSmooth']) expect(src('splash.ts')).toContain(`P.${k}`);
     for (const k of ['fbCount', 'fbFlutter', 'fbWidth', 'fbTwist', 'fbPalette', 'fbWeave', 'fbSheen']) expect(src('fabricdrift.ts')).toContain(`P.${k}`);
     for (const k of ['ctSpin', 'ctTraffic', 'ctLights', 'ctDistrict', 'ctFog', 'ctRefl']) expect(src('city.ts')).toContain(`P.${k}`);
