@@ -60,3 +60,16 @@ All code here is original and was written for this project. It is not derived fr
 **Experiment kept:** `tools/blender/pass6/paint_splash6.py` (Mantaflow collision jets). At bakeable resolutions (64–72) it produced blobby sausages, not crowns, so the live Splash replaced it. Paint Pour still defaults to the pass-4 Cycles pour clip.
 
 **Captures:** `node scripts/capture-pass4.mjs --seconds 10 --out DIR --only "label|mode=…&set=k:v;k:v"`. Panel screenshots: `node scripts/panel-shot.mjs DIR "Mode=Preset" …`.
+
+## Pass 7 (2026-11-12)
+
+### Gravity — Liquid (new default variant)
+- `src/physical/liquid.ts` + `liquidWorker.ts`. No room: a few floating forms (tilted chrome lip, pearl lip, chrome/pearl orbs, beads) on a soft studio backdrop; the balls fill the frame.
+- 16 000-ball pool, typically 10–15k alive. Up to 10 wandering pour heads that pulse on/off (streams break into slugs and drips) plus random clump bursts; colour sections step through the chosen colour order per head, so streams mix as they merge.
+- Cohesive-granular physics: contact resolution + short-range cohesion (pairs pull together inside a 0.09 band), XSPH viscosity (neighbour velocity blending → coherent ropes/sheets), wall viscous friction + adhesion band (drips cling to forms until weight wins), curl-ish sine turbulence, air drag.
+- Performance: dense uniform grid with half-stencil (each pair once), periodic cell-order reordering for cache locality, and the whole step runs in a Web Worker that ping-pongs packed instance buffers, so rendering stays at 60 fps while physics costs ~10–21 ms per step on the Forge Mac (M-series). When a step exceeds 16.7 ms the sim runs slightly slower than real time (≈45–55 Hz) rather than dropping render frames.
+- Rendering reuses the Cascade glossy ball shader (instanced, icosphere sub2), 4096 shadow map, top-down AO splat, DOF.
+- Controls: Pour (rate, streams, clump bursts, ball size), Liquid Body (cohesion, viscosity, drip/cling, turbulence, gravity, time scale), Look & Camera (scene, backdrop, colour order, liquid camera, energy, FOV, DOF, iridescence), and a Color Room section for the room scene. Presets: Liquid Rainbow, Honey Pour, Monsoon Drip, Zero-G Swirl, plus two room presets.
+
+### Jungle — forest floor
+- The background pass now ray-casts the vortex tunnel wall (cylinder r=10.5) and shades it as dirt / moss / grass (value-noise fbm, grass streaks along the flow, pebbles, bump-lit with AO, wet sheen), scrolling with the plants' flow and spin. The lower half reads as a grassy dirt floor, the top as a mossy bank. Per-motif earth palette (MOTIF_EARTH) blended with the motif transition, fogged into the motif haze so the tunnel's glowing end remains. `jgFloor` (Forest Floor) control, 0 = old haze backdrop.
