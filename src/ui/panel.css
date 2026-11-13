@@ -909,3 +909,175 @@ code {
 .mode-presets .mp-buttons { display: flex; gap: 4px; align-items: center; }
 .mode-presets .mp-name { flex: 1; min-width: 0; background: rgba(0,0,0,0.35); color: #eee; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 3px 5px; font-size: 11px; }
 .mode-presets .control-button { padding: 3px 7px; font-size: 11px; }
+
+/* —— Touch-first controls (44px targets, no knobs) —— */
+.touch-control { margin-bottom: 12px; }
+.touch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin-bottom: 2px;
+}
+.touch-control .control-label {
+  flex: 1 1 auto;
+  font-size: 13px;
+  color: var(--text);
+  white-space: normal;
+  line-height: 1.25;
+}
+.touch-control .control-value {
+  flex: 0 0 auto;
+  min-width: 48px;
+  font-size: 13px;
+  color: #ffd2b8;
+}
+
+.control-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.control-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+}
+.control-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+  cursor: grab;
+}
+.control-slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.05); }
+
+.control-select {
+  min-height: 44px;
+  font-size: 14px;
+  padding: 0 12px;
+  border-radius: 10px;
+  flex: 1;
+}
+
+.seg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.seg-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #1c1c24;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.seg-btn.is-on {
+  background: var(--accent);
+  color: #111;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.toggle-row input { position: absolute; opacity: 0; width: 0; height: 0; }
+.toggle-ui {
+  position: relative;
+  width: 52px;
+  height: 32px;
+  border-radius: 16px;
+  background: #2a2a33;
+  border: 1px solid var(--border);
+  flex: 0 0 52px;
+  transition: background 0.15s;
+}
+.toggle-ui::after {
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: #ddd;
+  transition: transform 0.15s;
+}
+.toggle-row.is-on .toggle-ui { background: var(--accent); border-color: var(--accent); }
+.toggle-row.is-on .toggle-ui::after { transform: translateX(20px); background: #111; }
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.control-color {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  flex: 0 0 44px;
+}
+.control-color::-webkit-color-swatch-wrapper { padding: 0; }
+.control-color::-webkit-color-swatch { border: none; border-radius: 8px; }
+.color-hex {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+  color: #ffd2b8;
+}
+
+.swatch-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+.swatch-preset {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #1c1c24;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.swatch-preset:active { background: var(--accent); color: #111; }
+
+/* Buttons in mode presets also get a taller target */
+.mp-buttons .control-button, .control-button {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+}
+.mp-name { min-height: 40px; font-size: 14px; }
+
+/* Hide leftover rotary knobs if any still render */
+.knob-control { display: none !important; }

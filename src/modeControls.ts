@@ -1,5 +1,5 @@
 // Pass 6: per-mode control panels + per-mode presets (built-in and user-saved), applied live.
-// Each mode declares its own sliders / knobs / selectors bound to real scene parameters (the scenes read these
+// Each mode declares its own sliders / selectors / toggles bound to real scene parameters (the scenes read these
 // keys every frame), its defaults and 3-5 built-in presets. User presets persist in localStorage per mode.
 // Original MIT-licensed work for flow-engine.
 import { SPLASH_PALETTES, SPLASH_SHAPES } from './physical/splash';
@@ -11,11 +11,11 @@ import { MANDALA_PALETTES } from './physical/mandala';
 import { FEATHER_PALETTES } from './physical/feathervortex';
 import { TEMPLE_PALETTES } from './physical/crystaltemple';
 
-export type Ctl = { key: string; label: string; type: 'slider' | 'knob' | 'select' | 'check'; min?: number; max?: number; step?: number; options?: string[] | Record<string, string | number> };
+export type Ctl = { key: string; label: string; type: 'slider' | 'knob' | 'select' | 'check' | 'color'; min?: number; max?: number; step?: number; options?: string[] | Record<string, string | number> };
 export type ModeSpec = { sections: { title: string; ctls: Ctl[] }[]; defaults: Record<string, any>; presets: Record<string, Record<string, any>> };
 
 const S = (key: string, label: string, min: number, max: number, step = 0.01): Ctl => ({ key, label, type: 'slider', min, max, step });
-const K = (key: string, label: string, min: number, max: number, step = 0.01): Ctl => ({ key, label, type: 'knob', min, max, step });
+const K = (key: string, label: string, min: number, max: number, step = 0.01): Ctl => ({ key, label, type: 'slider', min, max, step });
 const SEL = (key: string, label: string, options: string[] | Record<string, string | number>): Ctl => ({ key, label, type: 'select', options });
 const CHK = (key: string, label: string): Ctl => ({ key, label, type: 'check' });
 

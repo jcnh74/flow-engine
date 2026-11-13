@@ -21,6 +21,8 @@ import { RELIEF_DOWN_FS, RELIEF_HEIGHT_FS, RELIEF_SHADE_FS } from './relief_shad
 import { SCULPT_FS } from './sculpt_shaders';
 import { StudioRenderer, STUDIO_LOOKS, STUDIO_LOOK_NAMES, STUDIO_MATS, srgbHex } from './studio';
 import { PhysicalRenderer, PHYS_MODES, PHYS_VARIANTS, PHYS_MATS, STARGATE_PALETTES } from './physical';
+import { setColorParams } from './physical/common';
+import { seedModeColors } from './colorSystem';
 import { LINEUP_MODES, DEFAULT_MODE, resolveMode } from './lineup';
 import './ui/panel.css';
 
@@ -575,6 +577,7 @@ let phTime = 0;
 function renderPhys(T: Trails, aspect: number) {
   const pdt = P.paused ? 0 : Math.min(0.1, dt);
   phTime += pdt * P.phSpeed;
+  setColorParams(P);
   phys.render(P.mode, { target: T.a.f, w: T.w, h: T.h, aspect, dt: pdt, time: phTime,
     dof: (src, target, w, h, focus, amount) => studio.dofPass(src, target, w, h, focus, amount),
     params: { ...P, look: P.phLook, speed: P.phSpeed, mat: P.phMat, dof: P.phDof, keyAz: P.phKeyAz, keyEl: P.phKeyEl, quality: P.resolutionScale ?? 1,
@@ -2531,6 +2534,8 @@ function physDefaults(mode: string) {
     P.tonemapMode = 'ACES'; P.vignetteStrength = 0.28; P.grainStrength = 0.012; P.saturation = 1.12; P.exposure = 1.0;
     P.bloom = 0.34; P.bloomStrength = 0.20; P.bloomThreshold2 = 1.08;
   }
+  for (const k of Object.keys(P)) if (k.startsWith('col')) delete P[k];
+  seedModeColors(P, mode);
 }
 const phF = gui.addFolder('Physical (pass 4)');
 phF.add(P, 'phLook', STUDIO_LOOK_NAMES).name('palette look');
@@ -2706,10 +2711,8 @@ remoteSync = new RemoteSync(P,
     panel.refreshRemote();
   },
   (param, value) => {
-    // Handle parameter changes from remote
-    if (param === 'mode') {
-      setMode(value);
-    }
+    if (param === 'mode') setMode(value);
+    panel.update();
   }
 );
 

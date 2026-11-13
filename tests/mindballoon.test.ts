@@ -74,7 +74,7 @@ describe('Mind Balloon-inspired modes', () => {
       const ctls = spec.sections.flatMap((s) => s.ctls);
       expect(ctls.length).toBeGreaterThanOrEqual(8);
       expect(ctls.some((c) => c.type === 'slider')).toBe(true);
-      expect(ctls.some((c) => c.type === 'knob')).toBe(true);
+      expect(ctls.some((c) => c.type === 'slider')).toBe(true);
       expect(ctls.some((c) => c.type === 'select')).toBe(true);
       const names = Object.keys(spec.presets);
       expect(names.length).toBeGreaterThanOrEqual(4);

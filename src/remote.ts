@@ -1,6 +1,7 @@
 // Remote control WebSocket client
 // Syncs state with mobile remotes via relay server
 import QRCode from 'qrcode';
+import { collectRemoteSchema, pickSchemaValues, defaultRemoteLayout } from './colorSystem';
 
 export interface RemoteState {
   connected: boolean;
@@ -129,13 +130,19 @@ export class RemoteSync {
 
   private handleMessage(msg: any) {
     if (msg.type === 'param') {
-      // Remote changed a parameter
       for (const [key, value] of Object.entries(msg.data)) {
         this.params[key] = value;
         if (this.onParamChange) {
           this.onParamChange(key, value);
         }
       }
+      this.syncState();
+    } else if (msg.type === 'hello') {
+      this.syncState();
+    } else if (msg.type === 'layout') {
+      const mode = msg.data?.mode || this.params.mode;
+      const keys = Array.isArray(msg.data?.keys) ? msg.data.keys : [];
+      this.saveLayout(mode, keys);
     } else if (msg.type === 'preset' && this.onPreset) {
       // Remote selected a preset
       this.onPreset(msg.data.name);
@@ -145,27 +152,36 @@ export class RemoteSync {
     }
   }
 
+  private layoutFor(mode: string): string[] {
+    try {
+      const raw = localStorage.getItem('flow-remote-layout-v1');
+      const all = raw ? JSON.parse(raw) : {};
+      if (Array.isArray(all[mode]) && all[mode].length) return all[mode];
+    } catch {}
+    return defaultRemoteLayout(mode);
+  }
+  saveLayout(mode: string, keys: string[]) {
+    try {
+      const raw = localStorage.getItem('flow-remote-layout-v1');
+      const all = raw ? JSON.parse(raw) : {};
+      all[mode] = keys;
+      localStorage.setItem('flow-remote-layout-v1', JSON.stringify(all));
+    } catch {}
+    this.syncState();
+  }
   syncState() {
-    // Send current state to remotes
+    const mode = this.params.mode;
     this.send({
       type: 'state',
       data: {
-        mode: this.params.mode,
+        ...pickSchemaValues(this.params, mode),
+        mode,
         bloom: this.params.bloom,
         exposure: this.params.exposure,
-        speed: this.params.speed || this.params.trippySpeed || 1.0,
+        speed: this.params.speed || this.params.trippySpeed || this.params.phSpeed || 1.0,
         paused: this.params.paused,
-        // Phase 3: Feedback params
-        feedbackEnabled: this.params.feedbackEnabled,
-        feedbackMix: this.params.feedbackMix,
-        feedbackDecay: this.params.feedbackDecay,
-        feedbackZoom: this.params.feedbackZoom,
-        feedbackRotate: this.params.feedbackRotate,
-        feedbackKaleido: this.params.feedbackKaleido,
-        feedbackNoise: this.params.feedbackNoise,
-        feedbackHueDrift: this.params.feedbackHueDrift,
-        // MilkDrop preset name
-        milkDropPreset: this.params.milkDropPreset || ''
+        schema: collectRemoteSchema(mode),
+        layout: this.layoutFor(mode),
       }
     });
   }

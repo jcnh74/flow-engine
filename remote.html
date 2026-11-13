@@ -8,7 +8,6 @@
   <title>Flow Engine Remote</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #0a0a0f;
@@ -18,202 +17,91 @@
       -webkit-user-select: none;
       user-select: none;
     }
-    
     .remote-header {
-      padding: 20px;
+      padding: 16px 20px;
       background: #151520;
       border-bottom: 1px solid #2a2a3e;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      position: sticky; top: 0; z-index: 10;
     }
-    
-    .remote-title {
-      font-size: 18px;
-      font-weight: 600;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-    }
-    
-    .status-indicator {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: #ff3366;
-    }
-    
-    .status-indicator.connected {
-      background: #00ff88;
-    }
-    
-    .remote-body {
-      padding: 20px;
-    }
-    
-    .section {
-      margin-bottom: 30px;
-    }
-    
+    .remote-title { font-size: 16px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; }
+    .status-indicator { width: 12px; height: 12px; border-radius: 50%; background: #ff3366; }
+    .status-indicator.connected { background: #00ff88; }
+    .remote-body { padding: 16px 20px 40px; }
+    .section { margin-bottom: 24px; }
     .section-title {
-      font-size: 14px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #8888a0;
-      margin-bottom: 15px;
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: #8888a0; margin-bottom: 12px;
     }
-    
-    .mode-buttons {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    
+    .mode-buttons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .mode-btn {
-      padding: 20px;
-      background: #1a1a2e;
-      border: 2px solid #2a2a3e;
-      border-radius: 8px;
-      color: #e0e0e8;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
+      min-height: 52px; padding: 12px; background: #1a1a2e; border: 2px solid #2a2a3e;
+      border-radius: 10px; color: #e0e0e8; font-size: 14px; font-weight: 600; cursor: pointer;
     }
-    
-    .mode-btn:active {
-      transform: scale(0.95);
-      background: #6b5fff;
-      border-color: #6b5fff;
-    }
-    
-    .mode-btn.active {
-      background: #6b5fff;
-      border-color: #8b7fff;
-    }
-    
-    .preset-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      max-height: 400px;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    
+    .mode-btn:active { transform: scale(0.97); background: #6b5fff; border-color: #6b5fff; }
+    .mode-btn.active { background: #6b5fff; border-color: #8b7fff; }
+    .preset-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .preset-btn {
-      padding: 16px;
-      background: #1a1a2e;
-      border: 2px solid #2a2a3e;
-      border-radius: 8px;
-      color: #e0e0e8;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: left;
-      transition: all 0.2s;
+      min-height: 56px; padding: 12px; background: #1a1a2e; border: 2px solid #2a2a3e;
+      border-radius: 10px; color: #e0e0e8; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
     }
-    
-    .preset-btn:active {
-      transform: scale(0.95);
-      background: #6b5fff;
-      border-color: #6b5fff;
+    .preset-mode { font-size: 10px; color: #8888a0; margin-top: 4px; text-transform: uppercase; }
+    .ctl {
+      margin-bottom: 16px; background: #14141c; border: 1px solid #2a2a3e;
+      border-radius: 12px; padding: 12px 14px;
     }
-    
-    .preset-mode {
-      font-size: 10px;
-      color: #8888a0;
-      margin-top: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    .ctl-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .ctl-label { font-size: 14px; font-weight: 600; }
+    .ctl-value { color: #c4b4ff; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .ctl-remove {
+      min-width: 44px; min-height: 36px; border: 0; background: transparent;
+      color: #8888a0; font-size: 18px; cursor: pointer;
     }
-    
-    .action-buttons {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-    
-    .action-btn {
-      padding: 20px;
-      background: #1a1a2e;
-      border: 2px solid #2a2a3e;
-      border-radius: 8px;
-      color: #e0e0e8;
-      font-size: 18px;
-      cursor: pointer;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .action-btn:active {
-      transform: scale(0.95);
-      background: #ff3366;
-      border-color: #ff3366;
-    }
-    
-    .blackout-btn {
-      grid-column: span 3;
-      background: #1a0000;
-      border-color: #ff3366;
-      color: #ff3366;
-      font-size: 20px;
-      font-weight: 700;
-    }
-    
-    .blackout-btn:active {
-      background: #ff3366;
-      color: #fff;
-    }
-    
-    .slider-section {
-      margin-bottom: 20px;
-    }
-    
-    .slider-label {
-      font-size: 12px;
-      color: #8888a0;
-      margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-    }
-    
-    .slider-value {
-      color: #6b5fff;
-      font-weight: 600;
-    }
-    
     input[type="range"] {
-      width: 100%;
-      height: 60px;
-      -webkit-appearance: none;
-      appearance: none;
-      background: transparent;
-      cursor: pointer;
+      width: 100%; height: 44px; -webkit-appearance: none; appearance: none;
+      background: transparent; cursor: pointer;
     }
-    
-    input[type="range"]::-webkit-slider-track {
-      background: #2a2a3e;
-      height: 8px;
-      border-radius: 4px;
-    }
-    
+    input[type="range"]::-webkit-slider-track { background: #2a2a3e; height: 8px; border-radius: 4px; }
     input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: #6b5fff;
-      margin-top: -16px;
-      box-shadow: 0 4px 12px rgba(107, 95, 255, 0.5);
+      -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%;
+      background: #6b5fff; margin-top: -10px; box-shadow: 0 4px 12px rgba(107, 95, 255, 0.5);
     }
-    
-    input[type="range"]:active::-webkit-slider-thumb {
-      background: #8b7fff;
-      transform: scale(1.1);
+    .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+    .seg button, .toggle {
+      min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 10px;
+      border: 2px solid #2a2a3e; background: #1a1a2e; color: #e0e0e8; font-size: 13px; cursor: pointer;
+    }
+    .seg button.on, .toggle.on { background: #6b5fff; border-color: #8b7fff; }
+    input[type="color"] {
+      -webkit-appearance: none; width: 56px; height: 44px; border: 0; border-radius: 10px;
+      background: transparent; padding: 0; cursor: pointer;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: none; border-radius: 8px; }
+    .color-row { display: flex; align-items: center; gap: 12px; }
+    .add-btn, .edit-done {
+      width: 100%; min-height: 48px; border-radius: 12px; border: 2px dashed #3a3a50;
+      background: transparent; color: #c4b4ff; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .picker { margin-top: 10px; }
+    .picker-sec { margin-bottom: 12px; }
+    .picker-sec h4 { font-size: 11px; color: #8888a0; text-transform: uppercase; margin-bottom: 6px; }
+    .picker-item {
+      display: flex; justify-content: space-between; align-items: center;
+      min-height: 44px; padding: 0 10px; border-radius: 8px; background: #1a1a2e;
+      margin-bottom: 6px; border: 1px solid #2a2a3e;
+    }
+    .picker-item button {
+      min-height: 36px; min-width: 64px; border-radius: 8px; border: 0;
+      background: #6b5fff; color: #fff; font-weight: 600; cursor: pointer;
+    }
+    .picker-item button.on { background: #2a2a3e; color: #8888a0; }
+    .move { display: flex; gap: 4px; }
+    .move button {
+      min-width: 36px; min-height: 36px; border: 0; background: #1a1a2e;
+      color: #e0e0e8; border-radius: 8px; cursor: pointer;
     }
   </style>
 </head>
@@ -222,65 +110,23 @@
     <div class="remote-title">Flow Engine</div>
     <div class="status-indicator" id="status"></div>
   </div>
-  
   <div class="remote-body">
-    <!-- Modes -->
     <div class="section">
       <div class="section-title">Mode</div>
       <div class="mode-buttons" id="modes"></div>
     </div>
-    
-    <!-- Presets -->
     <div class="section">
-      <div class="section-title">
-        Presets
-        <span id="current-preset" style="color: #6b5fff; font-weight: 400; margin-left: 8px;"></span>
-      </div>
+      <div class="section-title">Assigned Controls</div>
+      <div id="deck"></div>
+      <button class="add-btn" id="edit-btn">Add / arrange controls</button>
+      <div class="picker" id="picker" hidden></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Presets</div>
       <div class="preset-grid" id="presets"></div>
     </div>
-    
-    <!-- Actions -->
-    <div class="section">
-      <div class="section-title">Actions</div>
-      <div class="action-buttons">
-        <button class="action-btn" data-action="prev">◀</button>
-        <button class="action-btn" data-action="random">🎲</button>
-        <button class="action-btn" data-action="next">▶</button>
-        <button class="action-btn" data-action="tap">🥁 Tap</button>
-        <button class="action-btn" data-action="pause">⏸</button>
-        <button class="action-btn" data-action="reset">⛑</button>
-        <button class="blackout-btn" data-action="blackout">BLACKOUT</button>
-      </div>
-    </div>
-    
-    <!-- Sliders -->
-    <div class="section">
-      <div class="section-title">Quick Controls</div>
-      <div class="slider-section">
-        <div class="slider-label">
-          <span>Bloom</span>
-          <span class="slider-value" id="bloom-value">0.35</span>
-        </div>
-        <input type="range" id="bloom" min="0" max="2" step="0.01" value="0.35">
-      </div>
-      <div class="slider-section">
-        <div class="slider-label">
-          <span>Exposure</span>
-          <span class="slider-value" id="exposure-value">1.0</span>
-        </div>
-        <input type="range" id="exposure" min="0.4" max="4" step="0.01" value="1.0">
-      </div>
-      <div class="slider-section">
-        <div class="slider-label">
-          <span>Speed</span>
-          <span class="slider-value" id="speed-value">1.0</span>
-        </div>
-        <input type="range" id="speed" min="0.5" max="3" step="0.1" value="1.0">
-      </div>
-    </div>
   </div>
-  
-  <script type="module">
+  <script>
     const MODES = ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple'];
     const PRESETS = [
       { name: 'Paint · Carnival Burst', mode: 'Paint' },
@@ -295,122 +141,216 @@
       { name: 'Feather Vortex · Ember Tide', mode: 'Feather Vortex' },
       { name: 'Crystal Temple · Cyan Processional', mode: 'Crystal Temple' },
     ];
-    
-    // WebSocket connection
-    const wsUrl = `ws://${location.hostname}:3001`;
-    let ws = null;
-    let reconnectTimer = null;
-    
+
+    let ws, state = { mode: 'Jungle', schema: [], layout: [], paused: false };
+    let editing = false;
+    const values = {};
+    const LS = 'flow-remote-layout-v1';
+
     function connect() {
-      ws = new WebSocket(wsUrl);
-      
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.hostname}:3001`);
       ws.onopen = () => {
-        console.log('Connected to relay');
         document.getElementById('status').classList.add('connected');
         ws.send(JSON.stringify({ type: 'register', role: 'remote' }));
+        ws.send(JSON.stringify({ type: 'hello' }));
       };
-      
       ws.onclose = () => {
-        console.log('Disconnected from relay');
         document.getElementById('status').classList.remove('connected');
-        reconnectTimer = setTimeout(connect, 2000);
+        setTimeout(connect, 1500);
       };
-      
-      ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
-      };
-      
+      ws.onerror = () => {};
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'state') {
-            updateState(msg.data);
-          }
-        } catch (e) {
-          console.error('Failed to parse message:', e);
-        }
+          if (msg.type === 'state') updateState(msg.data);
+        } catch (e) {}
       };
     }
-    
     function send(type, data) {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type, data }));
-      }
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, data }));
     }
-    
-    function updateState(state) {
-      // Update sliders
-      const bloom = document.getElementById('bloom');
-      const exposure = document.getElementById('exposure');
-      const speed = document.getElementById('speed');
-      
-      if (state.bloom !== undefined) {
-        bloom.value = state.bloom;
-        document.getElementById('bloom-value').textContent = state.bloom.toFixed(2);
+    function localLayout(mode) {
+      try {
+        const all = JSON.parse(localStorage.getItem(LS) || '{}');
+        if (Array.isArray(all[mode]) && all[mode].length) return all[mode];
+      } catch {}
+      return null;
+    }
+    function persistLayout(mode, keys) {
+      try {
+        const all = JSON.parse(localStorage.getItem(LS) || '{}');
+        all[mode] = keys;
+        localStorage.setItem(LS, JSON.stringify(all));
+      } catch {}
+      send('layout', { mode, keys });
+    }
+    function ctlByKey(key) {
+      for (const sec of state.schema || []) {
+        const c = (sec.ctls || []).find((x) => x.key === key);
+        if (c) return { ...c, section: sec.title };
       }
-      if (state.exposure !== undefined) {
-        exposure.value = state.exposure;
-        document.getElementById('exposure-value').textContent = state.exposure.toFixed(2);
-      }
-      if (state.speed !== undefined) {
-        speed.value = state.speed;
-        document.getElementById('speed-value').textContent = state.speed.toFixed(2);
-      }
-      
-      // Update active mode
-      document.querySelectorAll('.mode-btn').forEach(btn => {
+      return null;
+    }
+    function fmt(v, step) {
+      if (typeof v === 'boolean') return v ? 'On' : 'Off';
+      if (typeof v !== 'number') return String(v ?? '');
+      return (step && step >= 1) ? String(Math.round(v)) : v.toFixed(2);
+    }
+    function optionPairs(c) {
+      const o = c.options;
+      if (!o) return [];
+      if (Array.isArray(o)) return o.map((n) => [n, n]);
+      return Object.keys(o).map((n) => [n, o[n]]);
+    }
+    function renderDeck() {
+      const deck = document.getElementById('deck');
+      const layout = state.layout || [];
+      deck.innerHTML = '';
+      layout.forEach((key, i) => {
+        const c = ctlByKey(key);
+        if (!c) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'ctl';
+        const val = values[key] ?? state[key] ?? c.min ?? '';
+        const head = document.createElement('div');
+        head.className = 'ctl-head';
+        head.innerHTML = `<span class="ctl-label">${c.label}</span><span class="ctl-value" data-k="${key}">${fmt(val, c.step)}</span>`;
+        if (editing) {
+          const mv = document.createElement('div');
+          mv.className = 'move';
+          mv.innerHTML = `<button data-mv="-1">↑</button><button data-mv="1">↓</button><button class="ctl-remove" data-rm="${key}">×</button>`;
+          mv.querySelectorAll('[data-mv]').forEach((b) => b.onclick = () => {
+            const dir = Number(b.dataset.mv);
+            const arr = state.layout.slice();
+            const j = i + dir;
+            if (j < 0 || j >= arr.length) return;
+            const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+            state.layout = arr; persistLayout(state.mode, arr); renderDeck();
+          });
+          mv.querySelector('[data-rm]').onclick = () => {
+            state.layout = state.layout.filter((k) => k !== key);
+            persistLayout(state.mode, state.layout); renderDeck(); renderPicker();
+          };
+          head.appendChild(mv);
+        }
+        wrap.appendChild(head);
+        if (c.type === 'slider' || c.type === 'knob') {
+          const inp = document.createElement('input');
+          inp.type = 'range'; inp.min = c.min; inp.max = c.max; inp.step = c.step ?? 0.01;
+          inp.value = val;
+          inp.oninput = () => {
+            const v = parseFloat(inp.value);
+            values[key] = v;
+            wrap.querySelector('.ctl-value').textContent = fmt(v, c.step);
+            send('param', { [key]: v });
+          };
+          wrap.appendChild(inp);
+        } else if (c.type === 'check') {
+          const btn = document.createElement('button');
+          btn.className = 'toggle' + (val ? ' on' : '');
+          btn.textContent = val ? 'On' : 'Off';
+          btn.onclick = () => {
+            const v = !values[key];
+            values[key] = v; btn.className = 'toggle' + (v ? ' on' : ''); btn.textContent = v ? 'On' : 'Off';
+            wrap.querySelector('.ctl-value').textContent = fmt(v);
+            send('param', { [key]: v });
+          };
+          wrap.appendChild(btn);
+        } else if (c.type === 'color') {
+          const row = document.createElement('div');
+          row.className = 'color-row';
+          const inp = document.createElement('input');
+          inp.type = 'color'; inp.value = (typeof val === 'string' && val.startsWith('#')) ? val : '#ffffff';
+          inp.oninput = () => {
+            values[key] = inp.value;
+            wrap.querySelector('.ctl-value').textContent = inp.value;
+            send('param', { [key]: inp.value });
+          };
+          row.appendChild(inp);
+          wrap.appendChild(row);
+        } else if (c.type === 'select') {
+          const row = document.createElement('div');
+          row.className = 'seg';
+          optionPairs(c).forEach(([name, v]) => {
+            const b = document.createElement('button');
+            b.textContent = name;
+            if (String(val) === String(v) || val == v) b.className = 'on';
+            b.onclick = () => {
+              values[key] = v;
+              row.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+              wrap.querySelector('.ctl-value').textContent = name;
+              send('param', { [key]: v });
+            };
+            row.appendChild(b);
+          });
+          wrap.appendChild(row);
+        }
+        deck.appendChild(wrap);
+      });
+    }
+    function renderPicker() {
+      const box = document.getElementById('picker');
+      if (!editing) { box.hidden = true; box.innerHTML = ''; return; }
+      box.hidden = false;
+      const assigned = new Set(state.layout || []);
+      box.innerHTML = '';
+      (state.schema || []).forEach((sec) => {
+        const d = document.createElement('div');
+        d.className = 'picker-sec';
+        d.innerHTML = `<h4>${sec.title}</h4>`;
+        (sec.ctls || []).forEach((c) => {
+          const row = document.createElement('div');
+          row.className = 'picker-item';
+          const on = assigned.has(c.key);
+          row.innerHTML = `<span>${c.label}</span><button class="${on ? 'on' : ''}" data-key="${c.key}">${on ? 'Remove' : 'Add'}</button>`;
+          row.querySelector('button').onclick = () => {
+            if (assigned.has(c.key)) state.layout = state.layout.filter((k) => k !== c.key);
+            else state.layout = (state.layout || []).concat([c.key]);
+            persistLayout(state.mode, state.layout);
+            renderDeck(); renderPicker();
+          };
+          d.appendChild(row);
+        });
+        box.appendChild(d);
+      });
+    }
+    function updateState(s) {
+      const modeChanged = s.mode && s.mode !== state.mode;
+      Object.assign(state, s);
+      Object.assign(values, s);
+      if (s.schema) state.schema = s.schema;
+      const local = localLayout(s.mode);
+      if (local) state.layout = local;
+      else if (Array.isArray(s.layout)) state.layout = s.layout;
+      document.querySelectorAll('.mode-btn').forEach((btn) => {
         btn.classList.toggle('active', btn.textContent === state.mode);
       });
-      
-      // Update current preset name
-      const presetEl = document.getElementById('current-preset');
-      if (state.milkDropPreset) {
-        presetEl.textContent = `— ${state.milkDropPreset}`;
-      } else {
-        presetEl.textContent = '';
-      }
+      renderDeck();
+      if (editing) renderPicker();
     }
-    
-    // Build UI
+
     const modesEl = document.getElementById('modes');
-    MODES.forEach(mode => {
+    MODES.forEach((mode) => {
       const btn = document.createElement('button');
       btn.className = 'mode-btn';
       btn.textContent = mode;
       btn.onclick = () => send('param', { mode });
       modesEl.appendChild(btn);
     });
-    
     const presetsEl = document.getElementById('presets');
-    PRESETS.forEach(preset => {
+    PRESETS.forEach((preset) => {
       const btn = document.createElement('button');
       btn.className = 'preset-btn';
       btn.innerHTML = `${preset.name}<div class="preset-mode">${preset.mode}</div>`;
       btn.onclick = () => send('preset', { name: preset.name });
       presetsEl.appendChild(btn);
     });
-    
-    // Action buttons
-    document.querySelectorAll('.action-btn, .blackout-btn').forEach(btn => {
-      btn.onclick = () => {
-        const action = btn.dataset.action;
-        send('action', { action });
-      };
-    });
-    
-    // Sliders
-    ['bloom', 'exposure', 'speed'].forEach(param => {
-      const slider = document.getElementById(param);
-      const valueEl = document.getElementById(`${param}-value`);
-      
-      slider.oninput = () => {
-        const value = parseFloat(slider.value);
-        valueEl.textContent = value.toFixed(2);
-        send('param', { [param]: value });
-      };
-    });
-    
-    // Connect
+    document.getElementById('edit-btn').onclick = () => {
+      editing = !editing;
+      document.getElementById('edit-btn').textContent = editing ? 'Done' : 'Add / arrange controls';
+      renderDeck(); renderPicker();
+    };
     connect();
   </script>
 </body>

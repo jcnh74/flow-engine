@@ -209,7 +209,7 @@ void main(){
   vec3 V = normalize(uCamPos - vP);
   vec3 T = normalize(vT - N * dot(vT, N));
   vec3 B = cross(N, T);
-  vec3 albedo = vCol;
+  vec3 albedo = vCol * mix(vec3(1.0), uObjectTint, uObjectMix);
   if (vKind < 0.5 && N.y > 0.65) albedo = mix(albedo, uGold, 0.55);
   float distP = length(uPulsePos - vP);
   float prox = exp(-distP * distP * 0.055);
@@ -607,7 +607,7 @@ function makeStars(): Float32Array {
 }
 
 
-const CUBE_SIZE = 1024;
+const CUBE_SIZE = 768;
 const CUBE_FACES: { dir: Vec3; up: Vec3 }[] = [
   { dir: [1, 0, 0], up: [0, -1, 0] },
   { dir: [-1, 0, 0], up: [0, -1, 0] },
@@ -761,7 +761,18 @@ export class CrystalTempleScene implements PhysScene {
     const pulseCol = srgbHex(pal.pulse);
     const fillA = srgbHex(pal.fillA);
     const fillB = srgbHex(pal.fillB);
-    const gold = srgbHex(pal.gold[0]);
+    let gold = srgbHex(pal.gold[0]);
+    if (typeof P.colFloor === 'string' && /^#[0-9a-fA-F]{6}$/.test(P.colFloor)) {
+      const f = srgbHex(P.colFloor);
+      gold = [(gold[0] + f[0]) * 0.5, (gold[1] + f[1]) * 0.5, (gold[2] + f[2]) * 0.5];
+    }
+    if (typeof P.colGlow === 'string' && /^#[0-9a-fA-F]{6}$/.test(P.colGlow)) {
+      const g = srgbHex(P.colGlow);
+      const gi = typeof P.colGlowI === 'number' ? P.colGlowI : 1;
+      pulseCol[0] = pulseCol[0] * (1 - 0.65) + g[0] * 0.65 * gi;
+      pulseCol[1] = pulseCol[1] * (1 - 0.65) + g[1] * 0.65 * gi;
+      pulseCol[2] = pulseCol[2] * (1 - 0.65) + g[2] * 0.65 * gi;
+    }
 
     const lEye: Vec3 = [pulsePos[0], pulsePos[1] + 1.15, pulsePos[2] + 0.35];
     const lTgt: Vec3 = [0, fold >= 4 ? 0 : -1.20, pulsePos[2] - 5];

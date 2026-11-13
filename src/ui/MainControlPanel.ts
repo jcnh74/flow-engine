@@ -10,6 +10,7 @@ import { STUDIO_LOOK_NAMES, STUDIO_MATS } from '../studio';
 import { LAND_LOOK_NAMES } from '../landscape';
 import { MODE_CONTROLS, presetNames, applyModePreset, saveModePreset, deleteModePreset, applyModeDefaults, type Ctl } from '../modeControls';
 import { LINEUP_MODES } from '../lineup';
+import { colorGroupsFor, applyGroupPalette, seedModeColors } from '../colorSystem';
 
 interface ControlConfig {
   params: any;
@@ -65,6 +66,7 @@ export class MainControlPanel {
 
   private buildSections(): string {
     const mode = this.config.params.mode;
+    seedModeColors(this.config.params, mode);
     let html = '';
 
     // Scene section (always visible)
@@ -389,9 +391,10 @@ export class MainControlPanel {
   private buildModeControls(mode: string): string {
     const spec = MODE_CONTROLS[mode]; if (!spec) return '';
     applyModeDefaults(this.config.params, mode);
-    const one = (c: Ctl) => c.type === 'slider' ? this.buildSlider(c.key, c.label, c.min!, c.max!, c.step ?? 0.01, true)
-      : c.type === 'knob' ? this.buildKnob(c.key, c.label, c.min!, c.max!, c.step ?? 0.01)
-      : c.type === 'select' ? this.buildSelect(c.key, c.label, c.options!) : this.buildCheckbox(c.key, c.label);
+    const one = (c: Ctl) => c.type === 'slider' || c.type === 'knob' ? this.buildSlider(c.key, c.label, c.min!, c.max!, c.step ?? 0.01, true)
+      : c.type === 'select' ? this.buildSelect(c.key, c.label, c.options!)
+      : c.type === 'color' ? this.buildColorPicker(c.key, c.label)
+      : this.buildCheckbox(c.key, c.label);
     const names = presetNames(mode);
     const presetHtml = `
       <div class="control mode-presets" data-mode="${mode}">
@@ -424,16 +427,17 @@ export class MainControlPanel {
   private buildSlider(param: string, label: string, min: number, max: number, step: number, modulatable = false): string {
     const value = this.config.params[param] ?? ((min + max) / 2);
     const beatBtn = modulatable ? `<button class="beat-link-btn" data-param="${param}" title="Link to beat">🔗</button>` : '';
+    const shown = typeof value === 'number' ? (Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(2)) : value;
     return `
-      <div class="control" data-param="${param}">
-        <div class="control-row">
+      <div class="control touch-control" data-param="${param}">
+        <div class="control-row touch-row">
           <label class="control-label">${label}</label>
-          <input type="range" class="control-slider" 
-            data-param="${param}"
-            min="${min}" max="${max}" step="${step}" value="${value}" />
-          <span class="control-value" data-value="${param}">${typeof value === 'number' ? value.toFixed(2) : value}</span>
+          <span class="control-value" data-value="${param}">${shown}</span>
           ${beatBtn}
         </div>
+        <input type="range" class="control-slider"
+          data-param="${param}" data-default="${value}"
+          min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}" />
       </div>
     `;
   }
@@ -441,16 +445,28 @@ export class MainControlPanel {
   private buildSelect(param: string, label: string, options: any): string {
     const value = this.config.params[param];
     const opts = Array.isArray(options) ? options : Object.keys(options);
-    const optionsHtml = opts.map(opt => {
-      const val = Array.isArray(options) ? opt : options[opt];
+    const valOf = (opt: string) => Array.isArray(options) ? opt : options[opt];
+    if (opts.length >= 2 && opts.length <= 5) {
+      const segs = opts.map((opt) => {
+        const val = valOf(opt);
+        const on = value == val ? 'is-on' : '';
+        return `<button type="button" class="seg-btn ${on}" data-param="${param}" data-value="${val}">${opt}</button>`;
+      }).join('');
+      return `
+        <div class="control touch-control" data-param="${param}">
+          <label class="control-label">${label}</label>
+          <div class="seg-row" role="group" aria-label="${label}">${segs}</div>
+        </div>`;
+    }
+    const optionsHtml = opts.map((opt) => {
+      const val = valOf(opt);
       return `<option value="${val}" ${value == val ? 'selected' : ''}>${opt}</option>`;
     }).join('');
-    
     return `
-      <div class="control" data-param="${param}">
-        <div class="control-row">
+      <div class="control touch-control" data-param="${param}">
+        <div class="control-row touch-row">
           <label class="control-label">${label}</label>
-          <select class="control-select" data-param="${param}">
+          <select class="control-select" data-param="${param}" data-default="${value ?? ''}">
             ${optionsHtml}
           </select>
         </div>
@@ -460,14 +476,14 @@ export class MainControlPanel {
 
   private buildCheckbox(param: string, label: string): string {
     const checked = this.config.params[param] ? 'checked' : '';
+    const on = this.config.params[param] ? 'is-on' : '';
     return `
-      <div class="control" data-param="${param}">
-        <div class="control-row">
-          <label class="control-label">
-            <input type="checkbox" data-param="${param}" ${checked} />
-            ${label}
-          </label>
-        </div>
+      <div class="control touch-control" data-param="${param}">
+        <label class="toggle-row ${on}">
+          <span class="control-label">${label}</span>
+          <input type="checkbox" data-param="${param}" data-default="${this.config.params[param] ? 1 : 0}" ${checked} />
+          <span class="toggle-ui" aria-hidden="true"></span>
+        </label>
       </div>
     `;
   }
@@ -652,45 +668,36 @@ export class MainControlPanel {
   }
 
   private buildColorSection(mode: string): string {
-    const presetOptions = Object.keys(COLOR_PRESETS);
-    const controls: string[] = [];
-    
-    // Color preset selector
-    controls.push(this.buildSelect('colorPreset', 'Preset', presetOptions));
-    
-    // Universal controls
-    controls.push(this.buildSlider('exposure', 'Exposure', 0.4, 4, 0.01, true));
-    controls.push(this.buildSlider('bloom', 'Bloom', 0, 2, 0.01, true));
-    
-    // Mode-specific color controls
-    if (mode === '3D Fractal') {
-      controls.push(this.buildColorPicker('frColor1', 'Color 1'));
-      controls.push(this.buildColorPicker('frColor2', 'Color 2'));
-      controls.push(this.buildSlider('frColorMix', 'Color Mix', 0, 10, 0.1, true));
-    } else if (mode === '2D flow') {
-      controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
-      controls.push(this.buildSlider('colorBySpeed', 'Color by Speed', 0, 1, 0.01, true));
-      controls.push(this.buildColorPicker('background', 'Background'));
-    } else if (mode === 'Tunnel' || mode === 'Kaleido' || mode === 'Plasma' || mode === 'Morph') {
-      // Trippy modes: just hue shift (palettes are baked into modes)
-      controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
-    } else {
-      // Default for 3D fabric, Particle Fabric, Wall Studio, Liquid Spheres
-      controls.push(this.buildSlider('hueShift', 'Hue Shift', -180, 180, 1, true));
-      controls.push(this.buildSlider('saturation', 'Saturation', 0.5, 2, 0.01, true));
-      controls.push(this.buildColorPicker('background', 'Background'));
+    const groups = colorGroupsFor(mode);
+    if (!groups.length) {
+      // Legacy / non-lineup modes keep a compact color strip.
+      const controls: string[] = [
+        this.buildSlider('exposure', 'Exposure', 0.4, 4, 0.01, true),
+        this.buildSlider('bloom', 'Bloom', 0, 2, 0.01, true),
+        this.buildColorPicker('background', 'Background'),
+      ];
+      return this.buildSection('Color', controls);
     }
-    
-    // Color animation
-    controls.push(this.buildSlider('cHueCycle', 'Hue Cycle', -20, 20, 0.1, true));
-    
-    return this.buildSection('Color', controls);
+    return groups.map((g) => {
+      const palNames = Object.keys(g.palettes);
+      const pal = palNames.length
+        ? `<div class="control touch-control" data-color-group="${g.id}">
+            <label class="control-label">Preset</label>
+            <div class="swatch-presets">${palNames.map((n) =>
+              `<button type="button" class="swatch-preset" data-color-group="${g.id}" data-palette="${n}" title="${n}">${n}</button>`
+            ).join('')}</div>
+          </div>`
+        : '';
+      const body = g.ctls.map((c) => c.type === 'color' ? this.buildColorPicker(c.key, c.label)
+        : this.buildSlider(c.key, c.label, c.min ?? 0, c.max ?? 1, c.step ?? 0.01, false)).join('');
+      return this.buildSection(`Color · ${g.title}`, [pal, body]);
+    }).join('');
   }
 
   private buildLightingSection(mode: string): string {
-    // Simple modes don't need lighting controls
+    if (colorGroupsFor(mode).some((g) => g.id === 'lighting' || g.id === 'studio')) return '';
     if (mode === 'Tunnel' || mode === 'Kaleido' || mode === 'Plasma' || mode === 'Morph') {
-      return ''; // No lighting section for simple trippy modes
+      return '';
     }
     
     const rigOptions = Object.keys(LIGHTING_RIGS);
@@ -716,13 +723,12 @@ export class MainControlPanel {
   private buildColorPicker(param: string, label: string): string {
     const value = this.config.params[param] || '#ffffff';
     return `
-      <div class="control" data-param="${param}">
-        <div class="control-row">
-          <label class="control-label">${label}</label>
-          <input type="color" class="control-color" 
-            data-param="${param}"
-            value="${value}" />
-        </div>
+      <div class="control touch-control color-control" data-param="${param}">
+        <label class="color-row">
+          <span class="control-label">${label}</span>
+          <input type="color" class="control-color" data-param="${param}" data-default="${value}" value="${value}" aria-label="${label}" />
+          <span class="color-hex" data-value="${param}">${value}</span>
+        </label>
       </div>
     `;
   }
@@ -743,6 +749,72 @@ export class MainControlPanel {
     this.container.querySelectorAll('.section-header').forEach(header => {
       header.addEventListener('click', () => {
         header.closest('.panel-section')?.classList.toggle('collapsed');
+      });
+    });
+
+    const applyParam = (param: string, value: any, input?: HTMLInputElement | HTMLSelectElement) => {
+      this.config.params[param] = value;
+      this.updateValueDisplay(param, value);
+      this.updateKnob(param, value);
+      this.config.remoteSync?.syncState();
+    };
+    const resetToDefault = (input: HTMLInputElement | HTMLSelectElement) => {
+      const param = input.dataset.param!;
+      const def = input.dataset.default;
+      if (def === undefined) return;
+      let value: any = def;
+      if (input.type === 'range') value = parseFloat(def);
+      else if (input.type === 'checkbox') { value = def === '1' || def === 'true'; (input as HTMLInputElement).checked = value; }
+      else input.value = def;
+      if (input.type === 'range' || input.type === 'color') input.value = String(value);
+      applyParam(param, value, input);
+      this.syncDisplayedValues();
+    };
+    // Double-tap / double-click restores the default. Ignore if the pointer dragged.
+    this.container.querySelectorAll('input[data-param], select[data-param]').forEach((el) => {
+      const input = el as HTMLInputElement | HTMLSelectElement;
+      let lastTap = 0;
+      let downX = 0, downY = 0;
+      input.addEventListener('pointerdown', (e) => { const ev = e as PointerEvent; downX = ev.clientX; downY = ev.clientY; });
+      const maybeReset = (e: Event) => {
+        const ev = e as PointerEvent;
+        const dx = ev.clientX !== undefined ? ev.clientX - downX : 0;
+        const dy = ev.clientY !== undefined ? ev.clientY - downY : 0;
+        if (Math.hypot(dx, dy) > 12) { lastTap = 0; return; }
+        const now = performance.now();
+        if (now - lastTap < 380) { e.preventDefault(); resetToDefault(input); lastTap = 0; }
+        else lastTap = now;
+      };
+      input.addEventListener('dblclick', (e) => { e.preventDefault(); resetToDefault(input); });
+      input.addEventListener('pointerup', maybeReset);
+    });
+    this.container.querySelectorAll('.seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const param = (btn as HTMLElement).dataset.param!;
+        let value: any = (btn as HTMLElement).dataset.value;
+        const num = Number(value);
+        value = (value !== '' && !isNaN(num)) ? num : value;
+        if (value === 'true') value = true;
+        if (value === 'false') value = false;
+        applyParam(param, value);
+        btn.parentElement?.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('is-on', b === btn));
+        if (param === 'mode' && this.config.onModeChange) { this.config.onModeChange(); this.rebuild(); }
+      });
+    });
+    this.container.querySelectorAll('button.swatch-preset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const group = (btn as HTMLElement).dataset.colorGroup as any;
+        const name = (btn as HTMLElement).dataset.palette!;
+        if (applyGroupPalette(this.config.params, group, name)) {
+          this.syncDisplayedValues();
+          this.config.remoteSync?.syncState();
+          // Update color input values in this group
+          this.container.querySelectorAll(`input.control-color`).forEach((el) => {
+            const inp = el as HTMLInputElement;
+            const v = this.config.params[inp.dataset.param!];
+            if (typeof v === 'string') inp.value = v;
+          });
+        }
       });
     });
 
@@ -792,6 +864,8 @@ export class MainControlPanel {
         this.config.params[param] = value;
         this.updateValueDisplay(param, value);
         this.updateKnob(param, value);
+        if (input.type === 'checkbox') input.closest('.toggle-row')?.classList.toggle('is-on', !!value);
+        this.config.remoteSync?.syncState();
         if (param === 'hueShift' && (window as any).engine?.buildPalette) {
           (window as any).engine.buildPalette();
         }
@@ -951,10 +1025,12 @@ export class MainControlPanel {
   }
 
   private updateValueDisplay(param: string, value: any): void {
-    const valueEl = this.container.querySelector(`[data-value="${param}"]`);
-    if (valueEl) {
-      valueEl.textContent = typeof value === 'number' ? value.toFixed(2) : value.toString();
-    }
+    this.container.querySelectorAll(`[data-value="${param}"]`).forEach((valueEl) => {
+      if (typeof value === 'number') {
+        const step = Number((this.container.querySelector(`input[data-param="${param}"]`) as HTMLInputElement | null)?.step ?? 0.01);
+        valueEl.textContent = step >= 1 ? String(Math.round(value)) : value.toFixed(2);
+      } else valueEl.textContent = String(value);
+    });
   }
 
   private showBeatLinkPopup(param: string): void {
@@ -1054,14 +1130,17 @@ export class MainControlPanel {
       
       if (input.type === 'checkbox') {
         (input as HTMLInputElement).checked = !!value;
+        input.closest('.toggle-row')?.classList.toggle('is-on', !!value);
       } else if (input.type === 'color') {
         input.value = String(value);
       } else if (input.type === 'range' || input.tagName === 'SELECT') {
         input.value = String(value);
         if (input.classList.contains('knob-input')) this.updateKnob(param, value);
       }
-      
-      // Update display value
+      this.container.querySelectorAll(`.seg-btn[data-param="${param}"]`).forEach((b) => {
+        const ev = (b as HTMLElement).dataset.value;
+        b.classList.toggle('is-on', String(value) === String(ev) || value == ev);
+      });
       this.updateValueDisplay(param, value);
     });
   }

@@ -46,7 +46,28 @@ export function perspective(fovy: number, aspect: number, near: number, far: num
 export function ortho(l: number, r: number, b: number, t: number, n: number, f: number): number[] {
   return [2 / (r - l), 0, 0, 0, 0, 2 / (t - b), 0, 0, 0, 0, -2 / (f - n), 0, -(r + l) / (r - l), -(t + b) / (t - b), -(f + n) / (f - n), 1];
 }
-export function lookOf(name: string): StudioLook { return STUDIO_LOOKS[name] ?? STUDIO_LOOKS['Coral Peach']; }
+let _colorP: Record<string, any> | null = null;
+/** Push the current params so lookOf / setStudioEnv can apply Color section overrides. */
+export function setColorParams(P: Record<string, any> | null) { _colorP = P; }
+function pickHex(P: Record<string, any> | null, key: string, fallback: string): string {
+  const v = P && P[key];
+  return (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)) ? v : fallback;
+}
+export function lookOf(name: string): StudioLook {
+  const base = STUDIO_LOOKS[name] ?? STUDIO_LOOKS['Coral Peach'];
+  const P = _colorP;
+  if (!P) return base;
+  return {
+    ...base,
+    key: pickHex(P, 'colKey', base.key),
+    fill: pickHex(P, 'colFill', base.fill),
+    rim: pickHex(P, 'colRim', base.rim),
+    dome: pickHex(P, 'colAmbient', base.dome),
+    bgTop: pickHex(P, 'colBgTop', base.bgTop),
+    bgBottom: pickHex(P, 'colBgBottom', base.bgBottom),
+    glow: pickHex(P, 'colGlow', base.glow),
+  };
+}
 export function lin(h: string, s = 1): Vec3 { const v = srgbHex(h); return [v[0] * s, v[1] * s, v[2] * s]; }
 export function dirFromAzEl(azDeg: number, elDeg: number): Vec3 {
   const az = azDeg * Math.PI / 180, el = elDeg * Math.PI / 180;
@@ -138,6 +159,8 @@ void main(){ vec2 p = vec2((gl_VertexID<<1)&2, gl_VertexID&2); vUv = p; gl_Posit
 export const STUDIO_GLSL = `
 uniform vec3 uBgTop, uBgBottom, uBgGlow, uKeyCol, uFillCol, uLightDir, uFillDir, uCamFwd, uDomeCol, uGroundCol, uRimCol;
 uniform float uKeyI, uDomeI;
+uniform vec3 uWallCol, uObjectTint, uGlowCol;
+uniform float uObjectMix, uGlowI;
 const float PI = 3.14159265;
 vec3 backdrop(vec3 rd){
   float h = smoothstep(-0.08, 0.75, rd.y);
@@ -159,6 +182,7 @@ vec3 thinFilm(float nv){ return 0.5 + 0.5*cos(6.2831*(vec3(0.0,0.33,0.67) + nv*1
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 /** Lit studio surface: wrap diffuse key + dome, GGX key highlight, env reflection, fresnel rim. */
 vec3 studioShade(vec3 P, vec3 N, vec3 V, vec3 albedo, float rough, vec3 f0, float ao, float sh, float rimAmt){
+  albedo *= mix(vec3(1.0), uObjectTint, uObjectMix);
   vec3 L = normalize(uLightDir);
   float nl = max(dot(N, L), 0.0), nv = max(dot(N, V), 1e-3);
   float wrap = clamp((dot(N, L)+0.25)/1.25, 0.0, 1.0);
@@ -194,8 +218,26 @@ export function setStudioEnv(gl: WebGL2RenderingContext, u: Record<string, WebGL
   const k = e.look;
   gl.uniform3fv(u.uBgTop, lin(k.bgTop)); gl.uniform3fv(u.uBgBottom, lin(k.bgBottom)); gl.uniform3fv(u.uBgGlow, lin(k.glow, 0.25));
   gl.uniform3fv(u.uKeyCol, lin(k.key)); gl.uniform3fv(u.uFillCol, lin(k.fill)); gl.uniform3fv(u.uLightDir, e.L); gl.uniform3fv(u.uFillDir, e.F);
-  gl.uniform3fv(u.uCamFwd, e.fwd); gl.uniform3fv(u.uDomeCol, lin(k.dome)); const bb = lin(k.bgBottom); gl.uniform3fv(u.uGroundCol, [bb[0] * 0.8, bb[1] * 0.8, bb[2] * 0.8]);
+  gl.uniform3fv(u.uCamFwd, e.fwd); gl.uniform3fv(u.uDomeCol, lin(k.dome)); const bb = lin(k.bgBottom);
+  const P = _colorP;
+  const floorHex = P && pickHex(P, 'colFloor', '');
+  const ground = floorHex ? lin(floorHex) : [bb[0] * 0.8, bb[1] * 0.8, bb[2] * 0.8] as [number, number, number];
+  gl.uniform3fv(u.uGroundCol, ground);
   gl.uniform3fv(u.uRimCol, lin(k.rim)); gl.uniform1f(u.uKeyI, k.keyI); gl.uniform1f(u.uDomeI, k.domeI);
+  if (u.uWallCol) {
+    const wallHex = P && pickHex(P, 'colWalls', '');
+    gl.uniform3fv(u.uWallCol, wallHex ? lin(wallHex) : lin(k.bgTop));
+  }
+  if (u.uObjectTint) {
+    const objHex = P && pickHex(P, 'colObject', '');
+    gl.uniform3fv(u.uObjectTint, objHex ? lin(objHex) : [1, 1, 1]);
+    gl.uniform1f(u.uObjectMix, objHex ? 0.45 : 0);
+  }
+  if (u.uGlowCol) {
+    gl.uniform3fv(u.uGlowCol, lin(k.glow));
+    const gi = P && typeof P.colGlowI === 'number' ? P.colGlowI : 1;
+    gl.uniform1f(u.uGlowI, gi);
+  }
 }
 export function slotsOf(look: StudioLook): Float32Array { const s = new Float32Array(21); look.slots.forEach((h, i) => s.set(srgbHex(h), i * 3)); return s; }
 
