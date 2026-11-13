@@ -1,7 +1,7 @@
 // Crystal Temple: a kaleidoscopic prism-ridge tunnel with a traveling axial pulse.
 // Original MIT-licensed work for flow-engine. No Shadertoy code.
 import type { PhysScene, PhysFrame, Vec3, FB } from './common';
-import { compile, QUAD_VS, STUDIO_GLSL, PCF_GLSL, MsTarget, ShadowMap, setStudioEnv, lookOf, dirFromAzEl, srgbHex, lookAt, perspective, mul, norm, invert, fbo, deleteFB } from './common';
+import { compile, QUAD_VS, STUDIO_GLSL, PCF_GLSL, ShadowMap, setStudioEnv, lookOf, dirFromAzEl, srgbHex, lookAt, perspective, mul, norm, invert, fbo, deleteFB } from './common';
 
 export const TEMPLE_PALETTES: Record<string, {
   body: string[]; gold: string[]; accent: string[]; tendril: string[];
@@ -77,9 +77,9 @@ function colOf(hexes: string[], i: number, j = 0): [number, number, number] {
   return [c[0], c[1], c[2]];
 }
 
-/** Shared per-block motion (spin, drift, cascade, echo). Used by color and shadow VS. */
+/** Shared per-block motion. Default is axis-aligned: radial / ring / row waves and a scale pulse. Spin is optional and Z-locked; high spin adds chaos for Echo Storm. Used by color and shadow VS. */
 const MOTION_GLSL = `
-uniform float uTime, uAmp, uSpin, uPhase, uDrift, uSpread, uCascade;
+uniform float uTime, uAmp, uSpin, uPhase, uDrift, uSpread, uCascade, uZoom;
 vec3 rotAxis(vec3 v, vec3 ax, float a){
   float c = cos(a), s = sin(a);
   return v * c + cross(ax, v) * s + ax * dot(ax, v) * (1.0 - c);
@@ -92,6 +92,53 @@ void orientYP(float yaw, float pitch, inout vec3 loc, inout vec3 n){
   vec3 m = n;
   n = vec3(cy * m.x + sy * m.z, m.y, -sy * m.x + cy * m.z);
   n = vec3(n.x, cp * n.y - sp * n.z, sp * n.y + cp * n.z);
+}
+void templeMotion(vec3 origin, float seed, float kind, float echoI, inout vec3 loc, inout vec3 n, out vec3 shift, out float fade){
+  float rad = length(origin.xy);
+  vec3 rdir = vec3(origin.xy, 0.0) / max(rad, 0.06);
+  vec3 tdir = vec3(-origin.y, origin.x, 0.0) / max(rad, 0.06);
+  float az = atan(origin.y, origin.x);
+  float waveZ = sin(uTime * uCascade * 1.65 - origin.z * 0.52);
+  float waveRing = sin(az * 4.0 - uTime * 0.62 * uPhase + origin.z * 0.22);
+  float waveRow = sin(uTime * 0.78 * uPhase - origin.z * 0.38 + floor(rad * 2.0 + 0.01) * 1.15);
+  float ph = uPhase * (az * 0.5 + origin.z * 0.15);
+  float radial = (waveZ * 0.11 + waveRing * 0.045) * uDrift;
+  float along = waveRow * 0.10 * uDrift;
+  float tang = waveRing * 0.055 * uDrift;
+  shift = rdir * radial + vec3(0.0, 0.0, along) + tdir * tang;
+  loc *= 1.0 + waveZ * 0.26 * uZoom;
+  float ang = (uTime * 0.85 + waveZ * 0.35 + ph) * uSpin;
+  if (abs(ang) > 1e-5) {
+    vec3 ax = vec3(0.0, 0.0, 1.0);
+    loc = rotAxis(loc, ax, ang);
+    n = rotAxis(n, ax, ang);
+  }
+  float chaos = smoothstep(0.75, 1.6, uSpin);
+  if (chaos > 0.01) {
+    vec3 rax = normalize(vec3(sin(seed * 19.19), 0.40 + 0.60 * cos(seed * 7.13), sin(seed * 13.71)));
+    float cang = uTime * uSpin * chaos * (0.65 + 1.05 * seed) * 1.2;
+    loc = rotAxis(loc, rax, cang);
+    n = rotAxis(n, rax, cang);
+    shift += vec3(
+      sin(uTime * 0.71 + seed * 6.2831) * 0.13,
+      sin(uTime * 0.53 + seed * 4.1) * 0.08,
+      sin(uTime * 0.41 + seed * 2.7) * 0.11
+    ) * uDrift * chaos;
+  }
+  fade = 1.0;
+  if (echoI > 0.5) {
+    float life = fract(uTime * 0.17 * (0.75 + 0.5 * seed) + seed + echoI * 0.29);
+    float split = sin(life * 3.14159265);
+    vec3 dir = normalize(rdir + vec3(0.0, 0.0, 0.25 * sin(seed * 5.27)));
+    if (chaos > 0.5) dir = normalize(mix(dir, normalize(vec3(cos(seed * 8.13), sin(seed * 5.27) * 0.7, sin(seed * 3.71))), chaos));
+    shift += dir * uSpread * echoI * split * 0.55;
+    fade = mix(0.12, 0.72, max(split, 0.0));
+    loc *= mix(0.72, 1.0, max(split, 0.0));
+  }
+  if (kind > 1.5 && kind < 2.5) {
+    shift.x += sin(uTime * 0.62 + origin.z * 0.41) * uAmp * 0.05;
+    shift.y += sin(uTime * 0.48 + origin.z * 0.33) * uAmp * 0.04;
+  }
 }
 `;
 
@@ -107,38 +154,12 @@ ${MOTION_GLSL}
 out vec3 vP, vN, vCol, vT;
 out float vAo, vEm, vKind, vFade, vPlate;
 void main(){
-  float seed = aA.w;
   vec3 loc = aPos * aB.xyz;
   vec3 ns = aNrm / max(aB.xyz, vec3(1e-3));
   if (abs(aD.z) + abs(aD.w) > 1e-5) orientYP(aD.z, aD.w, loc, ns);
-  float casc = sin(uTime * uCascade * 2.15 - aA.z * 0.58 + seed * 6.2831);
-  float ph = seed * 6.2831 * uPhase + casc * 0.85 * uPhase;
-  vec3 ax = normalize(vec3(sin(seed * 19.19), 0.40 + 0.60 * cos(seed * 7.13), sin(seed * 13.71)));
-  float ang = uTime * uSpin * (0.65 + 1.05 * seed) * 1.85 + ph + casc * 0.55;
-  loc = rotAxis(loc, ax, ang);
-  ns = rotAxis(ns, ax, ang);
-  vec3 drift = vec3(
-    sin(uTime * 0.71 + ph) * 0.13,
-    sin(uTime * 0.53 + ph * 1.27) * 0.08,
-    sin(uTime * 0.41 + ph * 0.73) * 0.11
-  ) * uDrift * (1.0 + 0.35 * casc);
-  float fade = 1.0;
-  vec3 eoff = vec3(0.0);
-  if (aD.y > 0.5) {
-    float life = fract(uTime * 0.17 * (0.75 + 0.5 * seed) + seed + aD.y * 0.29);
-    float split = sin(life * 3.14159265);
-    vec3 dir = normalize(vec3(cos(seed * 8.13), sin(seed * 5.27) * 0.7, sin(seed * 3.71)));
-    eoff = dir * uSpread * aD.y * split * 0.55;
-    fade = mix(0.12, 0.72, max(split, 0.0));
-    loc *= mix(0.62, 0.95, max(split, 0.0));
-  }
-  vec3 knock = vec3(casc * 0.07 * (0.4 + abs(aA.x) * 0.15), casc * 0.045, 0.0) * uCascade;
-  // tendrils keep a little extra sway
-  if (aD.x > 1.5 && aD.x < 2.5) {
-    drift.x += sin(uTime * 0.62 + aA.z * 0.41) * uAmp * 0.08;
-    drift.y += sin(uTime * 0.48 + aA.z * 0.33) * uAmp * 0.06;
-  }
-  vec3 wp = aA.xyz + loc + drift + eoff + knock;
+  vec3 shift; float fade;
+  templeMotion(aA.xyz, aA.w, aD.x, aD.y, loc, ns, shift, fade);
+  vec3 wp = aA.xyz + loc + shift;
   vec3 wn = normalize(ns);
   vec3 t0 = abs(wn.y) < 0.9 ? vec3(1,0,0) : vec3(0,0,1);
   t0 = normalize(t0 - wn * dot(t0, wn));
@@ -155,35 +176,12 @@ layout(location=5) in vec4 aD;
 uniform mat4 uVP;
 ${MOTION_GLSL}
 void main(){
-  float seed = aA.w;
   vec3 loc = aPos * aB.xyz;
   vec3 dummy = vec3(0.0);
   if (abs(aD.z) + abs(aD.w) > 1e-5) orientYP(aD.z, aD.w, loc, dummy);
-  float casc = sin(uTime * uCascade * 2.15 - aA.z * 0.58 + seed * 6.2831);
-  float ph = seed * 6.2831 * uPhase + casc * 0.85 * uPhase;
-  vec3 ax = normalize(vec3(sin(seed * 19.19), 0.40 + 0.60 * cos(seed * 7.13), sin(seed * 13.71)));
-  float ang = uTime * uSpin * (0.65 + 1.05 * seed) * 1.85 + ph + casc * 0.55;
-  loc = rotAxis(loc, ax, ang);
-  vec3 drift = vec3(
-    sin(uTime * 0.71 + ph) * 0.13,
-    sin(uTime * 0.53 + ph * 1.27) * 0.08,
-    sin(uTime * 0.41 + ph * 0.73) * 0.11
-  ) * uDrift * (1.0 + 0.35 * casc);
-  vec3 eoff = vec3(0.0);
-  if (aD.y > 0.5) {
-    float life = fract(uTime * 0.17 * (0.75 + 0.5 * seed) + seed + aD.y * 0.29);
-    float split = sin(life * 3.14159265);
-    vec3 dir = normalize(vec3(cos(seed * 8.13), sin(seed * 5.27) * 0.7, sin(seed * 3.71)));
-    eoff = dir * uSpread * aD.y * split * 0.55;
-    loc *= mix(0.62, 0.95, max(split, 0.0));
-  }
-  vec3 knock = vec3(casc * 0.07 * (0.4 + abs(aA.x) * 0.15), casc * 0.045, 0.0) * uCascade;
-  if (aD.x > 1.5 && aD.x < 2.5) {
-    drift.x += sin(uTime * 0.62 + aA.z * 0.41) * uAmp * 0.08;
-    drift.y += sin(uTime * 0.48 + aA.z * 0.33) * uAmp * 0.06;
-  }
-  vec3 wp = aA.xyz + loc + drift + eoff + knock;
-  gl_Position = uVP * vec4(wp, 1.0);
+  vec3 shift; float fade;
+  templeMotion(aA.xyz, aA.w, aD.x, aD.y, loc, dummy, shift, fade);
+  gl_Position = uVP * vec4(aA.xyz + loc + shift, 1.0);
 }`;
 const SH_FS = `#version 300 es
 void main(){}`;
@@ -254,7 +252,12 @@ void main(){
   col = mix(col, vec3(0.0), clamp(fog, 0.0, 1.0));
   col *= vFade;
   col = min(col, vec3(6.0));
-  o = vec4(col, 1.0);
+  float d = length(vP - uCamPos);
+  float focusD = 6.5;
+  float band = 5.0;
+  float dev = abs(d - focusD);
+  float cd = focusD + sign(d - focusD) * max(dev - band, 0.0) * 0.55;
+  o = vec4(col, cd);
 }`;
 
 const BACK_FS = `#version 300 es
@@ -286,68 +289,60 @@ void main(){
 const STAR_VS = `#version 300 es
 layout(location=0) in vec3 aPos;
 uniform mat4 uVP;
+uniform vec3 uCamPos;
 uniform float uCamZ, uPeriod;
-out float vB;
+out float vB, vD;
 void main(){
   float z = aPos.z;
   float p = uPeriod;
   z = z - p * floor((z - (uCamZ - p * 0.5)) / p);
   vec3 wp = vec3(aPos.x, aPos.y, z);
   vB = 0.45 + 0.55 * fract(sin(dot(aPos, vec3(7.13, 13.71, 19.19))) * 51.7913);
+  vD = length(wp - uCamPos);
   gl_Position = uVP * vec4(wp, 1.0);
   gl_PointSize = mix(1.2, 2.6, vB);
 }`;
 const STAR_FS = `#version 300 es
 precision highp float;
-in float vB;
+in float vB, vD;
 out vec4 o;
 void main(){
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float d = dot(p, p);
   if (d > 1.0) discard;
   float a = exp(-d * 3.2) * vB;
-  o = vec4(vec3(0.85, 0.92, 1.0) * a, 1.0);
+  o = vec4(vec3(0.85, 0.92, 1.0) * a, vD);
 }`;
 
-/** Barrel / fisheye post (Brown–Conrady). Chromatic fringe at the edges, optional breathe. */
+/** Equidistant fisheye composite: sample a cubemap with a true wide-angle ray, 80–360°. No post-warp crop. Mild RGB fringe at the rim. */
 const FISH_FS = `#version 300 es
 precision highp float;
 in vec2 vUv;
-uniform sampler2D uTex;
-uniform float uFish, uTime, uBreathe, uAspect;
+uniform samplerCube uCube;
+uniform vec3 uRight, uUp, uFwd;
+uniform float uFov, uAspect;
 out vec4 o;
-vec2 distort(vec2 p, float k, float k2){
-  float r2 = dot(p, p);
-  return p * (1.0 + k * r2 + k2 * r2 * r2);
+vec3 rayDir(vec2 p, float fov){
+  float r = length(p);
+  float rEdge = max(uAspect, 1e-4);
+  float theta = min((r / rEdge) * fov * 0.5, 3.14159265);
+  if (r < 1e-5) return vec3(0.0, 0.0, 1.0);
+  float s = sin(theta), c = cos(theta);
+  return vec3(p.x / r * s, p.y / r * s, c);
+}
+vec4 sampleWorld(vec3 dir){
+  vec3 wrd = normalize(uRight * dir.x + uUp * dir.y + uFwd * dir.z);
+  // WebGL cubemap sampling is left-handed on X
+  return texture(uCube, vec3(-wrd.x, wrd.y, wrd.z));
 }
 void main(){
-  vec2 uv = vUv * 2.0 - 1.0;
-  float br = 1.0 + uBreathe * 0.16 * sin(uTime * 0.65);
-  vec2 wob = uBreathe * 0.035 * vec2(sin(uTime * 0.43), cos(uTime * 0.37));
-  uv -= wob;
-  float amt = max(uFish, 0.0) * br;
-  if (amt < 0.001) {
-    o = texture(uTex, vUv);
-    return;
-  }
-  float k = amt * 0.52;
-  float k2 = amt * 0.18;
-  // zoom so mid-edges stay in-source and the bent image fills the 16:9 frame
-  float zm = mix(1.0, 0.62, clamp(amt / 2.2, 0.0, 1.0));
-  uv *= zm;
-  vec2 pr = distort(uv, k * 1.10, k2);
-  vec2 pg = distort(uv, k, k2);
-  vec2 pb = distort(uv, k * 0.90, k2);
-  pr = pr * 0.5 + 0.5; pg = pg * 0.5 + 0.5; pb = pb * 0.5 + 0.5;
-  vec3 col = vec3(
-    texture(uTex, clamp(pr, 0.0, 1.0)).r,
-    texture(uTex, clamp(pg, 0.0, 1.0)).g,
-    texture(uTex, clamp(pb, 0.0, 1.0)).b
-  );
-  float r = length(uv / zm);
-  float vig = 1.0 - smoothstep(0.78, 1.18, r);
-  col *= mix(1.0, vig, clamp(amt * 0.28, 0.0, 1.0));
-  o = vec4(col, 1.0);
+  vec2 p = vUv * 2.0 - 1.0;
+  p.x *= uAspect;
+  float fringe = 0.012 * smoothstep(0.45, 1.15, length(p) / max(uAspect, 1.0));
+  vec4 g = sampleWorld(rayDir(p, uFov));
+  float r = sampleWorld(rayDir(p, uFov * (1.0 + fringe))).r;
+  float b = sampleWorld(rayDir(p, uFov * (1.0 - fringe))).b;
+  o = vec4(r, g.g, b, g.a);
 }`;
 
 function buildPeriod(pal: Pal, density: number, amp: number): Box[] {
@@ -611,6 +606,67 @@ function makeStars(): Float32Array {
   return p;
 }
 
+
+const CUBE_SIZE = 1024;
+const CUBE_FACES: { dir: Vec3; up: Vec3 }[] = [
+  { dir: [1, 0, 0], up: [0, -1, 0] },
+  { dir: [-1, 0, 0], up: [0, -1, 0] },
+  { dir: [0, 1, 0], up: [0, 0, 1] },
+  { dir: [0, -1, 0], up: [0, 0, -1] },
+  { dir: [0, 0, 1], up: [0, -1, 0] },
+  { dir: [0, 0, -1], up: [0, -1, 0] },
+];
+
+class CubeTarget {
+  tex: WebGLTexture;
+  private depth: WebGLRenderbuffer;
+  private fb: WebGLFramebuffer;
+  size: number;
+  constructor(private gl: WebGL2RenderingContext, size = CUBE_SIZE) {
+    this.size = size;
+    const t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, t);
+    for (let i = 0; i < 6; i++) {
+      gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, gl.RGBA16F, size, size, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    }
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    this.tex = t;
+    this.depth = gl.createRenderbuffer()!;
+    gl.bindRenderbuffer(gl.RENDERBUFFER, this.depth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, size, size);
+    this.fb = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fb);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depth);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+  }
+  begin(face: number) {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, this.tex, 0);
+    gl.viewport(0, 0, this.size, this.size);
+    gl.clearColor(0, 0, 0, 1000);
+    gl.clearDepth(1);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  }
+}
+
+/** Lens FOV in degrees: 80 (normal wide) to 360 (full wrap). Optional sine sweep. */
+function lensFovDeg(P: Record<string, any>, t: number): number {
+  const fov = Math.max(80, Math.min(360, Number(P.ctLensFov ?? 200)));
+  if (!P.ctLensAnim) return fov;
+  const range = Math.max(0, Math.min(1, Number(P.ctLensRange ?? 0.85)));
+  const lo = fov + (80 - fov) * range;
+  const hi = fov + (360 - fov) * range;
+  const w = 0.5 + 0.5 * Math.sin(t * (Number(P.ctLensSpeed ?? 0.4)) * 0.85);
+  return lo + (hi - lo) * w;
+}
+
 export class CrystalTempleScene implements PhysScene {
   name = 'Crystal Temple'; ready = true; error: string | null = null; stats: Record<string, any> = {};
   private p: ReturnType<typeof compile>; private sh: ReturnType<typeof compile>;
@@ -618,7 +674,7 @@ export class CrystalTempleScene implements PhysScene {
   private fish: ReturnType<typeof compile>;
   private vao: WebGLVertexArrayObject; private starVao: WebGLVertexArrayObject;
   private instBuf: WebGLBuffer; private nIdx: number; private nInst = 0;
-  private ms: MsTarget; private sm: ShadowMap; private fishFb: FB | null = null; private t = 0;
+  private cube: CubeTarget; private sm: ShadowMap; private fishFb: FB | null = null; private t = 0;
   private buf = new Float32Array(MAX * STRIDE);
   private key = '';
   constructor(private gl: WebGL2RenderingContext) {
@@ -647,7 +703,8 @@ export class CrystalTempleScene implements PhysScene {
     this.back = compile(gl, QUAD_VS, BACK_FS, 'crystaltemple-back');
     this.star = compile(gl, STAR_VS, STAR_FS, 'crystaltemple-stars');
     this.fish = compile(gl, QUAD_VS, FISH_FS, 'crystaltemple-fisheye');
-    this.ms = new MsTarget(gl, 4); this.sm = new ShadowMap(gl, 2048);
+    this.cube = new CubeTarget(gl, CUBE_SIZE);
+    this.sm = new ShadowMap(gl, 2048);
   }
   load() { this.ready = true; }
   private rebuild(P: Record<string, any>) {
@@ -676,11 +733,12 @@ export class CrystalTempleScene implements PhysScene {
     const u = prog.u;
     gl.uniform1f(u.uTime, t);
     gl.uniform1f(u.uAmp, P.ctAmp ?? 1);
-    gl.uniform1f(u.uSpin, P.ctBlockSpin ?? 1);
+    gl.uniform1f(u.uSpin, P.ctBlockSpin ?? 0);
     gl.uniform1f(u.uPhase, P.ctPhase ?? 1);
     gl.uniform1f(u.uDrift, P.ctDrift ?? 1);
     gl.uniform1f(u.uSpread, P.ctSpread ?? 1);
     gl.uniform1f(u.uCascade, P.ctCascade ?? 1);
+    gl.uniform1f(u.uZoom, P.ctZoom ?? 1);
   }
   render(f: PhysFrame) {
     const gl = this.gl; const P = f.params as Record<string, any>;
@@ -694,10 +752,7 @@ export class CrystalTempleScene implements PhysScene {
     const axis = fold >= 4 ? 0 : 0.12;
     const eye: Vec3 = [0, axis, camZ];
     const tgt: Vec3 = [0, fold >= 4 ? 0 : -0.08, camZ + 8];
-    const fov = (P.fov ?? 74) * Math.PI / 180;
-    const view = lookAt(eye, tgt);
-    const proj = perspective(fov, f.aspect, 0.12, 80);
-    const vp = mul(proj, view);
+    const lensFov = lensFovDeg(P, t);
 
     const pulseRate = P.ctPulseRate ?? 1;
     const pulseI = P.ctPulse ?? 1;
@@ -721,50 +776,18 @@ export class CrystalTempleScene implements PhysScene {
     gl.drawElementsInstanced(gl.TRIANGLES, this.nIdx, gl.UNSIGNED_SHORT, 0, this.nInst);
     this.sm.end();
 
-    this.ms.ensure(f.w, f.h); this.ms.begin(1000);
     const look = lookOf(P.look ?? 'Cobalt Orange');
     const fwd = norm([tgt[0] - eye[0], tgt[1] - eye[1], tgt[2] - eye[2]]);
+    const worldUp: Vec3 = Math.abs(fwd[1]) > 0.95 ? [0, 0, 1] : [0, 1, 0];
+    const right = norm([fwd[1] * worldUp[2] - fwd[2] * worldUp[1], fwd[2] * worldUp[0] - fwd[0] * worldUp[2], fwd[0] * worldUp[1] - fwd[1] * worldUp[0]]);
+    const camUp: Vec3 = [
+      right[1] * fwd[2] - right[2] * fwd[1],
+      right[2] * fwd[0] - right[0] * fwd[2],
+      right[0] * fwd[1] - right[1] * fwd[0],
+    ];
     const Ld = dirFromAzEl(P.keyAz ?? -20, P.keyEl ?? 48);
     const env = { look, L: Ld, F: dirFromAzEl((P.keyAz ?? -20) + 140, 18), fwd };
 
-    gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
-    gl.useProgram(this.back.p); setStudioEnv(gl, this.back.u, env);
-    gl.uniformMatrix4fv(this.back.u.uInvVP, false, invert(vp));
-    gl.uniform3fv(this.back.u.uCamPos, eye);
-    gl.uniform3fv(this.back.u.uPulseCol, pulseCol);
-    gl.uniform1f(this.back.u.uTime, t);
-    gl.uniform1f(this.back.u.uCamZ, camZ);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-    gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.depthFunc(gl.LESS);
-    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
-    gl.depthMask(false);
-    gl.useProgram(this.star.p);
-    gl.bindVertexArray(this.starVao);
-    gl.uniformMatrix4fv(this.star.u.uVP, false, vp);
-    gl.uniform1f(this.star.u.uCamZ, camZ);
-    gl.uniform1f(this.star.u.uPeriod, SEG * NSEG);
-    gl.drawArrays(gl.POINTS, 0, MAX_STARS);
-    gl.disable(gl.BLEND); gl.depthMask(true);
-    gl.bindVertexArray(this.vao);
-
-    gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
-    const u = this.p.u; gl.useProgram(this.p.p); setStudioEnv(gl, u, env); this.motionU(this.p, P, t);
-    gl.uniformMatrix4fv(u.uVP, false, shiftVP(vp, baseZ));
-    gl.uniform3fv(u.uCamPos, [eye[0], eye[1], eye[2] - baseZ]);
-    gl.uniform3fv(u.uPulsePos, [pulsePos[0], pulsePos[1], pulsePos[2] - baseZ]);
-    gl.uniform3fv(u.uPulseCol, pulseCol);
-    gl.uniform3fv(u.uFillA, fillA);
-    gl.uniform3fv(u.uFillB, fillB);
-    gl.uniform3fv(u.uGold, gold);
-    gl.uniform1f(u.uGloss, P.gloss ?? 1.2);
-    gl.uniform1f(u.uIrid, P.irid ?? 0.3);
-    gl.uniform1f(u.uAniso, P.ctAniso ?? 1);
-    gl.uniform1f(u.uPulseI, pulseI);
-    gl.uniform1f(u.uFog, 0.11);
-    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.sm.tex); gl.uniform1i(u.uShadow, 3);
-    gl.uniformMatrix4fv(u.uLightVP, false, shiftVP(lvp, baseZ));
-    gl.uniform1f(u.uShadowSoft, 2.2); gl.uniform1f(u.uShadowTexel, 1 / 2048);
     const pulseInst = Math.min(this.nInst + 3, MAX);
     if (pulseInst > this.nInst) {
       const pz = pulsePos[2] - baseZ;
@@ -781,24 +804,86 @@ export class CrystalTempleScene implements PhysScene {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.instBuf);
       gl.bufferSubData(gl.ARRAY_BUFFER, this.nInst * STRIDE * 4, this.buf.subarray(this.nInst * STRIDE, pulseInst * STRIDE));
     }
-    gl.drawElementsInstanced(gl.TRIANGLES, this.nIdx, gl.UNSIGNED_SHORT, 0, pulseInst);
-    gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.activeTexture(gl.TEXTURE0);
 
-    const tex = this.ms.resolve();
+    const faceProj = perspective(Math.PI / 2, 1, 0.08, 80);
+    const eyeS: Vec3 = [eye[0], eye[1], eye[2] - baseZ];
+    const nFaces = 6;
+
+    for (let face = 0; face < nFaces; face++) {
+      const fd = CUBE_FACES[face];
+      const tgtF: Vec3 = [eye[0] + fd.dir[0], eye[1] + fd.dir[1], eye[2] + fd.dir[2]];
+      const faceVP = mul(faceProj, lookAt(eye, tgtF, fd.up));
+      this.cube.begin(face);
+
+      gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND);
+      gl.useProgram(this.back.p); setStudioEnv(gl, this.back.u, env);
+      gl.uniformMatrix4fv(this.back.u.uInvVP, false, invert(faceVP));
+      gl.uniform3fv(this.back.u.uCamPos, eye);
+      gl.uniform3fv(this.back.u.uPulseCol, pulseCol);
+      gl.uniform1f(this.back.u.uTime, t);
+      gl.uniform1f(this.back.u.uCamZ, camZ);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.depthFunc(gl.LESS);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+      gl.depthMask(false);
+      gl.useProgram(this.star.p);
+      gl.bindVertexArray(this.starVao);
+      gl.uniformMatrix4fv(this.star.u.uVP, false, faceVP);
+      gl.uniform3fv(this.star.u.uCamPos, eye);
+      gl.uniform1f(this.star.u.uCamZ, camZ);
+      gl.uniform1f(this.star.u.uPeriod, SEG * NSEG);
+      gl.drawArrays(gl.POINTS, 0, MAX_STARS);
+      gl.disable(gl.BLEND); gl.depthMask(true);
+
+      gl.disable(gl.CULL_FACE);
+      const u = this.p.u; gl.useProgram(this.p.p);
+      if (face === 0) {
+        setStudioEnv(gl, u, env); this.motionU(this.p, P, t);
+        gl.uniform3fv(u.uCamPos, eyeS);
+        gl.uniform3fv(u.uPulsePos, [pulsePos[0], pulsePos[1], pulsePos[2] - baseZ]);
+        gl.uniform3fv(u.uPulseCol, pulseCol);
+        gl.uniform3fv(u.uFillA, fillA);
+        gl.uniform3fv(u.uFillB, fillB);
+        gl.uniform3fv(u.uGold, gold);
+        gl.uniform1f(u.uGloss, P.gloss ?? 1.2);
+        gl.uniform1f(u.uIrid, P.irid ?? 0.3);
+        gl.uniform1f(u.uAniso, P.ctAniso ?? 1);
+        gl.uniform1f(u.uPulseI, pulseI);
+        gl.uniform1f(u.uFog, 0.11);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.sm.tex); gl.uniform1i(u.uShadow, 3);
+        gl.uniformMatrix4fv(u.uLightVP, false, shiftVP(lvp, baseZ));
+        gl.uniform1f(u.uShadowSoft, 2.2); gl.uniform1f(u.uShadowTexel, 1 / 2048);
+      }
+      gl.bindVertexArray(this.vao);
+      gl.uniformMatrix4fv(u.uVP, false, shiftVP(faceVP, baseZ));
+      gl.drawElementsInstanced(gl.TRIANGLES, this.nIdx, gl.UNSIGNED_SHORT, 0, pulseInst);
+    }
+
+    gl.bindVertexArray(null); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.activeTexture(gl.TEXTURE0);
     if (!this.fishFb || this.fishFb.w !== f.w || this.fishFb.h !== f.h) {
       if (this.fishFb) deleteFB(gl, this.fishFb);
       this.fishFb = fbo(gl, f.w, f.h);
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fishFb.f); gl.viewport(0, 0, f.w, f.h);
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
     gl.useProgram(this.fish.p);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(this.fish.u.uTex, 0);
-    gl.uniform1f(this.fish.u.uFish, P.ctFish ?? 1.45);
-    gl.uniform1f(this.fish.u.uBreathe, P.ctBreathe ?? 1);
-    gl.uniform1f(this.fish.u.uTime, t);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.cube.tex); gl.uniform1i(this.fish.u.uCube, 0);
+    gl.uniform3fv(this.fish.u.uRight, right);
+    gl.uniform3fv(this.fish.u.uUp, camUp);
+    gl.uniform3fv(this.fish.u.uFwd, fwd);
+    gl.uniform1f(this.fish.u.uFov, lensFov * Math.PI / 180);
     gl.uniform1f(this.fish.u.uAspect, f.aspect);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    f.dof(this.fishFb.t, f.target, f.w, f.h, 7.2, P.dof ?? 0.12);
-    this.stats = { ready: true, boxes: this.nInst, tris: (this.nIdx / 3) * this.nInst, camZ, pulseZ, echo: P.ctEcho ?? 1 };
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+
+    const rawDof = Math.max(0, Number(P.dof ?? 0.08));
+    const dofAmt = rawDof * rawDof * 0.85;
+    f.dof(this.fishFb.t, f.target, f.w, f.h, 6.5, dofAmt);
+    this.stats = {
+      ready: true, boxes: this.nInst, tris: (this.nIdx / 3) * this.nInst,
+      camZ, pulseZ, echo: P.ctEcho ?? 1, lensFov: +lensFov.toFixed(1), faces: nFaces,
+    };
   }
 }
 
