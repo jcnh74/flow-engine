@@ -69,18 +69,18 @@ describe('pass 4 physical scenes: wiring', () => {
   test('modes are registered in main and the panel', () => {
     const main = src('main.ts'), ui = src('ui/MainControlPanel.ts'), idx = src('physical/index.ts');
     const lineup = src('lineup.ts');
-    for (const m of ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour']) {
+    for (const m of ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex']) {
       expect(idx).toContain(`'${m}'`);
       expect(ui).toContain(`'${m}'`);
     }
-    for (const m of ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric']) {
+    for (const m of ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex']) {
       expect(lineup).toContain(`'${m}'`);
     }
     expect(main).toContain('PHYS_MODES[P.mode]');
     expect(main).toContain('LINEUP_MODES');
   });
   test('shaders are GLSL ES 3.00 and the loop-critical pieces are present', () => {
-    for (const f of ['stargate', 'paint', 'balls', 'cascade', 'fabric', 'jungle', 'city']) expect(src(`physical/${f}.ts`)).toContain('#version 300 es');
+    for (const f of ['stargate', 'paint', 'balls', 'cascade', 'fabric', 'jungle', 'city', 'beadknot', 'mandala', 'feathervortex']) expect(src(`physical/${f}.ts`)).toContain('#version 300 es');
     expect(src('physical/fabric.ts')).toContain('uTime/12.0');          // wave cloth periodic in 12 s
     expect(src('physical/paint.ts')).toContain('uGravV');               // gravity-driven paint
   });

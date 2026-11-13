@@ -4,13 +4,16 @@ A real-time **WebGL2** engine for Cinema-4D-style studio motion art. The visible
 
 ## Features
 
-- **Lineup (default = Jungle):** Paint (Splash, plus Paint Pour), City Vortex, Jungle (tropical motifs and a forest-floor tunnel wall), Stargate, Fabric (Drift ribbons) and 3D Fractal. Each mode has its own sliders, knobs, selectors and 3–6 presets.
+- **Lineup (default = Jungle):** Paint (Splash, plus Paint Pour), City Vortex, Jungle (tropical motifs and a forest-floor tunnel wall), Stargate, Fabric (Drift ribbons), 3D Fractal, Bead Knot, Mirror Mandala and Feather Vortex. Each mode has its own sliders, knobs, selectors and 3–6 presets.
 - **Paint:** live screen-space splashes thrown at the camera (default), plus the classic pour / drip-wall canvases and a separate Paint Pour loop (Cycles viscous-liquid bake).
 - **City Vortex:** a flight through neighbourhoods of glass downtown, brownstones, industrial blocks and a waterfront, with traffic and window lights.
 - **Jungle:** a vortex of flowers and leaves that journeys through orchids, heliconia, monstera, ferns, bromeliads and a lotus garden, over a mossy dirt/grass floor.
 - **Stargate:** a 2001-style slit-scan light corridor, with density, warp, glow and lens controls.
 - **Fabric:** several woven silk ribbons drifting toward the camera, with complementary palettes and anisotropic sheen.
 - **3D Fractal:** Mandelbulb, Mandelbox and related forms in a C4D studio cove, with the same per-mode preset panel as the others.
+- **Bead Knot:** glossy torus-knot bead ribbons wrapping a glowing crystal core, with a slow orbit and morph.
+- **Mirror Mandala:** a bilateral (or radial) 3D tendril mask of beaded lines and bubble lobes, with a slight RGB fringe, breathing grow and inward zoom.
+- **Feather Vortex:** a swirling kaleidoscope of 3D feather blades around a dark core, with anisotropic sheen and a feedback trail.
 - **Studio look:** pastel palettes, soft AO, gloss, Khronos Neutral / ACES tonemap, bloom and a gentle grade. Audio reactivity is off by default.
 - **Deterministic:** the same seed and parameters give the same frame, so stills and video re-simulate from frame 0.
 - **Export:** tiled stills at 4K, 8K, Topsheet 20400×3900 and Wrap 4500×19500 portrait (with PDF), plus custom sizes and a CMYK-safe toggle. 1080p60 MP4 video uses ffmpeg.
@@ -56,7 +59,7 @@ Still and video export use the dev server's helper middleware (`vite.config.js`)
 
 | Param | Example | Meaning |
 |---|---|---|
-| `mode` | `Jungle`, `Paint`, `Paint Pour`, `City Vortex`, `Stargate`, `Fabric`, `3D Fractal` (aliases: `city`, `fractal`, `paint-pour`) | Start in a lineup mode (default is Jungle). Retired names such as `landscape`, `wall`, `3d`, `2d`, `gravity` fall back to Jungle. |
+| `mode` | `Jungle`, `Paint`, `Paint Pour`, `City Vortex`, `Stargate`, `Fabric`, `3D Fractal`, `Bead Knot`, `Mirror Mandala`, `Feather Vortex` (aliases: `city`, `fractal`, `paint-pour`, `bead`, `mandala`, `feather`) | Start in a lineup mode (default is Jungle). Retired names such as `landscape`, `wall`, `3d`, `2d`, `gravity` fall back to Jungle. |
 | `wmat` | `silk` `water` `glass` `clay` `fur` `grass` | Wall material |
 | `wobj` | `1` | Attach objects |
 | `omat` | `glossy` `chrome` `glass` `clay` | Object material |

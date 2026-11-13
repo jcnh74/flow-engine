@@ -76,11 +76,11 @@ All code here is original and was written for this project. It is not derived fr
 
 ## Pass 8 (2026-11-12) — lineup
 
-The app's visible mode list is now the new physical scenes plus 3D Fractal. Gravity is paused and hidden (code kept on this branch; unfinished close-up work stays on `gravity-pass8-wip`).
+The app's visible mode list is the physical scenes plus 3D Fractal and the three Mind Balloon-inspired modes (Bead Knot, Mirror Mandala, Feather Vortex). Gravity is paused and hidden (code kept on this branch; unfinished close-up work stays on `gravity-pass8-wip`).
 
 | Shown | Hidden (code kept) |
 |---|---|
-| Paint (Splash default, plus Paint Pour as its own mode), City Vortex, Jungle (motifs + forest floor), Stargate, Fabric (Drift), 3D Fractal | Gravity (paused), Landscape, Morph, Plasma, Wall Studio, MilkDrop, 3D fabric, Liquid Spheres, Particle Fabric, 2D flow, Tunnel, Kaleido |
+| Paint (Splash default, plus Paint Pour as its own mode), City Vortex, Jungle (motifs + forest floor), Stargate, Fabric (Drift), 3D Fractal, Bead Knot, Mirror Mandala, Feather Vortex | Gravity (paused), Landscape, Morph, Plasma, Wall Studio, MilkDrop, 3D fabric, Liquid Spheres, Particle Fabric, 2D flow, Tunnel, Kaleido |
 
 - First load defaults to **Jungle**.
 - Menus (main panel, lil-gui), the preset gallery and the remote/phone UI only list the lineup. Per-mode built-in presets for the lineup are added to the gallery as `Mode · Preset`.
@@ -88,3 +88,14 @@ The app's visible mode list is now the new physical scenes plus 3D Fractal. Grav
 - 3D Fractal now uses the same `MODE_CONTROLS` panel (sliders, knobs, selectors, 5 studio presets, user save/load) as the physical scenes.
 - Files: `src/lineup.ts`, `src/main.ts`, `src/presets.ts`, `src/modeControls.ts`, `src/ui/MainControlPanel.ts`, `remote.html`, `tests/lineup.test.ts`.
 
+## Mind Balloon-inspired modes
+
+Original scenes inspired by the look of Mind Balloon Visuals (psychedelic, neon, mirror-symmetric VJ art). No assets or code were copied.
+
+| Mode | What you see | File |
+| --- | --- | --- |
+| Bead Knot | Instanced glossy torus-knot bead ribbons (red / orange / yellow, plus palettes) wrapping a glowing cyan crystal core, with PCF shadows, AO, a faint studio grid, a slow orbit and a continuous morph. | `src/physical/beadknot.ts` |
+| Mirror Mandala | A CPU-built bilateral “guardian” tendril mask of sphere-impostor beads and bubble lobes, optional 4- or 8-fold rotation, RGB fringe, breathe / grow, and a slow inward dolly. Not a 2D kaleidoscope. | `src/physical/mandala.ts` |
+| Feather Vortex | Thousands of cambered 3D feather blades in a swirl around a dark hollow core, with Kajiya-Kay anisotropic sheen and a local feedback trail. | `src/physical/feathervortex.ts` |
+
+Each mode has its own control panel (sliders, knobs, selectors, palettes) and four built-in presets, and is selectable from the app menu and the phone remote.

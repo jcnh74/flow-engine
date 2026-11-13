@@ -2518,6 +2518,12 @@ function physDefaults(mode: string) {
   else if (id === 'city') { P.phKeyAz = -40; P.phKeyEl = 50; P.phDof = 0.2; P.phFov = 64; P.bloom = 0.3; P.bloomStrength = 0.16; P.bloomThreshold2 = 1.0; }
   else if (id === 'stargate') { P.phPalette = 'Kubrick'; P.phStreak = 1; P.bloom = 0.35; P.bloomStrength = 0.22; P.bloomThreshold2 = 1.0; P.vignetteStrength = 0.25; P.tonemapMode = 'ACES'; P.grainStrength = 0; }
   else if (id === 'pour') { P.tonemapMode = 'None'; P.bloomStrength = 0; P.vignetteStrength = 0; P.grainStrength = 0; }
+  else if (id === 'beadknot' || id === 'mandala' || id === 'feathervortex') {
+    P.phLook = 'Cobalt Orange'; P.phKeyAz = -28; P.phKeyEl = 42; P.phDof = 0.16; P.phFov = id === 'mandala' ? 42 : id === 'feathervortex' ? 52 : 48;
+    P.phGloss = 1.15; P.phIrid = 0.4; P.audioReactive = false;
+    P.tonemapMode = 'ACES'; P.bloom = 0.45; P.bloomStrength = 0.28; P.bloomThreshold2 = 0.9;
+    P.vignetteStrength = 0.22; P.grainStrength = 0.01; P.saturation = 1.15; P.exposure = 1.05;
+  }
 }
 const phF = gui.addFolder('Physical (pass 4)');
 phF.add(P, 'phLook', STUDIO_LOOK_NAMES).name('palette look');

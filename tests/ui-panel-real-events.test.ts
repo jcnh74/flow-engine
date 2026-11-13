@@ -48,7 +48,7 @@ test('Real events > Mode switch to every mode sets P.mode to exact string', () =
   const { panel, params } = createPanel('Wall Studio');
   const container = (panel as any).container;
   
-  const modes = ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal'];
+  const modes = ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex'];
   
   for (const mode of modes) {
     const select = container.querySelector('select[data-param="mode"]') as HTMLSelectElement;

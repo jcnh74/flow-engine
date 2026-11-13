@@ -6,6 +6,9 @@ import { SPLASH_PALETTES, SPLASH_SHAPES } from './physical/splash';
 import { ROOM_PALETTES, ROOM_ORDERS, ROOM_CAMERAS } from './physical/colorroom';
 import { LIQUID_BACKDROPS, LIQUID_CAMERAS } from './physical/liquid';
 import { STUDIO_LOOK_NAMES, STUDIO_MATS } from './studio';
+import { KNOT_PALETTES } from './physical/beadknot';
+import { MANDALA_PALETTES } from './physical/mandala';
+import { FEATHER_PALETTES } from './physical/feathervortex';
 
 export type Ctl = { key: string; label: string; type: 'slider' | 'knob' | 'select' | 'check'; min?: number; max?: number; step?: number; options?: string[] | Record<string, string | number> };
 export type ModeSpec = { sections: { title: string; ctls: Ctl[] }[]; defaults: Record<string, any>; presets: Record<string, Record<string, any>> };
@@ -125,6 +128,49 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
     },
   },
 
+
+  'Bead Knot': {
+    sections: [
+      { title: 'Knot', ctls: [S('bkP', 'Windings P', 2, 7, 1), S('bkQ', 'Windings Q', 1, 5, 1), S('bkStrands', 'Strands', 3, 14, 1), S('bkBeads', 'Beads / Strand', 60, 280, 1), K('bkSize', 'Bead Size', 0.5, 1.8), K('bkGap', 'Segment Gap', 0, 0.6)] },
+      { title: 'Motion', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('bkOrbit', 'Orbit', 0, 2.5), K('bkMorph', 'Morph', 0, 2.5), K('bkTube', 'Tube Radius', 0.5, 1.8), K('bkCore', 'Crystal Core', 0.3, 2)] },
+      { title: 'Look', ctls: [SEL('bkPalette', 'Palette', Object.keys(KNOT_PALETTES)), K('phGloss', 'Gloss', 0.2, 2), K('phIrid', 'Iridescence', 0, 1), K('bkGrid', 'Studio Grid', 0, 1.5), S('phFov', 'Lens FOV', 30, 75, 1), S('phDof', 'Depth of Field', 0, 1)] },
+    ],
+    defaults: { bkP: 3, bkQ: 2, bkStrands: 8, bkBeads: 180, bkSize: 1, bkGap: 0.18, bkOrbit: 1, bkMorph: 1, bkTube: 1, bkCore: 1, bkPalette: 'Ember Core', bkGrid: 0.7 },
+    presets: {
+      'Ember Orbit': { bkPalette: 'Ember Core', bkP: 3, bkQ: 2, bkStrands: 8, bkBeads: 180, bkSize: 1, bkGap: 0.18, bkOrbit: 1, bkMorph: 1, bkCore: 1, phGloss: 1.2, phSpeed: 1 },
+      'Tight Helix': { bkPalette: 'Magenta Sun', bkP: 5, bkQ: 2, bkStrands: 10, bkBeads: 220, bkSize: 0.85, bkGap: 0.12, bkOrbit: 0.7, bkMorph: 0.6, bkTube: 0.8, phGloss: 1.4, phSpeed: 0.85 },
+      'Neon Ice': { bkPalette: 'Neon Ice', bkP: 3, bkQ: 4, bkStrands: 7, bkBeads: 160, bkSize: 1.15, bkGap: 0.22, bkOrbit: 1.2, bkMorph: 1.6, bkCore: 1.3, phIrid: 0.8, phSpeed: 1.1 },
+      'Lime Storm': { bkPalette: 'Electric Lime', bkP: 4, bkQ: 3, bkStrands: 12, bkBeads: 240, bkSize: 0.8, bkGap: 0.1, bkOrbit: 1.5, bkMorph: 1.8, bkCore: 0.8, phSpeed: 1.25 },
+    },
+  },
+  'Mirror Mandala': {
+    sections: [
+      { title: 'Symmetry', ctls: [SEL('mmSym', 'Fold', ['Bilateral', '4-fold', '8-fold']), K('mmDensity', 'Bead Density', 0.5, 1.8), K('mmLobes', 'Bubble Lobes', 0, 1.6)] },
+      { title: 'Motion', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('mmGrow', 'Grow', 0, 2), K('mmBreathe', 'Breathe', 0, 2.5), K('mmZoom', 'Inward Zoom', 0, 2)] },
+      { title: 'Look', ctls: [SEL('mmPalette', 'Palette', Object.keys(MANDALA_PALETTES)), K('mmFringe', 'RGB Fringe', 0, 2.5), K('phGloss', 'Gloss', 0.2, 2), K('phIrid', 'Iridescence', 0, 1), S('phFov', 'Lens FOV', 28, 70, 1), S('phDof', 'Depth of Field', 0, 1)] },
+    ],
+    defaults: { mmSym: 'Bilateral', mmDensity: 1, mmLobes: 1, mmGrow: 1, mmBreathe: 1, mmZoom: 1, mmPalette: 'Poison Garden', mmFringe: 1 },
+    presets: {
+      'Poison Guardian': { mmSym: 'Bilateral', mmPalette: 'Poison Garden', mmDensity: 1.15, mmLobes: 1.1, mmGrow: 1, mmBreathe: 1, mmZoom: 1, mmFringe: 1, phGloss: 1.15, phSpeed: 1 },
+      'Coral Loom': { mmSym: 'Bilateral', mmPalette: 'Neon Coral', mmDensity: 1.3, mmLobes: 1.4, mmGrow: 1.3, mmBreathe: 1.4, mmZoom: 0.7, mmFringe: 1.4, phIrid: 0.7, phSpeed: 0.9 },
+      'Violet Relic 4': { mmSym: '4-fold', mmPalette: 'Violet Relic', mmDensity: 1, mmLobes: 1, mmGrow: 0.8, mmBreathe: 0.8, mmZoom: 1.2, mmFringe: 0.8, phSpeed: 0.8 },
+      'Ice Orchid 8': { mmSym: '8-fold', mmPalette: 'Ice Orchid', mmDensity: 0.85, mmLobes: 0.7, mmGrow: 1.1, mmBreathe: 1.6, mmZoom: 0.9, mmFringe: 1.6, phIrid: 0.85, phSpeed: 1.1 },
+    },
+  },
+  'Feather Vortex': {
+    sections: [
+      { title: 'Swirl', ctls: [K('fvDensity', 'Blade Density', 0.4, 1.6), K('fvSpin', 'Spin', 0, 2.5), K('fvInward', 'Inward Drift', 0, 2.2), K('fvMelt', 'Melt / Undulate', 0, 2.5), K('fvBlade', 'Blade Size', 0.5, 1.8)] },
+      { title: 'Trail', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('fvTrail', 'Feedback Trail', 0, 0.9), K('fvCore', 'Dark Core', 0.4, 1.6)] },
+      { title: 'Look', ctls: [SEL('fvPalette', 'Palette', Object.keys(FEATHER_PALETTES)), K('phGloss', 'Sheen', 0.2, 2), S('phFov', 'Lens FOV', 35, 80, 1), S('phDof', 'Depth of Field', 0, 1), S('phKeyAz', 'Key Angle', -180, 180, 1), S('phKeyEl', 'Key Height', 5, 85, 1)] },
+    ],
+    defaults: { fvDensity: 1, fvSpin: 1, fvInward: 1, fvMelt: 1, fvBlade: 1, fvTrail: 0.65, fvCore: 1, fvPalette: 'Ember Tide' },
+    presets: {
+      'Ember Tide': { fvPalette: 'Ember Tide', fvDensity: 1, fvSpin: 1, fvInward: 1, fvMelt: 1, fvBlade: 1, fvTrail: 0.65, phGloss: 1, phSpeed: 1 },
+      'Slow Melt': { fvPalette: 'Solar Flare', fvDensity: 1.15, fvSpin: 0.45, fvInward: 0.7, fvMelt: 1.8, fvBlade: 1.25, fvTrail: 0.8, phSpeed: 0.7, phDof: 0.28 },
+      'Magenta Well': { fvPalette: 'Magenta Deep', fvDensity: 0.9, fvSpin: 1.4, fvInward: 1.5, fvMelt: 0.7, fvBlade: 0.9, fvTrail: 0.55, phGloss: 1.3, phSpeed: 1.15 },
+      'Jade Firestorm': { fvPalette: 'Jade Fire', fvDensity: 1.35, fvSpin: 1.8, fvInward: 1.2, fvMelt: 1.5, fvBlade: 0.8, fvTrail: 0.7, phSpeed: 1.3 },
+    },
+  },
   '3D Fractal': {
     sections: [
       { title: 'Form', ctls: [

@@ -63,6 +63,9 @@ export class PresetGallery {
       'Stargate': '✧',
       'Fabric': '≋',
       '3D Fractal': '✦',
+      'Bead Knot': '◎',
+      'Mirror Mandala': '❈',
+      'Feather Vortex': '✺',
     };
     return icons[mode] || '○';
   }

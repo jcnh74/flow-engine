@@ -12,18 +12,24 @@ import { FabricDriftScene } from './fabricdrift';
 import { JungleScene } from './jungle';
 import { VideoLoopScene } from './videoloop';
 import { CityScene, CITY_PALETTES } from './city';
-export { STARGATE_PALETTES, CITY_PALETTES };
+import { BeadKnotScene, KNOT_PALETTES } from './beadknot';
+import { MandalaScene, MANDALA_PALETTES } from './mandala';
+import { FeatherVortexScene, FEATHER_PALETTES } from './feathervortex';
+export { STARGATE_PALETTES, CITY_PALETTES, KNOT_PALETTES, MANDALA_PALETTES, FEATHER_PALETTES };
 
 /** Mode name -> scene id. */
 export const PHYS_MODES: Record<string, string> = {
   'Fabric': 'fabric', 'Gravity': 'balls', 'Paint': 'paint', 'Jungle': 'jungle', 'City Vortex': 'city', 'Stargate': 'stargate', 'Paint Pour': 'pour',
+  'Bead Knot': 'beadknot', 'Mirror Mandala': 'mandala', 'Feather Vortex': 'feathervortex',
 };
 export const PHYS_MODE_NAMES = Object.keys(PHYS_MODES);
 export const PHYS_VARIANTS: Record<string, string[]> = {
   fabric: ['Drift', 'Ribbon', 'Flow', 'Blender Bake'], balls: ['Liquid', 'Color Room', 'Cascade', 'Machine'], paint: ['Splash', 'Pour', 'Drip Wall'], jungle: ['Vortex', 'Canopy'], city: ['Vortex'], stargate: ['Floor + Ceiling', 'Walls'], pour: ['Loop'],
+  beadknot: ['Orbit'], mandala: ['Bilateral'], feathervortex: ['Swirl'],
 };
 export const PHYS_MATS: Record<string, string[]> = {
   fabric: ['Satin', 'Silk', 'Iridescent', 'Velvet'], balls: ['Mixed'], paint: ['Wet Acrylic'], jungle: ['Natural', 'Pastel', 'Iridescent'], city: ['Dusk Gold', 'Cobalt Night', 'Pastel Morning'], stargate: ['Light'], pour: ['Cycles'],
+  beadknot: ['Lacquer'], mandala: ['Gloss Beads'], feathervortex: ['Aniso Feather'],
 };
 
 const ballsId = (v: string) => v === 'Machine' ? 'balls' : v === 'Cascade' ? 'cascade' : v === 'Color Room' ? 'colorroom' : 'liquid';
@@ -37,7 +43,9 @@ export class PhysicalRenderer {
     try {
       const gl = this.gl;
       const s: PhysScene = id === 'stargate' ? new StargateScene(gl) : id === 'paint' ? new PaintScene(gl) : id === 'splash' ? new SplashScene(gl) : id === 'balls' ? new BallsScene(gl) : id === 'cascade' ? new CascadeScene(gl) : id === 'colorroom' ? new ColorRoomScene(gl) : id === 'liquid' ? new LiquidScene(gl)
-        : id === 'fabric' ? new FabricScene(gl) : id === 'drift' ? new FabricDriftScene(gl) : id === 'jungle' ? new JungleScene(gl) : id === 'city' ? new CityScene(gl) : new VideoLoopScene(gl, '/pass4/paint_pour.mp4');
+        : id === 'fabric' ? new FabricScene(gl) : id === 'drift' ? new FabricDriftScene(gl) : id === 'jungle' ? new JungleScene(gl) : id === 'city' ? new CityScene(gl)
+        : id === 'beadknot' ? new BeadKnotScene(gl) : id === 'mandala' ? new MandalaScene(gl) : id === 'feathervortex' ? new FeatherVortexScene(gl)
+        : new VideoLoopScene(gl, '/pass4/paint_pour.mp4');
       void s.load();
       this.scenes[id] = s;
       return s;

@@ -14,6 +14,9 @@ export const LINEUP_MODES = [
   'Stargate',
   'Fabric',
   '3D Fractal',
+  'Bead Knot',
+  'Mirror Mandala',
+  'Feather Vortex',
 ] as const;
 export type LineupMode = (typeof LINEUP_MODES)[number];
 
@@ -75,6 +78,13 @@ export const MODE_ALIASES: Record<string, string> = {
   '3d-fractal': '3D Fractal',
   'gravity': 'Gravity',
   'balls': 'Gravity',
+  'bead': 'Bead Knot',
+  'beadknot': 'Bead Knot',
+  'knot': 'Bead Knot',
+  'mandala': 'Mirror Mandala',
+  'mirror': 'Mirror Mandala',
+  'feather': 'Feather Vortex',
+  'feathervortex': 'Feather Vortex',
 };
 
 export function isLineupMode(mode: string): boolean {
