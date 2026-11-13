@@ -14,27 +14,53 @@ export const KNOT_PALETTES: Record<string, { beads: string[]; core: string }> = 
   'Electric Lime': { beads: ['#b8ff1a', '#4dff7a', '#ffe14a', '#7cff2a', '#1fd49a', '#f6ff6a'], core: '#ff4ad2' },
 };
 
-function unitCube() {
-  const F: Array<[[number, number, number], [number, number, number][]]> = [
-    [[0, 0, 1], [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]],
-    [[0, 0, -1], [[1, -1, -1], [-1, -1, -1], [-1, 1, -1], [1, 1, -1]]],
-    [[0, 1, 0], [[-1, 1, 1], [1, 1, 1], [1, 1, -1], [-1, 1, -1]]],
-    [[0, -1, 0], [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]]],
-    [[1, 0, 0], [[1, -1, 1], [1, -1, -1], [1, 1, -1], [1, 1, 1]]],
-    [[-1, 0, 0], [[-1, -1, -1], [-1, -1, 1], [-1, 1, 1], [-1, 1, -1]]],
-  ];
+/** Beveled lacquer tile: octagon faces, chamfered edges, truncated corners. */
+function chamferBox() {
+  const s = 1, c = 0.46, u = s - c;
   const pos: number[] = [], nrm: number[] = [], idx: number[] = [];
-  for (const [n, q] of F) {
+  const add = (n: [number, number, number], verts: [number, number, number][]) => {
     const b = pos.length / 3;
-    for (const p of q) { pos.push(...p); nrm.push(...n); }
-    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
-  }
+    const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+    const nn: [number, number, number] = [n[0] / nl, n[1] / nl, n[2] / nl];
+    for (const p of verts) { pos.push(...p); nrm.push(...nn); }
+    for (let i = 1; i < verts.length - 1; i++) idx.push(b, b + i, b + i + 1);
+  };
+  add([0, 0, 1], [[-u, -s, s], [u, -s, s], [s, -u, s], [s, u, s], [u, s, s], [-u, s, s], [-s, u, s], [-s, -u, s]]);
+  add([0, 0, -1], [[u, -s, -s], [-u, -s, -s], [-s, -u, -s], [-s, u, -s], [-u, s, -s], [u, s, -s], [s, u, -s], [s, -u, -s]]);
+  add([0, 1, 0], [[-u, s, s], [u, s, s], [s, s, u], [s, s, -u], [u, s, -s], [-u, s, -s], [-s, s, -u], [-s, s, u]]);
+  add([0, -1, 0], [[u, -s, s], [-u, -s, s], [-s, -s, u], [-s, -s, -u], [-u, -s, -s], [u, -s, -s], [s, -s, -u], [s, -s, u]]);
+  add([1, 0, 0], [[s, -u, s], [s, -s, u], [s, -s, -u], [s, -u, -s], [s, u, -s], [s, s, -u], [s, s, u], [s, u, s]]);
+  add([-1, 0, 0], [[-s, -s, u], [-s, -u, s], [-s, u, s], [-s, s, u], [-s, s, -u], [-s, u, -s], [-s, -s, -u], [-s, -u, -s]]);
+  add([1, 0, 1], [[u, -u, s], [s, -u, u], [s, u, u], [u, u, s]]);
+  add([-1, 0, 1], [[-s, -u, u], [-u, -u, s], [-u, u, s], [-s, u, u]]);
+  add([0, 1, 1], [[-u, u, s], [u, u, s], [u, s, u], [-u, s, u]]);
+  add([0, -1, 1], [[u, -u, s], [-u, -u, s], [-u, -s, u], [u, -s, u]]);
+  add([1, 0, -1], [[s, -u, -u], [u, -u, -s], [u, u, -s], [s, u, -u]]);
+  add([-1, 0, -1], [[-u, -u, -s], [-s, -u, -u], [-s, u, -u], [-u, u, -s]]);
+  add([0, 1, -1], [[u, u, -s], [-u, u, -s], [-u, s, -u], [u, s, -u]]);
+  add([0, -1, -1], [[-u, -u, -s], [u, -u, -s], [u, -s, -u], [-u, -s, -u]]);
+  add([1, 1, 0], [[s, u, u], [s, s, u], [s, s, -u], [s, u, -u]]);
+  add([1, -1, 0], [[s, -s, u], [s, -u, u], [s, -u, -u], [s, -s, -u]]);
+  add([-1, 1, 0], [[-s, s, u], [-s, u, u], [-s, u, -u], [-s, s, -u]]);
+  add([-1, -1, 0], [[-s, -u, u], [-s, -s, u], [-s, -s, -u], [-s, -u, -u]]);
+  add([1, 1, 1], [[s, u, u], [u, s, u], [u, u, s]]);
+  add([-1, 1, 1], [[-u, s, u], [-s, u, u], [-u, u, s]]);
+  add([1, -1, 1], [[u, -u, s], [s, -u, u], [u, -s, u]]);
+  add([-1, -1, 1], [[-s, -u, u], [-u, -u, s], [-u, -s, u]]);
+  add([1, 1, -1], [[u, s, -u], [s, u, -u], [u, u, -s]]);
+  add([-1, 1, -1], [[-s, u, -u], [-u, s, -u], [-u, u, -s]]);
+  add([1, -1, -1], [[s, -u, -u], [u, -u, -s], [u, -s, -u]]);
+  add([-1, -1, -1], [[-u, -u, -s], [-s, -u, -u], [-u, -s, -u]]);
   return { pos: new Float32Array(pos), nrm: new Float32Array(nrm), idx: new Uint16Array(idx) };
 }
 
 const KNOT_GLSL = `
-uniform float uTime, uP, uQ, uR, uRad, uMorph, uSize, uGap, uCore;
+uniform float uTime, uP, uQ, uR, uRad, uMorph, uSize, uGap, uCore, uRot, uPhase, uWave, uPulse;
 uniform int uStrands, uBeads;
+vec3 rotAround(vec3 v, vec3 ax, float ang){
+  float ca = cos(ang), sa = sin(ang);
+  return v * ca + cross(ax, v) * sa + ax * dot(ax, v) * (1.0 - ca);
+}
 vec3 kn(float t, float p, float q, float R, float r){
   float cq = cos(q*t), sq = sin(q*t);
   return vec3((R + r*cq)*cos(p*t), r*sq, (R + r*cq)*sin(p*t));
@@ -95,14 +121,22 @@ void main(){
   vec3 C = P + (N * cos(ang) + B * sin(ang)) * pack;
   // bead scale: short along the tangent so they read as segmented tiles, with a small gap
   float gap = clamp(uGap, 0.0, 0.8);
-  float along = (6.2831853 * length(kn(t+0.01,p,q,R,r0) - kn(t-0.01,p,q,R,r0)) / 0.02) / float(nB);
-  float halfT = along * 0.5 * (1.0 - gap) * 0.92;
-  float halfW = uSize * 0.22;
-  float halfH = uSize * 0.13;
+  float alongLen = (6.2831853 * length(kn(t+0.01,p,q,R,r0) - kn(t-0.01,p,q,R,r0)) / 0.02) / float(nB);
+  float u = (float(b) + 0.5) / float(nB);
+  float wave = sin(u * uWave * 6.2831853 - uTime * uRot * 1.35 + float(s) * uPhase * 0.73);
+  float pulse = 1.0 + uPulse * 0.28 * wave;
+  C += (N * 0.55 + B * 0.45) * (uPulse * 0.09 * wave);
+  float halfT = alongLen * 0.5 * (1.0 - gap) * 0.92 * pulse;
+  float halfW = uSize * 0.22 * pulse;
+  float halfH = uSize * 0.13 * pulse;
   vec3 lp = aPos;
   float ln = length(lp);
-  lp = mix(lp, lp / max(ln, 1e-4), 0.38);           // slight chamfer / rounded tile
-  vec3 nrm = mix(aNrm, normalize(lp), 0.38);
+  lp = mix(lp, lp / max(ln, 1e-4), 0.22);
+  vec3 nrm = mix(aNrm, normalize(lp), 0.22);
+  // rolling rotation about the ribbon tangent, phase-offset along the strand
+  float spin = uTime * uRot * 1.9 + u * uWave * 6.2831853 * uPhase + float(s) * 0.41 * uPhase;
+  lp = rotAround(lp, vec3(0.0, 0.0, 1.0), spin);   // local +Z is the tangent once transformed
+  nrm = rotAround(nrm, vec3(0.0, 0.0, 1.0), spin);
   vW = C + T * (lp.z * halfT) + N * (lp.x * halfW) + B * (lp.y * halfH);
   vN = normalize(T * (nrm.z) + N * (nrm.x) + B * (nrm.y));
   gl_Position = uVP * vec4(vW, 1.0);
@@ -135,10 +169,16 @@ void main(){
     float ang = (float(s) + 0.15 * sin(t * 3.0 + float(s))) / ns * 6.2831853;
     vec3 C = P + (N * cos(ang) + B * sin(ang)) * (uRad * 0.95);
     float gap = clamp(uGap, 0.0, 0.8);
-    float along = (6.2831853 * length(kn(t+0.01,uP,uQ,uR,uRad) - kn(t-0.01,uP,uQ,uR,uRad)) / 0.02) / float(nB);
-    float halfT = along * 0.5 * (1.0 - gap) * 0.92;
-    vec3 lp = aPos; float ln = length(lp); lp = mix(lp, lp / max(ln, 1e-4), 0.38);
-    vW = C + T * (lp.z * halfT) + N * (lp.x * uSize * 0.22) + B * (lp.y * uSize * 0.13);
+    float alongLen = (6.2831853 * length(kn(t+0.01,uP,uQ,uR,uRad) - kn(t-0.01,uP,uQ,uR,uRad)) / 0.02) / float(nB);
+    float u = (float(b) + 0.5) / float(nB);
+    float wave = sin(u * uWave * 6.2831853 - uTime * uRot * 1.35 + float(s) * uPhase * 0.73);
+    float pulse = 1.0 + uPulse * 0.28 * wave;
+    C += (N * 0.55 + B * 0.45) * (uPulse * 0.09 * wave);
+    float halfT = alongLen * 0.5 * (1.0 - gap) * 0.92 * pulse;
+    vec3 lp = aPos; float ln = length(lp); lp = mix(lp, lp / max(ln, 1e-4), 0.22);
+    float spin = uTime * uRot * 1.9 + u * uWave * 6.2831853 * uPhase + float(s) * 0.41 * uPhase;
+    lp = rotAround(lp, vec3(0.0, 0.0, 1.0), spin);
+    vW = C + T * (lp.z * halfT) + N * (lp.x * uSize * 0.22 * pulse) + B * (lp.y * uSize * 0.13 * pulse);
   }
   gl_Position = uVP * vec4(vW, 1.0);
 }`;
@@ -150,7 +190,6 @@ const BACK_FS = `#version 300 es
 precision highp float; in vec2 vUv; out vec4 o;
 uniform mat4 uInvVP; uniform vec3 uCamPos; uniform vec3 uCoreCol; uniform float uTime, uGrid;
 ${STUDIO_GLSL}
-float hash21(vec2 p){ p = fract(p*vec2(73.17, 51.79)); p += dot(p, p+31.17); return fract(p.x*p.y); }
 void main(){
   vec4 a = uInvVP * vec4(vUv*2.0-1.0, 1.0, 1.0);
   vec3 rd = normalize(a.xyz/a.w - uCamPos);
@@ -165,7 +204,7 @@ void main(){
         vec2 f = abs(fract(g) - 0.5);
         float line = 1.0 - smoothstep(0.0, 0.04, min(f.x, f.y));
         float fade = exp(-0.08 * t) * uGrid;
-        col += vec3(0.10, 0.16, 0.22) * line * fade;
+        col += vec3(0.06, 0.09, 0.12) * line * fade * 0.45;
       }
     }
     if (abs(rd.z) > 0.02) {
@@ -175,17 +214,13 @@ void main(){
         vec2 g = p.xy * 0.45;
         vec2 f = abs(fract(g) - 0.5);
         float line = 1.0 - smoothstep(0.0, 0.04, min(f.x, f.y));
-        col += vec3(0.08, 0.12, 0.18) * line * exp(-0.06*t) * uGrid * 0.7;
+        col += vec3(0.05, 0.07, 0.10) * line * exp(-0.06*t) * uGrid * 0.35;
       }
     }
   }
-  // dust motes
-  vec2 uv = rd.xy / (rd.z + 1.4);
-  float d = hash21(floor(uv * 90.0 + uTime * 0.05));
-  if (d > 0.985) col += vec3(0.35) * (d - 0.985) * 40.0;
   // core bloom in the far field, so the crystal reads through gaps
-  float core = pow(max(dot(rd, normalize(-uCamPos)), 0.0), 80.0);
-  col += uCoreCol * core * 0.45;
+  float core = pow(max(dot(rd, normalize(-uCamPos)), 0.0), 90.0);
+  col += uCoreCol * core * 0.35;
   o = vec4(col, 1000.0);
 }`;
 
@@ -228,7 +263,7 @@ export class BeadKnotScene implements PhysScene {
   private vao: WebGLVertexArrayObject; private nIdx: number;
   private ms: MsTarget; private sm: ShadowMap; private t = 0;
   constructor(private gl: WebGL2RenderingContext) {
-    const g = unitCube();
+    const g = chamferBox();
     this.nIdx = g.idx.length;
     this.vao = gl.createVertexArray()!; gl.bindVertexArray(this.vao);
     const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, g.pos, gl.STATIC_DRAW);
@@ -256,6 +291,10 @@ export class BeadKnotScene implements PhysScene {
     gl.uniform1f(u.uCore, P.bkCore ?? 1);
     gl.uniform1i(u.uStrands, nS);
     gl.uniform1i(u.uBeads, nB);
+    gl.uniform1f(u.uRot, P.bkRot ?? 1);
+    gl.uniform1f(u.uPhase, P.bkPhase ?? 1);
+    gl.uniform1f(u.uWave, P.bkWave ?? 4);
+    gl.uniform1f(u.uPulse, P.bkPulse ?? 1);
   }
   render(f: PhysFrame) {
     const gl = this.gl; const P = f.params as Record<string, any>;
@@ -287,7 +326,7 @@ export class BeadKnotScene implements PhysScene {
     gl.useProgram(this.back.p); setStudioEnv(gl, this.back.u, env);
     gl.uniformMatrix4fv(this.back.u.uInvVP, false, invert(vp));
     gl.uniform3fv(this.back.u.uCamPos, eye); gl.uniform3fv(this.back.u.uCoreCol, core);
-    gl.uniform1f(this.back.u.uTime, t); gl.uniform1f(this.back.u.uGrid, P.bkGrid ?? 0.7);
+    gl.uniform1f(this.back.u.uTime, t); gl.uniform1f(this.back.u.uGrid, P.bkGrid ?? 0.05);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.depthFunc(gl.LESS); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
     const u = this.p.u; gl.useProgram(this.p.p); setStudioEnv(gl, u, env); this.knotUniforms(u, P, nS, nB);

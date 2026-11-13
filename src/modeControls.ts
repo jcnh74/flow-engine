@@ -132,29 +132,29 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
   'Bead Knot': {
     sections: [
       { title: 'Knot', ctls: [S('bkP', 'Windings P', 2, 7, 1), S('bkQ', 'Windings Q', 1, 5, 1), S('bkStrands', 'Strands', 3, 14, 1), S('bkBeads', 'Beads / Strand', 60, 280, 1), K('bkSize', 'Bead Size', 0.5, 1.8), K('bkGap', 'Segment Gap', 0, 0.6)] },
-      { title: 'Motion', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('bkOrbit', 'Orbit', 0, 2.5), K('bkMorph', 'Morph', 0, 2.5), K('bkTube', 'Tube Radius', 0.5, 1.8), K('bkCore', 'Crystal Core', 0.3, 2)] },
+      { title: 'Motion', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('bkOrbit', 'Orbit', 0, 2.5), K('bkMorph', 'Morph', 0, 2.5), K('bkRot', 'Bead Spin', 0, 2.5), K('bkPhase', 'Phase Offset', 0, 2.5), K('bkWave', 'Wave Length', 1, 8, 0.5), K('bkPulse', 'Pulse Amount', 0, 2.5), K('bkTube', 'Tube Radius', 0.5, 1.8), K('bkCore', 'Crystal Core', 0.3, 2)] },
       { title: 'Look', ctls: [SEL('bkPalette', 'Palette', Object.keys(KNOT_PALETTES)), K('phGloss', 'Gloss', 0.2, 2), K('phIrid', 'Iridescence', 0, 1), K('bkGrid', 'Studio Grid', 0, 1.5), S('phFov', 'Lens FOV', 30, 75, 1), S('phDof', 'Depth of Field', 0, 1)] },
     ],
-    defaults: { bkP: 3, bkQ: 2, bkStrands: 8, bkBeads: 180, bkSize: 1, bkGap: 0.18, bkOrbit: 1, bkMorph: 1, bkTube: 1, bkCore: 1, bkPalette: 'Ember Core', bkGrid: 0.7 },
+    defaults: { bkP: 3, bkQ: 2, bkStrands: 8, bkBeads: 180, bkSize: 1, bkGap: 0.18, bkOrbit: 1, bkMorph: 1, bkRot: 1, bkPhase: 1, bkWave: 4, bkPulse: 1, bkTube: 1, bkCore: 1, bkPalette: 'Ember Core', bkGrid: 0.05 },
     presets: {
-      'Ember Orbit': { bkPalette: 'Ember Core', bkP: 3, bkQ: 2, bkStrands: 8, bkBeads: 180, bkSize: 1, bkGap: 0.18, bkOrbit: 1, bkMorph: 1, bkCore: 1, phGloss: 1.2, phSpeed: 1 },
-      'Tight Helix': { bkPalette: 'Magenta Sun', bkP: 5, bkQ: 2, bkStrands: 10, bkBeads: 220, bkSize: 0.85, bkGap: 0.12, bkOrbit: 0.7, bkMorph: 0.6, bkTube: 0.8, phGloss: 1.4, phSpeed: 0.85 },
-      'Neon Ice': { bkPalette: 'Neon Ice', bkP: 3, bkQ: 4, bkStrands: 7, bkBeads: 160, bkSize: 1.15, bkGap: 0.22, bkOrbit: 1.2, bkMorph: 1.6, bkCore: 1.3, phIrid: 0.8, phSpeed: 1.1 },
-      'Lime Storm': { bkPalette: 'Electric Lime', bkP: 4, bkQ: 3, bkStrands: 12, bkBeads: 240, bkSize: 0.8, bkGap: 0.1, bkOrbit: 1.5, bkMorph: 1.8, bkCore: 0.8, phSpeed: 1.25 },
+      'Ember Orbit': { bkPalette: 'Ember Core', bkP: 3, bkQ: 2, bkStrands: 8, bkBeads: 180, bkSize: 1, bkGap: 0.18, bkOrbit: 1, bkMorph: 1, bkRot: 1.1, bkPhase: 1, bkWave: 4, bkPulse: 1, bkCore: 1, bkGrid: 0.05, phGloss: 1.2, phSpeed: 1 },
+      'Tight Helix': { bkPalette: 'Magenta Sun', bkP: 5, bkQ: 2, bkStrands: 10, bkBeads: 220, bkSize: 0.85, bkGap: 0.12, bkOrbit: 0.7, bkMorph: 0.6, bkRot: 1.6, bkPhase: 1.4, bkWave: 6, bkPulse: 0.7, bkTube: 0.8, bkGrid: 0, phGloss: 1.4, phSpeed: 0.85 },
+      'Neon Ice': { bkPalette: 'Neon Ice', bkP: 3, bkQ: 4, bkStrands: 7, bkBeads: 160, bkSize: 1.15, bkGap: 0.22, bkOrbit: 1.2, bkMorph: 1.6, bkRot: 0.7, bkPhase: 0.8, bkWave: 3, bkPulse: 1.5, bkCore: 1.3, bkGrid: 0.1, phIrid: 0.8, phSpeed: 1.1 },
+      'Lime Storm': { bkPalette: 'Electric Lime', bkP: 4, bkQ: 3, bkStrands: 12, bkBeads: 240, bkSize: 0.8, bkGap: 0.1, bkOrbit: 1.5, bkMorph: 1.8, bkRot: 1.8, bkPhase: 1.6, bkWave: 5, bkPulse: 1.3, bkCore: 0.8, bkGrid: 0, phSpeed: 1.25 },
     },
   },
   'Mirror Mandala': {
     sections: [
       { title: 'Symmetry', ctls: [SEL('mmSym', 'Fold', ['Bilateral', '4-fold', '8-fold']), K('mmDensity', 'Bead Density', 0.5, 1.8), K('mmLobes', 'Bubble Lobes', 0, 1.6)] },
-      { title: 'Motion', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('mmGrow', 'Grow', 0, 2), K('mmBreathe', 'Breathe', 0, 2.5), K('mmZoom', 'Inward Zoom', 0, 2)] },
+      { title: 'Motion', ctls: [S('phSpeed', 'Time Scale', 0, 2), K('mmGrow', 'Grow / Curl', 0, 2), K('mmFlow', 'Outward Flow', 0, 2.5), K('mmBreathe', 'Breathe', 0, 2.5), K('mmZoom', 'Inward Zoom', 0, 2)] },
       { title: 'Look', ctls: [SEL('mmPalette', 'Palette', Object.keys(MANDALA_PALETTES)), K('mmFringe', 'RGB Fringe', 0, 2.5), K('phGloss', 'Gloss', 0.2, 2), K('phIrid', 'Iridescence', 0, 1), S('phFov', 'Lens FOV', 28, 70, 1), S('phDof', 'Depth of Field', 0, 1)] },
     ],
-    defaults: { mmSym: 'Bilateral', mmDensity: 1, mmLobes: 1, mmGrow: 1, mmBreathe: 1, mmZoom: 1, mmPalette: 'Poison Garden', mmFringe: 1 },
+    defaults: { mmSym: 'Bilateral', mmDensity: 1.15, mmLobes: 0.95, mmGrow: 1, mmFlow: 1, mmBreathe: 1, mmZoom: 1, mmPalette: 'Poison Garden', mmFringe: 0.85 },
     presets: {
-      'Poison Guardian': { mmSym: 'Bilateral', mmPalette: 'Poison Garden', mmDensity: 1.15, mmLobes: 1.1, mmGrow: 1, mmBreathe: 1, mmZoom: 1, mmFringe: 1, phGloss: 1.15, phSpeed: 1 },
-      'Coral Loom': { mmSym: 'Bilateral', mmPalette: 'Neon Coral', mmDensity: 1.3, mmLobes: 1.4, mmGrow: 1.3, mmBreathe: 1.4, mmZoom: 0.7, mmFringe: 1.4, phIrid: 0.7, phSpeed: 0.9 },
-      'Violet Relic 4': { mmSym: '4-fold', mmPalette: 'Violet Relic', mmDensity: 1, mmLobes: 1, mmGrow: 0.8, mmBreathe: 0.8, mmZoom: 1.2, mmFringe: 0.8, phSpeed: 0.8 },
-      'Ice Orchid 8': { mmSym: '8-fold', mmPalette: 'Ice Orchid', mmDensity: 0.85, mmLobes: 0.7, mmGrow: 1.1, mmBreathe: 1.6, mmZoom: 0.9, mmFringe: 1.6, phIrid: 0.85, phSpeed: 1.1 },
+      'Poison Guardian': { mmSym: 'Bilateral', mmPalette: 'Poison Garden', mmDensity: 1.2, mmLobes: 0.95, mmGrow: 1, mmFlow: 1, mmBreathe: 1, mmZoom: 1, mmFringe: 0.85, phGloss: 1.15, phSpeed: 1 },
+      'Coral Loom': { mmSym: 'Bilateral', mmPalette: 'Neon Coral', mmDensity: 1.35, mmLobes: 1.15, mmGrow: 1.2, mmFlow: 1.3, mmBreathe: 1.2, mmZoom: 0.75, mmFringe: 1.15, phIrid: 0.7, phSpeed: 0.9 },
+      'Violet Relic 4': { mmSym: '4-fold', mmPalette: 'Violet Relic', mmDensity: 1.05, mmLobes: 0.85, mmGrow: 0.85, mmFlow: 0.8, mmBreathe: 0.8, mmZoom: 1.2, mmFringe: 0.7, phSpeed: 0.8 },
+      'Ice Orchid 8': { mmSym: '8-fold', mmPalette: 'Ice Orchid', mmDensity: 0.95, mmLobes: 0.7, mmGrow: 1.1, mmFlow: 1.15, mmBreathe: 1.4, mmZoom: 0.9, mmFringe: 1.2, phIrid: 0.85, phSpeed: 1.05 },
     },
   },
   'Feather Vortex': {
