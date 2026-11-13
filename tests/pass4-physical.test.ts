@@ -69,11 +69,11 @@ describe('pass 4 physical scenes: wiring', () => {
   test('modes are registered in main and the panel', () => {
     const main = src('main.ts'), ui = src('ui/MainControlPanel.ts'), idx = src('physical/index.ts');
     const lineup = src('lineup.ts');
-    for (const m of ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex']) {
+    for (const m of ['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple']) {
       expect(idx).toContain(`'${m}'`);
       expect(ui).toContain(`'${m}'`);
     }
-    for (const m of ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex']) {
+    for (const m of ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple']) {
       expect(lineup).toContain(`'${m}'`);
     }
     expect(main).toContain('PHYS_MODES[P.mode]');

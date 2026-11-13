@@ -13,7 +13,7 @@ describe('pass 8 mode lineup', () => {
   test('the visible lineup is the new physical scenes plus 3D Fractal, default Jungle', () => {
     expect([...LINEUP_MODES]).toEqual([
       'Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal',
-      'Bead Knot', 'Mirror Mandala', 'Feather Vortex',
+      'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple',
     ]);
     expect(DEFAULT_MODE).toBe('Jungle');
     expect(isLineupMode(DEFAULT_MODE)).toBe(true);
@@ -66,6 +66,8 @@ describe('pass 8 mode lineup', () => {
     expect(resolveMode('mirror')).toBe('Mirror Mandala');
     expect(resolveMode('feather')).toBe('Feather Vortex');
     expect(resolveMode('Feather Vortex')).toBe('Feather Vortex');
+    expect(resolveMode('crystal')).toBe('Crystal Temple');
+    expect(resolveMode('Crystal Temple')).toBe('Crystal Temple');
   });
 
   test('menus, remote UI and the gallery only show lineup modes', () => {
@@ -79,7 +81,7 @@ describe('pass 8 mode lineup', () => {
     }
     expect(ui).toContain('LINEUP_MODES');
     expect(ui).toContain("this.buildSelect('mode', 'Mode', [...LINEUP_MODES])");
-    expect(remote).toContain("const MODES = ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex']");
+    expect(remote).toContain("const MODES = ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple']");
     expect(remote).not.toContain("'Wall Studio'");
     expect(remote).not.toContain("'Tunnel'");
     expect(remote).not.toContain("'MilkDrop'");
@@ -90,6 +92,7 @@ describe('pass 8 mode lineup', () => {
     expect(PRESET_GALLERY.some((p) => p.mode === 'Bead Knot')).toBe(true);
     expect(PRESET_GALLERY.some((p) => p.mode === 'Mirror Mandala')).toBe(true);
     expect(PRESET_GALLERY.some((p) => p.mode === 'Feather Vortex')).toBe(true);
+    expect(PRESET_GALLERY.some((p) => p.mode === 'Crystal Temple')).toBe(true);
     expect(ALL_PRESETS.some((p) => p.mode === 'Tunnel')).toBe(true);
     expect(ALL_PRESETS.some((p) => p.mode === 'Wall Studio')).toBe(true);
     expect(ALL_PRESETS.some((p) => p.mode === 'Gravity')).toBe(false); // gravity never had gallery presets in ALL_PRESETS

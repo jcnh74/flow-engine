@@ -2525,6 +2525,12 @@ function physDefaults(mode: string) {
     if (id === 'mandala') { P.bloom = 0.2; P.bloomStrength = 0.1; P.bloomThreshold2 = 1.2; P.vignetteStrength = 0.3; P.exposure = 1.0; P.phDof = 0.1; }
     else { P.bloom = 0.45; P.bloomStrength = 0.28; P.bloomThreshold2 = 0.9; }
   }
+  else if (id === 'crystaltemple') {
+    P.phLook = 'Cobalt Orange'; P.phKeyAz = -18; P.phKeyEl = 50; P.phDof = 0.12; P.phFov = 74;
+    P.phGloss = 1.2; P.phIrid = 0.3; P.audioReactive = false;
+    P.tonemapMode = 'ACES'; P.vignetteStrength = 0.28; P.grainStrength = 0.012; P.saturation = 1.12; P.exposure = 1.0;
+    P.bloom = 0.28; P.bloomStrength = 0.14; P.bloomThreshold2 = 1.25;
+  }
 }
 const phF = gui.addFolder('Physical (pass 4)');
 phF.add(P, 'phLook', STUDIO_LOOK_NAMES).name('palette look');

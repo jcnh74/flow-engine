@@ -6,15 +6,16 @@ import { PHYS_MODES } from '../src/physical';
 import { KNOT_PALETTES } from '../src/physical/beadknot';
 import { MANDALA_PALETTES } from '../src/physical/mandala';
 import { FEATHER_PALETTES } from '../src/physical/feathervortex';
+import { TEMPLE_PALETTES } from '../src/physical/crystaltemple';
 import { PRESET_GALLERY } from '../src/presets';
 
 const src = (f: string) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
 
-const NEW = ['Bead Knot', 'Mirror Mandala', 'Feather Vortex'] as const;
-const FILES = ['src/physical/beadknot.ts', 'src/physical/mandala.ts', 'src/physical/feathervortex.ts'] as const;
+const NEW = ['Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple'] as const;
+const FILES = ['src/physical/beadknot.ts', 'src/physical/mandala.ts', 'src/physical/feathervortex.ts', 'src/physical/crystaltemple.ts'] as const;
 
 describe('Mind Balloon-inspired modes', () => {
-  test('the three modes sit in the lineup, registry and menus without retiring anything', () => {
+  test('the inspired modes sit in the lineup, registry and menus without retiring anything', () => {
     for (const m of NEW) {
       expect(LINEUP_MODES).toContain(m);
       expect(isLineupMode(m)).toBe(true);
@@ -24,6 +25,7 @@ describe('Mind Balloon-inspired modes', () => {
     expect(PHYS_MODES['Bead Knot']).toBe('beadknot');
     expect(PHYS_MODES['Mirror Mandala']).toBe('mandala');
     expect(PHYS_MODES['Feather Vortex']).toBe('feathervortex');
+    expect(PHYS_MODES['Crystal Temple']).toBe('crystaltemple');
     // existing modes stay visible
     for (const m of ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal']) {
       expect(LINEUP_MODES).toContain(m);
@@ -32,11 +34,13 @@ describe('Mind Balloon-inspired modes', () => {
     expect(idx).toContain('new BeadKnotScene');
     expect(idx).toContain('new MandalaScene');
     expect(idx).toContain('new FeatherVortexScene');
-    // unknown ids still fall through to VideoLoop, but the three new ids are explicit
+    expect(idx).toContain('new CrystalTempleScene');
+    // unknown ids still fall through to VideoLoop, but the new ids are explicit
     const factory = idx.slice(idx.indexOf('const s: PhysScene'), idx.indexOf('void s.load()'));
     expect(factory).toContain("id === 'beadknot'");
     expect(factory).toContain("id === 'mandala'");
     expect(factory).toContain("id === 'feathervortex'");
+    expect(factory).toContain("id === 'crystaltemple'");
 
     const ui = src('src/ui/MainControlPanel.ts');
     const remote = src('remote.html');
@@ -52,6 +56,8 @@ describe('Mind Balloon-inspired modes', () => {
     expect(resolveMode('mandala')).toBe('Mirror Mandala');
     expect(resolveMode('mirror')).toBe('Mirror Mandala');
     expect(resolveMode('feather')).toBe('Feather Vortex');
+    expect(resolveMode('crystal')).toBe('Crystal Temple');
+    expect(resolveMode('temple')).toBe('Crystal Temple');
     expect(resolveMode('Gravity')).toBe('Jungle');
     expect(resolveMode('Tunnel')).toBe('Jungle');
     expect(resolveMode('Kaleido')).toBe('Jungle');
@@ -61,6 +67,7 @@ describe('Mind Balloon-inspired modes', () => {
     expect(Object.keys(KNOT_PALETTES).length).toBeGreaterThanOrEqual(4);
     expect(Object.keys(MANDALA_PALETTES).length).toBeGreaterThanOrEqual(4);
     expect(Object.keys(FEATHER_PALETTES).length).toBeGreaterThanOrEqual(4);
+    expect(Object.keys(TEMPLE_PALETTES).length).toBeGreaterThanOrEqual(4);
     for (const m of NEW) {
       const spec = MODE_CONTROLS[m];
       expect(spec).toBeDefined();
@@ -97,5 +104,6 @@ describe('Mind Balloon-inspired modes', () => {
     expect(phys).toContain('beadknot.ts');
     expect(phys).toContain('mandala.ts');
     expect(phys).toContain('feathervortex.ts');
+    expect(phys).toContain('crystaltemple.ts');
   });
 });

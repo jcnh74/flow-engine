@@ -3,7 +3,7 @@ import { MODE_CONTROLS, presetNames, applyModePreset, captureModeValues, applyMo
 import { readFileSync } from 'fs';
 
 describe('pass 6 per-mode controls + presets', () => {
-  const modes = ['Gravity', 'Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Fabric', 'Stargate', '3D Fractal', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Landscape', 'Morph', 'Plasma'];
+  const modes = ['Gravity', 'Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Fabric', 'Stargate', '3D Fractal', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple', 'Landscape', 'Morph', 'Plasma'];
   test('every mode has its own panel with sliders/knobs/selectors and 3+ presets', () => {
     for (const m of modes) {
       const spec = MODE_CONTROLS[m]; expect(spec).toBeDefined();

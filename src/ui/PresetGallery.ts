@@ -66,6 +66,7 @@ export class PresetGallery {
       'Bead Knot': '◎',
       'Mirror Mandala': '❈',
       'Feather Vortex': '✺',
+      'Crystal Temple': '⟁',
     };
     return icons[mode] || '○';
   }

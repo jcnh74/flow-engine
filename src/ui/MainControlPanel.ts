@@ -252,7 +252,7 @@ export class MainControlPanel {
         this.buildButton('milkdrop-random', '🎲 Random', 'action:milkdrop-random'),
         `<div class="preset-name" id="milkdrop-preset-name" style="padding: 8px; font-size: 11px; color: #999; text-align: center; font-family: monospace;"></div>`
       ]);
-    } else if (['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex'].includes(mode)) {
+    } else if (['Fabric', 'Gravity', 'Paint', 'Jungle', 'City Vortex', 'Stargate', 'Paint Pour', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple'].includes(mode)) {
       html += this.buildModeControls(mode);
       html += this.buildSection('Studio', [
         this.buildSelect('phLook', 'Palette', STUDIO_LOOK_NAMES),

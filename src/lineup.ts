@@ -17,6 +17,7 @@ export const LINEUP_MODES = [
   'Bead Knot',
   'Mirror Mandala',
   'Feather Vortex',
+  'Crystal Temple',
 ] as const;
 export type LineupMode = (typeof LINEUP_MODES)[number];
 
@@ -85,6 +86,9 @@ export const MODE_ALIASES: Record<string, string> = {
   'mirror': 'Mirror Mandala',
   'feather': 'Feather Vortex',
   'feathervortex': 'Feather Vortex',
+  'crystal': 'Crystal Temple',
+  'crystaltemple': 'Crystal Temple',
+  'temple': 'Crystal Temple',
 };
 
 export function isLineupMode(mode: string): boolean {
