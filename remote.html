@@ -8,15 +8,17 @@
   <title>Flow Engine Remote</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { overscroll-behavior: none; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #0a0a0f;
       color: #e0e0e8;
       overflow-x: hidden;
-      touch-action: manipulation;
+      touch-action: pan-y;
       -webkit-user-select: none;
       user-select: none;
     }
+    body.is-dragging { overflow: hidden; touch-action: none; }
     .remote-header {
       padding: 16px 20px;
       background: #151520;
@@ -29,8 +31,8 @@
     .remote-title { font-size: 16px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; }
     .status-indicator { width: 12px; height: 12px; border-radius: 50%; background: #ff3366; }
     .status-indicator.connected { background: #00ff88; }
-    .remote-body { padding: 16px 20px 40px; }
-    .section { margin-bottom: 24px; }
+    .remote-body { padding: 16px 20px 48px; }
+    .section { margin-bottom: 20px; }
     .section-title {
       font-size: 13px; font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.5px; color: #8888a0; margin-bottom: 12px;
@@ -49,7 +51,7 @@
     }
     .preset-mode { font-size: 10px; color: #8888a0; margin-top: 4px; text-transform: uppercase; }
     .ctl {
-      margin-bottom: 16px; background: #14141c; border: 1px solid #2a2a3e;
+      margin-bottom: 14px; background: #14141c; border: 1px solid #2a2a3e;
       border-radius: 12px; padding: 12px 14px;
     }
     .ctl-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -59,14 +61,23 @@
       min-width: 44px; min-height: 36px; border: 0; background: transparent;
       color: #8888a0; font-size: 18px; cursor: pointer;
     }
-    input[type="range"] {
-      width: 100%; height: 44px; -webkit-appearance: none; appearance: none;
-      background: transparent; cursor: pointer;
+    .touch-slider {
+      position: relative; width: 100%; height: 44px;
+      touch-action: none; cursor: grab; overscroll-behavior: contain;
     }
-    input[type="range"]::-webkit-slider-track { background: #2a2a3e; height: 8px; border-radius: 4px; }
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%;
-      background: #6b5fff; margin-top: -10px; box-shadow: 0 4px 12px rgba(107, 95, 255, 0.5);
+    .touch-slider.is-dragging { cursor: grabbing; }
+    .touch-slider-track, .touch-slider-fill {
+      position: absolute; left: 0; top: 50%; height: 12px; margin-top: -6px;
+      border-radius: 6px; pointer-events: none;
+    }
+    .touch-slider-track { right: 0; background: #2a2a3e; }
+    .touch-slider-fill { background: #6b5fff; }
+    .touch-slider-thumb {
+      position: absolute; top: 50%; width: 28px; height: 28px;
+      margin: -14px 0 0 -14px; border-radius: 50%;
+      background: #6b5fff; border: 2px solid #fff;
+      box-shadow: 0 4px 12px rgba(107, 95, 255, 0.5);
+      pointer-events: none; z-index: 1;
     }
     .seg { display: flex; flex-wrap: wrap; gap: 6px; }
     .seg button, .toggle {
@@ -81,6 +92,13 @@
     input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
     input[type="color"]::-webkit-color-swatch { border: none; border-radius: 8px; }
     .color-row { display: flex; align-items: center; gap: 12px; }
+    .swatch-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+    .swatch-preset {
+      min-height: 36px; padding: 0 12px; border-radius: 16px;
+      border: 1px solid #2a2a3e; background: #1a1a2e; color: #e0e0e8;
+      font-size: 12px; cursor: pointer;
+    }
+    .swatch-preset:active { background: #6b5fff; }
     .add-btn, .edit-done {
       width: 100%; min-height: 48px; border-radius: 12px; border: 2px dashed #3a3a50;
       background: transparent; color: #c4b4ff; font-size: 15px; font-weight: 600; cursor: pointer;
@@ -103,6 +121,17 @@
       min-width: 36px; min-height: 36px; border: 0; background: #1a1a2e;
       color: #e0e0e8; border-radius: 8px; cursor: pointer;
     }
+    .group {
+      margin-bottom: 12px; background: #101018; border: 1px solid #2a2a3e; border-radius: 14px; overflow: hidden;
+    }
+    .group-head {
+      min-height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; font-size: 13px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: #c8c8d8;
+    }
+    .group-head .chev { color: #8888a0; font-size: 12px; }
+    .group.collapsed .group-body { display: none; }
+    .group-body { padding: 4px 12px 12px; }
+    .fav-empty { color: #8888a0; font-size: 13px; padding: 8px 0 12px; }
   </style>
 </head>
 <body>
@@ -116,10 +145,15 @@
       <div class="mode-buttons" id="modes"></div>
     </div>
     <div class="section">
-      <div class="section-title">Assigned Controls</div>
+      <div class="section-title">Favorites</div>
       <div id="deck"></div>
-      <button class="add-btn" id="edit-btn">Add / arrange controls</button>
+      <p class="fav-empty" id="fav-empty" hidden>No favorites yet. Everything is still editable in the groups below.</p>
+      <button class="add-btn" id="edit-btn">Arrange favorites</button>
       <div class="picker" id="picker" hidden></div>
+    </div>
+    <div class="section">
+      <div class="section-title">All controls</div>
+      <div id="groups"></div>
     </div>
     <div class="section">
       <div class="section-title">Presets</div>
@@ -128,24 +162,36 @@
   </div>
   <script>
     const MODES = ['Paint', 'Paint Pour', 'City Vortex', 'Jungle', 'Stargate', 'Fabric', '3D Fractal', 'Bead Knot', 'Mirror Mandala', 'Feather Vortex', 'Crystal Temple'];
-    const PRESETS = [
-      { name: 'Paint · Carnival Burst', mode: 'Paint' },
-      { name: 'Paint Pour · Pour Classic', mode: 'Paint Pour' },
-      { name: 'City Vortex · Golden Hour', mode: 'City Vortex' },
-      { name: 'Jungle · Rainforest Journey', mode: 'Jungle' },
-      { name: 'Stargate · Kubrick 1968', mode: 'Stargate' },
-      { name: 'Fabric · Silk Parade', mode: 'Fabric' },
-      { name: '3D Fractal · Lilac Bulb', mode: '3D Fractal' },
-      { name: 'Bead Knot · Ember Orbit', mode: 'Bead Knot' },
-      { name: 'Mirror Mandala · Poison Guardian', mode: 'Mirror Mandala' },
-      { name: 'Feather Vortex · Ember Tide', mode: 'Feather Vortex' },
-      { name: 'Crystal Temple · Cyan Processional', mode: 'Crystal Temple' },
-    ];
 
-    let ws, state = { mode: 'Jungle', schema: [], layout: [], paused: false };
+    let ws, state = { mode: 'Jungle', schema: [], layout: [], presets: [], paused: false };
     let editing = false;
     const values = {};
+    const dragging = new Set();
+    const collapsed = new Set();
     const LS = 'flow-remote-layout-v1';
+    let pendingSend = null, sendRaf = 0;
+
+    function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+    function stepValue(v, min, max, step) {
+      const s = step > 0 ? step : 0.01;
+      const snapped = Math.round((v - min) / s) * s + min;
+      const decimals = (String(s).split('.')[1] || '').length;
+      return Number(clamp(snapped, min, max).toFixed(decimals));
+    }
+    function valueFromRelativeDrag(startValue, dx, dy, trackWidth, min, max, step) {
+      const span = max - min;
+      const width = Math.max(trackWidth, 1);
+      const fine = 1 / (1 + Math.abs(dy) / 90);
+      return stepValue(startValue + (dx / width) * span * fine, min, max, step);
+    }
+    function paintSlider(root, value) {
+      const min = Number(root.dataset.min), max = Number(root.dataset.max);
+      const r = clamp((value - min) / (max - min || 1), 0, 1);
+      const fill = root.querySelector('.touch-slider-fill');
+      const thumb = root.querySelector('.touch-slider-thumb');
+      if (fill) fill.style.width = (r * 100) + '%';
+      if (thumb) thumb.style.left = (r * 100) + '%';
+    }
 
     function connect() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -169,6 +215,22 @@
     }
     function send(type, data) {
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, data }));
+    }
+    function queueParam(key, value) {
+      values[key] = value;
+      if (!pendingSend) pendingSend = {};
+      pendingSend[key] = value;
+      if (!sendRaf) {
+        sendRaf = requestAnimationFrame(() => {
+          sendRaf = 0;
+          const payload = pendingSend; pendingSend = null;
+          if (payload) send('param', payload);
+        });
+      }
+    }
+    function flushParams() {
+      if (sendRaf) { cancelAnimationFrame(sendRaf); sendRaf = 0; }
+      if (pendingSend) { send('param', pendingSend); pendingSend = null; }
     }
     function localLayout(mode) {
       try {
@@ -203,24 +265,158 @@
       if (Array.isArray(o)) return o.map((n) => [n, n]);
       return Object.keys(o).map((n) => [n, o[n]]);
     }
+
+    function bindSlider(root, key, c, valueEl) {
+      let drag = null;
+      let lastTap = 0;
+      const min = Number(c.min), max = Number(c.max), step = c.step ?? 0.01;
+      const onDown = (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        root.setPointerCapture(e.pointerId);
+        const track = root.querySelector('.touch-slider-track');
+        const width = (track || root).getBoundingClientRect().width;
+        drag = { id: e.pointerId, x: e.clientX, y: e.clientY, v: values[key] ?? min, last: values[key] ?? min, width };
+        dragging.add(key);
+        root.classList.add('is-dragging');
+        document.body.classList.add('is-dragging');
+      };
+      const onMove = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        e.preventDefault();
+        const v = valueFromRelativeDrag(drag.v, e.clientX - drag.x, e.clientY - drag.y, drag.width, min, max, step);
+        drag.last = v;
+        values[key] = v;
+        paintSlider(root, v);
+        if (valueEl) valueEl.textContent = fmt(v, step);
+        document.querySelectorAll(`.ctl-value[data-k="${key}"]`).forEach((el) => { el.textContent = fmt(v, step); });
+        document.querySelectorAll(`.touch-slider[data-param="${key}"]`).forEach((el) => { if (el !== root) paintSlider(el, v); });
+        queueParam(key, v);
+      };
+      const onUp = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const v = drag.last;
+        const moved = Math.hypot(e.clientX - drag.x, e.clientY - drag.y);
+        drag = null;
+        root.classList.remove('is-dragging');
+        document.body.classList.remove('is-dragging');
+        try { root.releasePointerCapture(e.pointerId); } catch {}
+        if (moved <= 12) {
+          const now = performance.now();
+          if (now - lastTap < 380) {
+            lastTap = 0;
+            const def = root.dataset.default !== undefined ? parseFloat(root.dataset.default) : min;
+            values[key] = def;
+            paintSlider(root, def);
+            if (valueEl) valueEl.textContent = fmt(def, step);
+            document.querySelectorAll(`.ctl-value[data-k="${key}"]`).forEach((el) => { el.textContent = fmt(def, step); });
+            document.querySelectorAll(`.touch-slider[data-param="${key}"]`).forEach((el) => paintSlider(el, def));
+            flushParams();
+            send('param', { [key]: def });
+            dragging.delete(key);
+            return;
+          }
+          lastTap = now;
+        } else lastTap = 0;
+        flushParams();
+        dragging.delete(key);
+      };
+      root.addEventListener('pointerdown', onDown);
+      root.addEventListener('pointermove', onMove);
+      root.addEventListener('pointerup', onUp);
+      root.addEventListener('pointercancel', onUp);
+    }
+
+    function renderControl(c, { removable, onRemove, moveButtons } = {}) {
+      const wrap = document.createElement('div');
+      wrap.className = 'ctl';
+      wrap.dataset.key = c.key;
+      const val = values[c.key] ?? state[c.key] ?? c.min ?? '';
+      values[c.key] = val;
+      const head = document.createElement('div');
+      head.className = 'ctl-head';
+      head.innerHTML = `<span class="ctl-label">${c.label}</span><span class="ctl-value" data-k="${c.key}">${fmt(val, c.step)}</span>`;
+      if (moveButtons) head.appendChild(moveButtons);
+      if (removable) {
+        const rm = document.createElement('button');
+        rm.className = 'ctl-remove';
+        rm.textContent = '×';
+        rm.onclick = onRemove;
+        head.appendChild(rm);
+      }
+      wrap.appendChild(head);
+      if (c.type === 'slider' || c.type === 'knob') {
+        const min = Number(c.min), max = Number(c.max), step = c.step ?? 0.01;
+        const r = clamp((Number(val) - min) / (max - min || 1), 0, 1);
+        const sl = document.createElement('div');
+        sl.className = 'touch-slider';
+        sl.dataset.param = c.key;
+        sl.dataset.min = String(min);
+        sl.dataset.max = String(max);
+        sl.dataset.step = String(step);
+        sl.dataset.default = String(val);
+        sl.setAttribute('role', 'slider');
+        sl.innerHTML = `<div class="touch-slider-track"></div><div class="touch-slider-fill" style="width:${r * 100}%"></div><div class="touch-slider-thumb" style="left:${r * 100}%"></div>`;
+        wrap.appendChild(sl);
+        bindSlider(sl, c.key, c, head.querySelector('.ctl-value'));
+      } else if (c.type === 'check') {
+        const btn = document.createElement('button');
+        btn.className = 'toggle' + (val ? ' on' : '');
+        btn.textContent = val ? 'On' : 'Off';
+        btn.onclick = () => {
+          const v = !values[c.key];
+          values[c.key] = v; btn.className = 'toggle' + (v ? ' on' : ''); btn.textContent = v ? 'On' : 'Off';
+          wrap.querySelector('.ctl-value').textContent = fmt(v);
+          send('param', { [c.key]: v });
+        };
+        wrap.appendChild(btn);
+      } else if (c.type === 'color') {
+        const row = document.createElement('div');
+        row.className = 'color-row';
+        const inp = document.createElement('input');
+        inp.type = 'color'; inp.value = (typeof val === 'string' && val.startsWith('#')) ? val : '#ffffff';
+        inp.oninput = () => {
+          values[c.key] = inp.value;
+          wrap.querySelector('.ctl-value').textContent = inp.value;
+          send('param', { [c.key]: inp.value });
+        };
+        row.appendChild(inp);
+        wrap.appendChild(row);
+      } else if (c.type === 'select') {
+        const row = document.createElement('div');
+        row.className = 'seg';
+        optionPairs(c).forEach(([name, v]) => {
+          const b = document.createElement('button');
+          b.textContent = name;
+          if (String(val) === String(v) || val == v) b.className = 'on';
+          b.onclick = () => {
+            values[c.key] = v;
+            row.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+            wrap.querySelector('.ctl-value').textContent = name;
+            send('param', { [c.key]: v });
+          };
+          row.appendChild(b);
+        });
+        wrap.appendChild(row);
+      }
+      return wrap;
+    }
+
     function renderDeck() {
       const deck = document.getElementById('deck');
       const layout = state.layout || [];
       deck.innerHTML = '';
+      document.getElementById('fav-empty').hidden = layout.length > 0;
       layout.forEach((key, i) => {
         const c = ctlByKey(key);
         if (!c) return;
-        const wrap = document.createElement('div');
-        wrap.className = 'ctl';
-        const val = values[key] ?? state[key] ?? c.min ?? '';
-        const head = document.createElement('div');
-        head.className = 'ctl-head';
-        head.innerHTML = `<span class="ctl-label">${c.label}</span><span class="ctl-value" data-k="${key}">${fmt(val, c.step)}</span>`;
+        let move;
         if (editing) {
-          const mv = document.createElement('div');
-          mv.className = 'move';
-          mv.innerHTML = `<button data-mv="-1">↑</button><button data-mv="1">↓</button><button class="ctl-remove" data-rm="${key}">×</button>`;
-          mv.querySelectorAll('[data-mv]').forEach((b) => b.onclick = () => {
+          move = document.createElement('div');
+          move.className = 'move';
+          move.innerHTML = `<button data-mv="-1">↑</button><button data-mv="1">↓</button>`;
+          move.querySelectorAll('[data-mv]').forEach((b) => b.onclick = () => {
             const dir = Number(b.dataset.mv);
             const arr = state.layout.slice();
             const j = i + dir;
@@ -228,67 +424,77 @@
             const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
             state.layout = arr; persistLayout(state.mode, arr); renderDeck();
           });
-          mv.querySelector('[data-rm]').onclick = () => {
+        }
+        const wrap = renderControl(c, {
+          removable: editing,
+          moveButtons: move,
+          onRemove: () => {
             state.layout = state.layout.filter((k) => k !== key);
             persistLayout(state.mode, state.layout); renderDeck(); renderPicker();
-          };
-          head.appendChild(mv);
-        }
-        wrap.appendChild(head);
-        if (c.type === 'slider' || c.type === 'knob') {
-          const inp = document.createElement('input');
-          inp.type = 'range'; inp.min = c.min; inp.max = c.max; inp.step = c.step ?? 0.01;
-          inp.value = val;
-          inp.oninput = () => {
-            const v = parseFloat(inp.value);
-            values[key] = v;
-            wrap.querySelector('.ctl-value').textContent = fmt(v, c.step);
-            send('param', { [key]: v });
-          };
-          wrap.appendChild(inp);
-        } else if (c.type === 'check') {
-          const btn = document.createElement('button');
-          btn.className = 'toggle' + (val ? ' on' : '');
-          btn.textContent = val ? 'On' : 'Off';
-          btn.onclick = () => {
-            const v = !values[key];
-            values[key] = v; btn.className = 'toggle' + (v ? ' on' : ''); btn.textContent = v ? 'On' : 'Off';
-            wrap.querySelector('.ctl-value').textContent = fmt(v);
-            send('param', { [key]: v });
-          };
-          wrap.appendChild(btn);
-        } else if (c.type === 'color') {
-          const row = document.createElement('div');
-          row.className = 'color-row';
-          const inp = document.createElement('input');
-          inp.type = 'color'; inp.value = (typeof val === 'string' && val.startsWith('#')) ? val : '#ffffff';
-          inp.oninput = () => {
-            values[key] = inp.value;
-            wrap.querySelector('.ctl-value').textContent = inp.value;
-            send('param', { [key]: inp.value });
-          };
-          row.appendChild(inp);
-          wrap.appendChild(row);
-        } else if (c.type === 'select') {
-          const row = document.createElement('div');
-          row.className = 'seg';
-          optionPairs(c).forEach(([name, v]) => {
-            const b = document.createElement('button');
-            b.textContent = name;
-            if (String(val) === String(v) || val == v) b.className = 'on';
-            b.onclick = () => {
-              values[key] = v;
-              row.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-              wrap.querySelector('.ctl-value').textContent = name;
-              send('param', { [key]: v });
-            };
-            row.appendChild(b);
-          });
-          wrap.appendChild(row);
-        }
+          }
+        });
         deck.appendChild(wrap);
       });
     }
+
+    function renderGroups() {
+      const box = document.getElementById('groups');
+      box.innerHTML = '';
+      (state.schema || []).forEach((sec, idx) => {
+        const g = document.createElement('div');
+        const id = sec.title || ('sec-' + idx);
+        g.className = 'group' + (collapsed.has(id) ? ' collapsed' : '');
+        const head = document.createElement('div');
+        head.className = 'group-head';
+        const n = (sec.ctls || []).length;
+        head.innerHTML = `<span>${sec.title}</span><span class="chev">${collapsed.has(id) ? '▸' : '▾'} ${n}</span>`;
+        head.onclick = () => {
+          if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+          g.classList.toggle('collapsed', collapsed.has(id));
+          head.querySelector('.chev').textContent = (collapsed.has(id) ? '▸' : '▾') + ' ' + n;
+        };
+        const body = document.createElement('div');
+        body.className = 'group-body';
+        if (sec.palettes && Object.keys(sec.palettes).length) {
+          const pals = document.createElement('div');
+          pals.className = 'swatch-presets';
+          Object.keys(sec.palettes).forEach((name) => {
+            const b = document.createElement('button');
+            b.className = 'swatch-preset';
+            b.textContent = name;
+            b.onclick = () => {
+              const vals = sec.palettes[name];
+              Object.assign(values, vals);
+              send('param', vals);
+              renderAll();
+            };
+            pals.appendChild(b);
+          });
+          body.appendChild(pals);
+        }
+        (sec.ctls || []).forEach((c) => body.appendChild(renderControl(c)));
+        g.appendChild(head);
+        g.appendChild(body);
+        box.appendChild(g);
+      });
+    }
+
+    function renderPresets() {
+      const el = document.getElementById('presets');
+      el.innerHTML = '';
+      const list = (state.presets && state.presets.length)
+        ? state.presets
+        : [];
+      list.forEach((preset) => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        const label = preset.name || preset;
+        btn.innerHTML = `${label}<div class="preset-mode">${preset.mode || state.mode}</div>`;
+        btn.onclick = () => send('preset', { name: label });
+        el.appendChild(btn);
+      });
+    }
+
     function renderPicker() {
       const box = document.getElementById('picker');
       if (!editing) { box.hidden = true; box.innerHTML = ''; return; }
@@ -315,19 +521,47 @@
         box.appendChild(d);
       });
     }
+
+    function renderAll() {
+      renderDeck();
+      renderGroups();
+      renderPresets();
+      if (editing) renderPicker();
+    }
+
     function updateState(s) {
       const modeChanged = s.mode && s.mode !== state.mode;
-      Object.assign(state, s);
-      Object.assign(values, s);
+      const wasDragging = dragging.size > 0;
+      // Apply incoming values except keys currently being dragged, so echoes cannot snap back.
+      for (const [k, v] of Object.entries(s)) {
+        if (k === 'schema' || k === 'layout' || k === 'presets') continue;
+        if (dragging.has(k)) continue;
+        values[k] = v;
+      }
       if (s.schema) state.schema = s.schema;
+      if (Array.isArray(s.presets)) state.presets = s.presets;
+      if (s.mode) state.mode = s.mode;
       const local = localLayout(s.mode);
       if (local) state.layout = local;
       else if (Array.isArray(s.layout)) state.layout = s.layout;
       document.querySelectorAll('.mode-btn').forEach((btn) => {
         btn.classList.toggle('active', btn.textContent === state.mode);
       });
-      renderDeck();
-      if (editing) renderPicker();
+      if (wasDragging && !modeChanged) {
+        // Live-update value readouts for keys we are not dragging, without rebuilding the tree.
+        for (const [k, v] of Object.entries(values)) {
+          if (dragging.has(k)) continue;
+          document.querySelectorAll(`.ctl-value[data-k="${k}"]`).forEach((el) => {
+            const c = ctlByKey(k);
+            el.textContent = fmt(v, c && c.step);
+          });
+          if (typeof v === 'number') {
+            document.querySelectorAll(`.touch-slider[data-param="${k}"]`).forEach((el) => paintSlider(el, v));
+          }
+        }
+        return;
+      }
+      renderAll();
     }
 
     const modesEl = document.getElementById('modes');
@@ -338,17 +572,9 @@
       btn.onclick = () => send('param', { mode });
       modesEl.appendChild(btn);
     });
-    const presetsEl = document.getElementById('presets');
-    PRESETS.forEach((preset) => {
-      const btn = document.createElement('button');
-      btn.className = 'preset-btn';
-      btn.innerHTML = `${preset.name}<div class="preset-mode">${preset.mode}</div>`;
-      btn.onclick = () => send('preset', { name: preset.name });
-      presetsEl.appendChild(btn);
-    });
     document.getElementById('edit-btn').onclick = () => {
       editing = !editing;
-      document.getElementById('edit-btn').textContent = editing ? 'Done' : 'Add / arrange controls';
+      document.getElementById('edit-btn').textContent = editing ? 'Done' : 'Arrange favorites';
       renderDeck(); renderPicker();
     };
     connect();

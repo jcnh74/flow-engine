@@ -94,11 +94,14 @@ describe('UI Control Coverage', () => {
   });
 
   test('3D Fractal type indices match shader switch cases', () => {
-    // Check that shader has case for each type 0-2 (pruned to best 3)
     expect(fractalShaders).toContain('if (uFractalType == 0)'); // Mandelbulb
     expect(fractalShaders).toContain('else if (uFractalType == 1)'); // Mandelbox
-    expect(fractalShaders).toContain('else if (uFractalType == 2)'); // Menger
-    expect(fractalShaders).toContain('d = deQuaternionJulia(p)'); // Quaternion Julia (type 5, else case)
+    expect(fractalShaders).toContain('else if (uFractalType == 2)'); // Kaleidoscopic
+    expect(fractalShaders).toContain('else if (uFractalType == 3)'); // Quaternion Julia
+    expect(fractalShaders).toContain('d = deKaleidoscopic(p)');
+    expect(fractalShaders).toContain('d = deQuaternionJulia(p)');
+    expect(fractalShaders).not.toContain('deMenger');
+    expect(fractalShaders).not.toContain('deSierpinski');
   });
 
   test('Fold rotation is applied in Mandelbox', () => {

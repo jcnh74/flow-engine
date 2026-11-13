@@ -85,11 +85,12 @@ export const COLOR_GROUPS: Record<ColorGroupId, ColorGroup> = {
   material: {
     id: 'material', title: 'Material',
     ctls: [
-      S('phGloss', 'Gloss', 0.2, 2, 0.01),
+      S('phGloss', 'Gloss', 0, 2, 0.01),
       S('phIrid', 'Iridescence', 0, 1, 0.01),
     ],
     palettes: {
-      'Matte': { phGloss: 0.4, phIrid: 0 },
+      'Matte': { phGloss: 0, phIrid: 0 },
+      'Clay': { phGloss: 0, phIrid: 0 },
       'Satin': { phGloss: 1.0, phIrid: 0.25 },
       'Pearl': { phGloss: 1.4, phIrid: 0.85 },
     },
@@ -176,13 +177,16 @@ const OUTPUT_CTLS: Ctl[] = [
 ];
 
 /** Full control schema for a mode: its own panel, color groups, and shared output sliders. */
-export function collectRemoteSchema(mode: string): { title: string; ctls: Ctl[] }[] {
-  const sections: { title: string; ctls: Ctl[] }[] = [];
+export type RemoteSection = { title: string; ctls: Ctl[]; palettes?: Record<string, Record<string, string | number>>; groupId?: string };
+export function collectRemoteSchema(mode: string): RemoteSection[] {
+  const sections: RemoteSection[] = [];
   const spec = MODE_CONTROLS[mode];
   if (spec) {
     for (const s of spec.sections) sections.push({ title: `${mode} · ${s.title}`, ctls: s.ctls });
   }
-  for (const g of colorGroupsFor(mode)) sections.push({ title: `Color · ${g.title}`, ctls: g.ctls });
+  for (const g of colorGroupsFor(mode)) {
+    sections.push({ title: `Color · ${g.title}`, ctls: g.ctls, palettes: g.palettes, groupId: g.id });
+  }
   sections.push({ title: 'Output', ctls: OUTPUT_CTLS });
   return sections;
 }

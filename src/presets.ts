@@ -43,8 +43,8 @@ export const STUDIO_PRESETS: Preset[] = [
   studioPreset('Morph · Lilac Gloss', 'Morph', 'Lilac Dream', 'Glossy pastel metaballs on a lilac cove', { morphSculpt: true, stMat: 'Gloss', stDof: 0.45 }),
   studioPreset('Morph · Coral Pearl', 'Morph', 'Coral Peach', 'Iridescent pearl blobs on a peach cove', { morphSculpt: true, stMat: 'Iridescent', stDof: 0.45 }),
   studioPreset('Morph · Cobalt Satin', 'Morph', 'Cobalt Orange', 'Satin-metal blobs on a cobalt cove', { morphSculpt: true, stMat: 'Satin metal', stDof: 0.45 }),
-  studioPreset('Fractal · Lilac Bulb', '3D Fractal', 'Lilac Dream', 'Mandelbulb in a lilac studio cove', { frStudio: true, frType: 0, frPower: 8, frIter: 10, frCamDist: 2.5, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.15, stMat: 'Gloss' }),
-  studioPreset('Fractal · Coral Bulb', '3D Fractal', 'Coral Peach', 'Soft power-5 Mandelbulb in a peach studio cove', { frStudio: true, frType: 0, frPower: 5, frIter: 10, frCamDist: 2.6, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.12, stMat: 'Gloss' }),
+  studioPreset('Fractal · Lilac Bulb', '3D Fractal', 'Lilac Dream', 'Matte clay Mandelbulb in a lilac studio cove', { frStudio: true, frType: 0, frPower: 8, frIter: 10, frCamDist: 2.5, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.15, stMat: 'Matte', stRim: 0.12 }),
+  studioPreset('Fractal · Coral Bulb', '3D Fractal', 'Coral Peach', 'Soft power-5 matte clay Mandelbulb in a peach studio cove', { frStudio: true, frType: 0, frPower: 5, frIter: 10, frCamDist: 2.6, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.12, stMat: 'Matte', stRim: 0.12 }),
   studioPreset('Wall · Coral Silk', 'Wall Studio', 'Coral Peach', 'Smooth sculpted satin sheets in coral, lilac and mint', { ...WALL_STUDIO, saturation: 1.6, iridescence: 0.08 }),
   studioPreset('Wall · Cobalt Clay', 'Wall Studio', 'Cobalt Orange', 'Smooth matte clay sheets, cobalt and orange', { ...WALL_STUDIO, wMat: 'clay', layers: 1, saturation: 1.8, brightness: 0.8 }),
   studioPreset('Landscape · Pastel Canyon', 'Landscape', 'Coral Peach', 'The Blender canyon in a pastel studio: peach cove, coral/lilac/mint pigment', { landLook: 'Studio Pastel', landSpeed: 1, landFov: 50, landSunEl: 45, landSunAz: -40, landAO: 1.6, landPigment: 1.0, landFlow: 0.8, landGrain: 0.04, landFog: 0.6, landParticles: false, vignetteStrength: 0.1 }),
@@ -403,14 +403,18 @@ const LEGACY_PRESETS: Preset[] = [
     }
   },
   {
-    name: 'Menger Cube',
+    name: 'Kaleido Garden',
     mode: '3D Fractal',
-    description: 'Classic Menger sponge',
+    description: 'Centered kaleidoscopic IFS, matte clay',
     params: {
       frType: 2,
-      frIter: 5,
-      frRotSpeed: 0.2,
-      stops: [[0, '#ff6600'], [0.5, '#ffff00'], [1, '#ff6600']]
+      frIter: 8,
+      frScale: 1.85,
+      frCamDist: 3.6,
+      frFoldRot: 22,
+      frRotSpeed: 0.1,
+      stMat: 'Matte',
+      stops: [[0, '#e8c9a0'], [0.5, '#c4a07a'], [1, '#8a5a3a']]
     }
   },
   {

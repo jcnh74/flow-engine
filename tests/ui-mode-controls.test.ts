@@ -377,11 +377,12 @@ test('MainControlPanel > All modes have universal controls', () => {
     expect(visible.has('seed')).toBe(true);
     expect(visible.has('paused')).toBe(true);
     
-    // All modes should have unified color controls
-    expect(visible.has('colorPreset')).toBe(true);
+    // All modes should have exposure / bloom and some color controls
+    // (legacy colorPreset, or the shared Color groups).
     expect(visible.has('exposure')).toBe(true);
     expect(visible.has('bloom')).toBe(true);
-    // Note: hueShift is mode-specific now (not in 3D Fractal or Grass)
+    const hasColor = visible.has('colorPreset') || visible.has('colKey') || visible.has('colObject') || visible.has('background');
+    expect(hasColor).toBe(true);
     
     panel.destroy();
   }

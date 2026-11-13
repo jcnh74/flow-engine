@@ -193,7 +193,7 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
   '3D Fractal': {
     sections: [
       { title: 'Form', ctls: [
-        SEL('frType', 'Type', { 'Mandelbulb': 0, 'Mandelbox': 1, 'Menger Sponge': 2, 'Sierpinski': 3, 'Kaleidoscopic': 4, 'Quaternion Julia': 5 }),
+        SEL('frType', 'Type', { 'Mandelbulb': 0, 'Mandelbox': 1, 'Kaleidoscopic': 2, 'Quaternion Julia': 3 }),
         S('frPower', 'Power', 2, 16, 0.1), S('frIter', 'Iterations', 4, 24, 1), S('frBailout', 'Bailout', 1, 10, 0.1), S('frScale', 'Scale', -3, 3, 0.1),
       ] },
       { title: 'Studio', ctls: [
@@ -218,19 +218,19 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
       ] },
     ],
     defaults: {
-      frStudio: true, stLook: 'Lilac Dream', stMat: 'Gloss', stRim: 0.35, frRes: 0.45,
+      frStudio: true, stLook: 'Lilac Dream', stMat: 'Matte', stRim: 0.12, frRes: 0.45,
       frType: 0, frPower: 8, frIter: 10, frBailout: 4, frScale: -1.5,
       frCamDist: 2.5, frCamFov: 50, frRotSpeed: 0.15, frCamOrbit: true, frCamOrbitSpeed: 0.3,
       frLightAz: 35, frLightEl: 50, frAmbient: 0.42, frDiffuse: 0.85, frGlow: 0, frShadow: 0.8, frShadowSharpness: 6,
-      frAOStrength: 4, frAORadius: 0.3, frFogDensity: 0.04, frFogStart: 2.0, frMaxSteps: 80, frMaxDist: 20,
-      frMorph: 0, frJuliaOrbit: false, frJuliaSpeed: 0.2, frFoldRot: 0, frSlicePlane: false, frSlicePos: 0,
+      frAOStrength: 5, frAORadius: 0.3, frFogDensity: 0.04, frFogStart: 2.0, frMaxSteps: 80, frMaxDist: 20,
+      frMorph: 0, frJuliaOrbit: false, frJuliaSpeed: 0.12, frFoldRot: 0, frSlicePlane: false, frSlicePos: 0,
     },
     presets: {
-      'Lilac Bulb': { frType: 0, frPower: 8, frIter: 10, frCamDist: 2.5, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.15, frStudio: true, stLook: 'Lilac Dream', stMat: 'Gloss', stRim: 0.35 },
-      'Coral Bulb': { frType: 0, frPower: 5, frIter: 10, frCamDist: 2.6, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.12, frStudio: true, stLook: 'Coral Peach', stMat: 'Gloss', stRim: 0.4 },
-      'Mandelbox Deep': { frType: 1, frScale: -1.8, frIter: 12, frCamDist: 7, frRes: 0.5, frMaxSteps: 120, frAmbient: 0.38, frFogDensity: 0.06, frRotSpeed: 0.08, frStudio: true, stLook: 'Cobalt Orange', stMat: 'Satin metal', stRim: 0.5 },
-      'Menger Studio': { frType: 2, frIter: 5, frCamDist: 4, frRes: 0.5, frMaxSteps: 80, frAmbient: 0.45, frAOStrength: 5, frFogDensity: 0.05, frRotSpeed: 0.1, frStudio: true, stLook: 'Cream Gold', stMat: 'Matte', stRim: 0.3 },
-      'Julia Drift': { frType: 5, frIter: 10, frCamDist: 3.2, frJuliaOrbit: true, frJuliaSpeed: 0.35, frRotSpeed: 0.08, frGlow: 0.15, frFogDensity: 0.05, frStudio: true, stLook: 'Mint Pink', stMat: 'Iridescent', stRim: 0.55 },
+      'Lilac Bulb': { frType: 0, frPower: 8, frIter: 10, frCamDist: 2.5, frCamFov: 50, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.15, frStudio: true, stLook: 'Lilac Dream', stMat: 'Matte', stRim: 0.12 },
+      'Coral Bulb': { frType: 0, frPower: 5, frIter: 10, frCamDist: 2.6, frCamFov: 50, frRes: 0.45, frMaxSteps: 80, frAmbient: 0.42, frGlow: 0, frFogDensity: 0.04, frRotSpeed: 0.12, frStudio: true, stLook: 'Coral Peach', stMat: 'Matte', stRim: 0.12 },
+      'Mandelbox Deep': { frType: 1, frScale: -1.8, frIter: 12, frCamDist: 6.5, frCamFov: 45, frRes: 0.5, frMaxSteps: 120, frAmbient: 0.4, frFogDensity: 0.06, frRotSpeed: 0.08, frStudio: true, stLook: 'Cobalt Orange', stMat: 'Matte', stRim: 0.12 },
+      'Kaleido Garden': { frType: 2, frIter: 8, frScale: 1.85, frCamDist: 3.6, frCamFov: 48, frFoldRot: 22, frRes: 0.5, frMaxSteps: 100, frAmbient: 0.45, frAOStrength: 5, frFogDensity: 0.05, frRotSpeed: 0.1, frStudio: true, stLook: 'Cream Gold', stMat: 'Matte', stRim: 0.12 },
+      'Julia Drift': { frType: 3, frIter: 9, frCamDist: 2.8, frCamFov: 50, frJuliaOrbit: true, frJuliaSpeed: 0.12, frRotSpeed: 0.08, frGlow: 0, frFogDensity: 0.04, frMaxSteps: 100, frStudio: true, stLook: 'Mint Pink', stMat: 'Matte', stRim: 0.12 },
     },
   },
   'Landscape': {
@@ -273,6 +273,44 @@ export function presetNames(mode: string): string[] {
   const spec = MODE_CONTROLS[mode]; if (!spec) return [];
   return [...Object.keys(spec.presets), ...Object.keys(userPresets(mode)).map((n) => `★ ${n}`)];
 }
+
+export const FRACTAL_TYPES: Record<string, number> = {
+  'Mandelbulb': 0,
+  'Mandelbox': 1,
+  'Kaleidoscopic': 2,
+  'Quaternion Julia': 3,
+};
+
+/** Map legacy ids (4=kaleido, 5=julia) onto the four remaining types. */
+export function normalizeFrType(t: number): number {
+  if (t === 4) return 2;
+  if (t === 5) return 3;
+  if (t === 2 || t === 3 || t === 0 || t === 1) return t;
+  return 0;
+}
+
+export function fractalTypeName(t: number): string {
+  const n = normalizeFrType(t);
+  return (['Mandelbulb', 'Mandelbox', 'Kaleidoscopic', 'Quaternion Julia'] as const)[n] ?? 'Mandelbulb';
+}
+
+/** Frame and iterate each remaining type so a centered object is visible by default. */
+export function applyFractalTypeDefaults(P: Record<string, any>, type: number) {
+  const t = normalizeFrType(Number(type));
+  P.frType = t;
+  P.frRotSpeed = P.frRotSpeed ?? 0.12;
+  P.frSlicePlane = false;
+  if (t === 0) {
+    P.frIter = 10; P.frPower = 8; P.frBailout = 4; P.frCamDist = 2.5; P.frCamFov = 50;
+  } else if (t === 1) {
+    P.frIter = 12; P.frScale = -1.8; P.frCamDist = 6.5; P.frCamFov = 45; P.frMaxSteps = 120;
+  } else if (t === 2) {
+    P.frIter = 8; P.frScale = 1.85; P.frFoldRot = 22; P.frCamDist = 3.6; P.frCamFov = 48; P.frMaxSteps = 100;
+  } else if (t === 3) {
+    P.frIter = 10; P.frCamDist = 2.8; P.frCamFov = 50; P.frBailout = 4; P.frMaxSteps = 120; P.frSurfDist = 1;
+  }
+}
+
 /** Fill any of the mode's control keys that are still unset. */
 export function applyModeDefaults(P: Record<string, any>, mode: string) {
   const spec = MODE_CONTROLS[mode]; if (!spec) return;

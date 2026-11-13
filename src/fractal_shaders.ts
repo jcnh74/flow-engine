@@ -1,4 +1,4 @@
-// 3D Fractal shaders: Mandelbulb and Mandelbox
+// 3D Fractal shaders: Mandelbulb, Mandelbox, Kaleidoscopic IFS, Quaternion Julia
 // Original implementation based on well-documented mathematical algorithms
 // Distance estimation and ray marching techniques from computer graphics literature
 
@@ -26,7 +26,7 @@ uniform vec3 uCamTarget;
 uniform float uCamFov;
 
 // Fractal parameters
-uniform int uFractalType; // 0=Mandelbulb, 1=Mandelbox
+uniform int uFractalType; // 0=Mandelbulb, 1=Mandelbox, 2=Kaleidoscopic, 3=Quaternion Julia
 uniform float uPower;
 uniform int uIterations;
 uniform float uBailout;
@@ -172,85 +172,32 @@ float deMandelbox(vec3 pos) {
   return length(pos) / abs(dr);
 }
 
-// Menger Sponge distance estimator
-float deMenger(vec3 p) {
-  vec3 z = p;
-  float d = 1e10;
-  float s = 1.0;
-  
-  for (int i = 0; i < 12; i++) {
-    if (i >= uIterations) break;
-    
-    z = abs(z);
-    if (z.x < z.y) z.xy = z.yx;
-    if (z.x < z.z) z.xz = z.zx;
-    if (z.y < z.z) z.yz = z.zy;
-    
-    z = z * 3.0 - vec3(2.0);
-    s *= 3.0;
-    
-    if (z.z < -1.0) z.z += 2.0;
-  }
-  
-  // Box distance
-  vec3 a = abs(z) - vec3(1.0);
-  return (min(max(max(a.x, a.y), a.z), 0.0) + length(max(a, 0.0))) / s;
-}
-
-// Sierpinski Tetrahedron distance estimator
-float deSierpinski(vec3 p) {
-  vec3 z = p;
-  float scale = 2.0;
-  float s = 1.0;
-  
-  for (int i = 0; i < 16; i++) {
-    if (i >= uIterations) break;
-    
-    // Tetrahedral folding
-    if (z.x + z.y < 0.0) z.xy = -z.yx;
-    if (z.x + z.z < 0.0) z.xz = -z.zx;
-    if (z.y + z.z < 0.0) z.yz = -z.zy;
-    
-    // Scale and translate
-    z = z * scale - vec3(scale - 1.0);
-    s *= scale;
-  }
-  
-  return (length(z) - 2.0) / s;
-}
-
-// Kaleidoscopic IFS distance estimator (Mandelbox-style)
+// Kaleidoscopic IFS distance estimator.
+// Octant reflections, a scale/translate, and a fold rotation — a standard
+// 3D kaleidoscopic iterated function system (Hart et al.), written here
+// from the published folding construction (not from Shadertoy).
 float deKaleidoscopic(vec3 p) {
-  vec3 z = p;
-  float scale = 2.0;
-  float minRadius2 = 0.5;
-  float fixedRadius2 = 1.0;
-  float dr = 1.0;
-  
+  float scale = abs(uScale) > 1.15 ? clamp(abs(uScale), 1.3, 2.4) : 1.85;
+  float offset = 1.0;
+  float der = 1.0;
+  float foldAngle = uFoldRot * PI / 180.0;
+  float c = cos(foldAngle);
+  float s = sin(foldAngle);
+  mat2 rot = mat2(c, -s, s, c);
+
   for (int i = 0; i < 16; i++) {
     if (i >= uIterations) break;
-    
-    // Box fold (creates kaleidoscopic symmetry)
-    z = clamp(z, -1.0, 1.0) * 2.0 - z;
-    
-    // Spherical fold (creates recursive detail)
-    float r2 = dot(z, z);
-    if (r2 < minRadius2) {
-      float temp = fixedRadius2 / minRadius2;
-      z *= temp;
-      dr *= temp;
-    } else if (r2 < fixedRadius2) {
-      float temp = fixedRadius2 / r2;
-      z *= temp;
-      dr *= temp;
-    }
-    
-    // Scale and translate
-    z = z * scale + p;
-    dr = dr * abs(scale) + 1.0;
+    p = abs(p);
+    if (p.x < p.y) p.xy = p.yx;
+    if (p.x < p.z) p.xz = p.zx;
+    if (p.y < p.z) p.yz = p.zy;
+    p.xz *= rot;
+    p = p * scale - vec3(offset) * (scale - 1.0);
+    if (p.z < -0.5 * offset * (scale - 1.0)) p.z += offset * (scale - 1.0);
+    der *= scale;
   }
-  
-  return length(z) / abs(dr);
+
+  return (length(p) - 0.8) / der;
 }
 
 // Quaternion multiplication
@@ -263,38 +210,24 @@ vec4 qMul(vec4 q1, vec4 q2) {
   );
 }
 
-// Quaternion Julia distance estimator
+// Quaternion Julia, 3D slice (w = 0). Scalar magnitude derivative, which is
+// the robust form of the Hart/Whittaker distance estimate for z^2 + c.
 float deQuaternionJulia(vec3 p) {
-  vec4 z = vec4(p, 0.0);
-  
-  // Animated constant using uScale and uFoldLimit for variation
-  // DISTINCT from Mandelbulb/Mandelbox - quaternion Julia set structure
-  // Use completely different base values to ensure visual distinctness
-  float t = uTime * 0.2;
-  vec4 c = vec4(
-    0.18 + sin(t) * 0.4 * abs(uScale),
-    0.6 + cos(t * 0.8) * 0.35 * abs(uFoldLimit),
-    0.35 + sin(t * 1.5) * 0.25,
-    -0.15 + cos(t * 0.6) * 0.2
-  );
-  
-  vec4 dz = vec4(1.0, 0.0, 0.0, 0.0);
-  
+  // 3D slice (re, i, j) with k = 0. qMul stores the real part in .w, so
+  // p.x is real, p.yz are i and j. The pure-imaginary slice would be a sphere.
+  vec4 z = vec4(p.y, p.z, 0.0, p.x);
+  vec4 c = uJuliaC;
+  float dr = 1.0;
+
   for (int i = 0; i < 20; i++) {
     if (i >= uIterations) break;
-    
     float r2 = dot(z, z);
-    if (r2 > uBailout * uBailout * 16.0) break;
-    
-    // dz = 2 * qMul(z, dz)
-    dz = 2.0 * qMul(z, dz);
-    
-    // z = qMul(z, z) + c
+    if (r2 > 16.0) break;
+    dr = 2.0 * sqrt(r2) * dr;
     z = qMul(z, z) + c;
   }
-  
+
   float r = length(z);
-  float dr = length(dz);
   return 0.5 * r * log(max(r, 1e-6)) / max(dr, 1e-6);
 }
 
@@ -312,15 +245,11 @@ float map(vec3 p) {
   } else if (uFractalType == 1) {
     d = deMandelbox(p);
   } else if (uFractalType == 2) {
-    d = deMenger(p);
-  } else if (uFractalType == 3) {
-    d = deSierpinski(p);
-  } else if (uFractalType == 4) {
     d = deKaleidoscopic(p);
-  } else if (uFractalType == 5) {
+  } else if (uFractalType == 3) {
     d = deQuaternionJulia(p);
   } else {
-    d = deMandelbulb(p); // Fallback
+    d = deMandelbulb(p);
   }
   
   // Slice plane

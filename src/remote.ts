@@ -2,6 +2,7 @@
 // Syncs state with mobile remotes via relay server
 import QRCode from 'qrcode';
 import { collectRemoteSchema, pickSchemaValues, defaultRemoteLayout } from './colorSystem';
+import { presetNames } from './modeControls';
 
 export interface RemoteState {
   connected: boolean;
@@ -17,6 +18,7 @@ export class RemoteSync {
   private onPreset?: (name: string) => void;
   private onQRReady?: () => void;
   private onParamChange?: (param: string, value: any) => void;
+  private syncTimer: any = null;
   
   public state: RemoteState = {
     connected: false,
@@ -130,13 +132,16 @@ export class RemoteSync {
 
   private handleMessage(msg: any) {
     if (msg.type === 'param') {
+      let modeChanged = false;
       for (const [key, value] of Object.entries(msg.data)) {
+        if (key === 'mode' && value !== this.params.mode) modeChanged = true;
         this.params[key] = value;
         if (this.onParamChange) {
           this.onParamChange(key, value);
         }
       }
-      this.syncState();
+      if (modeChanged) this.syncState();
+      else this.scheduleSync();
     } else if (msg.type === 'hello') {
       this.syncState();
     } else if (msg.type === 'layout') {
@@ -169,6 +174,10 @@ export class RemoteSync {
     } catch {}
     this.syncState();
   }
+  private scheduleSync() {
+    if (this.syncTimer) return;
+    this.syncTimer = setTimeout(() => { this.syncTimer = null; this.syncState(); }, 80);
+  }
   syncState() {
     const mode = this.params.mode;
     this.send({
@@ -182,6 +191,7 @@ export class RemoteSync {
         paused: this.params.paused,
         schema: collectRemoteSchema(mode),
         layout: this.layoutFor(mode),
+        presets: presetNames(mode).map((name) => ({ name, mode })),
       }
     });
   }

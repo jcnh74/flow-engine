@@ -1,3 +1,4 @@
+import { FRACTAL_TYPES } from '../src/modeControls';
 /**
  * Tests for new features: Lighting section, 2D Fractal mode, 3D Fractal expansion
  */
@@ -96,21 +97,12 @@ describe('2D Fractal Parameters', () => {
 
 describe('3D Fractal Expansion Parameters', () => {
   test('3D fractal types enumerated', () => {
-    const types = {
-      'Mandelbulb': 0,
-      'Mandelbox': 1,
-      'Menger Sponge': 2,
-      'Sierpinski': 3,
-      'Kaleidoscopic': 4,
-      'Quaternion Julia': 5
-    };
-    
-    expect(types['Mandelbulb']).toBe(0);
-    expect(types['Mandelbox']).toBe(1);
-    expect(types['Menger Sponge']).toBe(2);
-    expect(types['Sierpinski']).toBe(3);
-    expect(types['Kaleidoscopic']).toBe(4);
-    expect(types['Quaternion Julia']).toBe(5);
+    expect(FRACTAL_TYPES['Mandelbulb']).toBe(0);
+    expect(FRACTAL_TYPES['Mandelbox']).toBe(1);
+    expect(FRACTAL_TYPES['Kaleidoscopic']).toBe(2);
+    expect(FRACTAL_TYPES['Quaternion Julia']).toBe(3);
+    expect(FRACTAL_TYPES['Menger Sponge']).toBeUndefined();
+    expect(FRACTAL_TYPES['Sierpinski']).toBeUndefined();
   });
 
   test('Motion parameters defined', () => {

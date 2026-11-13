@@ -8,7 +8,8 @@ import { COLOR_PRESETS, applyColorPreset, type ColorPreset } from './ColorPreset
 import { LIGHTING_RIGS, applyLightingRig, type LightingRig } from './LightingPresets';
 import { STUDIO_LOOK_NAMES, STUDIO_MATS } from '../studio';
 import { LAND_LOOK_NAMES } from '../landscape';
-import { MODE_CONTROLS, presetNames, applyModePreset, saveModePreset, deleteModePreset, applyModeDefaults, type Ctl } from '../modeControls';
+import { MODE_CONTROLS, presetNames, applyModePreset, saveModePreset, deleteModePreset, applyModeDefaults, applyFractalTypeDefaults, type Ctl } from '../modeControls';
+import { bindTouchSlider, paintSlider } from './touchSlider';
 import { LINEUP_MODES } from '../lineup';
 import { colorGroupsFor, applyGroupPalette, seedModeColors } from '../colorSystem';
 
@@ -36,6 +37,8 @@ export class MainControlPanel {
   private beatPulse: HTMLElement | null = null;
   private audioMeters: Map<string, { bar: HTMLElement; value: HTMLElement }> = new Map();
   private globalListenersAttached = false;
+  private draggingParams = new Set<string>();
+  private sliderUnbinds: Array<() => void> = [];
 
   constructor(config: ControlConfig) {
     this.config = config;
@@ -331,6 +334,7 @@ export class MainControlPanel {
   private buildPostSection(): string {
     return this.buildSection('Post FX', [
       this.buildSlider('exposure', 'Exposure', 0.2, 4, 0.01, true),
+      this.buildSlider('bloom', 'Bloom', 0, 2, 0.01, true),
       this.buildSelect('tonemapMode', 'Tonemap', ['AgX', 'ACES', 'Khronos Neutral']),
       this.buildSlider('bloomStrength', 'Bloom Strength', 0, 0.5, 0.01, true),
       this.buildSlider('bloomThreshold2', 'Bloom Threshold', 0.2, 2, 0.01, true),
@@ -428,6 +432,7 @@ export class MainControlPanel {
     const value = this.config.params[param] ?? ((min + max) / 2);
     const beatBtn = modulatable ? `<button class="beat-link-btn" data-param="${param}" title="Link to beat">🔗</button>` : '';
     const shown = typeof value === 'number' ? (Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(2)) : value;
+    const r = (Number(value) - min) / (max - min || 1);
     return `
       <div class="control touch-control" data-param="${param}">
         <div class="control-row touch-row">
@@ -435,9 +440,14 @@ export class MainControlPanel {
           <span class="control-value" data-value="${param}">${shown}</span>
           ${beatBtn}
         </div>
-        <input type="range" class="control-slider"
-          data-param="${param}" data-default="${value}"
-          min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}" />
+        <div class="touch-slider" data-param="${param}" data-min="${min}" data-max="${max}" data-step="${step}" data-default="${value}" data-value="${value}" style="--v:${r}" role="slider" aria-label="${label}" aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${value}" tabindex="0">
+          <div class="touch-slider-track"></div>
+          <div class="touch-slider-fill" style="width:${r * 100}%"></div>
+          <div class="touch-slider-thumb" style="left:${r * 100}%"></div>
+          <input type="range" class="control-slider"
+            data-param="${param}" data-default="${value}"
+            min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}" />
+        </div>
       </div>
     `;
   }
@@ -865,24 +875,14 @@ export class MainControlPanel {
         this.updateValueDisplay(param, value);
         this.updateKnob(param, value);
         if (input.type === 'checkbox') input.closest('.toggle-row')?.classList.toggle('is-on', !!value);
-        this.config.remoteSync?.syncState();
+        if (input.type !== 'range' || !this.draggingParams.has(param)) this.config.remoteSync?.syncState();
         if (param === 'hueShift' && (window as any).engine?.buildPalette) {
           (window as any).engine.buildPalette();
         }
         
         // Apply per-type defaults for 3D fractals
         if (param === 'frType') {
-          const P = this.config.params;
-          // Auto-rotation for all fractals
-          P.frRotSpeed = 0.15;
-          
-          if (value === 0) { // Mandelbulb
-            P.frIter = 12; P.frPower = 8; P.frCamDist = 2.5;
-          } else if (value === 1) { // Mandelbox
-            P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
-          } else if (value === 2) { // Menger Sponge
-            P.frIter = 5; P.frCamDist = 4;
-          }
+          applyFractalTypeDefaults(this.config.params, value);
           this.syncDisplayedValues();
         }
         
@@ -939,6 +939,8 @@ export class MainControlPanel {
         this.config.midiManager!.selectDevice(midiDevice.value);
       });
     }
+
+    this.bindTouchSliders();
 
     // Store refs
     this.beatPulse = this.container.querySelector('#beat-pulse');
@@ -1003,6 +1005,25 @@ export class MainControlPanel {
         this.container.classList.toggle('collapsed');
         e.preventDefault();
       }
+    });
+  }
+
+  private bindTouchSliders(): void {
+    this.sliderUnbinds.forEach((fn) => fn());
+    this.sliderUnbinds = [];
+    this.container.querySelectorAll<HTMLElement>('.touch-slider').forEach((root) => {
+      const unbind = bindTouchSlider(root, {
+        onStart: (key) => { this.draggingParams.add(key); },
+        onChange: (key, value) => {
+          const input = root.querySelector('input[type="range"]') as HTMLInputElement | null;
+          if (input) {
+            input.value = String(value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        },
+        onEnd: (key) => { this.draggingParams.delete(key); },
+      });
+      this.sliderUnbinds.push(unbind);
     });
   }
 
@@ -1127,6 +1148,7 @@ export class MainControlPanel {
       const value = this.config.params[param];
       
       if (value === undefined) return;
+      if (this.draggingParams.has(param)) return;
       
       if (input.type === 'checkbox') {
         (input as HTMLInputElement).checked = !!value;
@@ -1136,6 +1158,8 @@ export class MainControlPanel {
       } else if (input.type === 'range' || input.tagName === 'SELECT') {
         input.value = String(value);
         if (input.classList.contains('knob-input')) this.updateKnob(param, value);
+        const wrap = input.closest('.touch-slider') as HTMLElement | null;
+        if (wrap && input.type === 'range') paintSlider(wrap, Number(value));
       }
       this.container.querySelectorAll(`.seg-btn[data-param="${param}"]`).forEach((b) => {
         const ev = (b as HTMLElement).dataset.value;

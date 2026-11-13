@@ -20,6 +20,7 @@ import { LandscapeRenderer, LAND_LOOK_NAMES } from './landscape';
 import { RELIEF_DOWN_FS, RELIEF_HEIGHT_FS, RELIEF_SHADE_FS } from './relief_shaders';
 import { SCULPT_FS } from './sculpt_shaders';
 import { StudioRenderer, STUDIO_LOOKS, STUDIO_LOOK_NAMES, STUDIO_MATS, srgbHex } from './studio';
+import { normalizeFrType, fractalTypeName, applyFractalTypeDefaults } from './modeControls';
 import { PhysicalRenderer, PHYS_MODES, PHYS_VARIANTS, PHYS_MATS, STARGATE_PALETTES } from './physical';
 import { setColorParams } from './physical/common';
 import { seedModeColors } from './colorSystem';
@@ -1221,13 +1222,16 @@ function renderFractal(T: Trails, vp: number[]) {
   const t = frame * DT;
   const camDist = V.frCamDist;
   
-  // Camera orbit
+  // Camera orbit. Quaternion Julia is a solid of revolution around the real (x)
+  // axis, so a 0° yaw would look down the rings; start that type on the z side.
   let camAngle = t * V.frRotSpeed;
   if (P.frCamOrbit) {
     camAngle += t * P.frCamOrbitSpeed;
   }
-  
-  const camPos = [Math.cos(camAngle) * camDist, camDist * 0.3, Math.sin(camAngle) * camDist];
+  const frT = normalizeFrType(P.frType);
+  if (frT === 3) camAngle += Math.PI * 0.5;
+  const camLift = frT === 3 ? 0.45 : 0.3;
+  const camPos = [Math.cos(camAngle) * camDist, camDist * camLift, Math.sin(camAngle) * camDist];
   const camTarget = [0, 0, 0];
   
   gl.uniform2f(u.uResolution, frS < 0.999 ? fw : T.w, frS < 0.999 ? fh : T.h);
@@ -1236,7 +1240,7 @@ function renderFractal(T: Trails, vp: number[]) {
   gl.uniform3fv(u.uCamTarget, camTarget);
   gl.uniform1f(u.uCamFov, V.frCamFov);
   
-  gl.uniform1i(u.uFractalType, P.frType);
+  gl.uniform1i(u.uFractalType, normalizeFrType(P.frType));
   gl.uniform1f(u.uPower, V.frPower);
   
   // Reduce quality for Auto mode to hit 60fps
@@ -1284,7 +1288,18 @@ function renderFractal(T: Trails, vp: number[]) {
     gl.uniform3f(u.uDomeCol, dm[0] * lk.domeI * 1.3, dm[1] * lk.domeI * 1.3, dm[2] * lk.domeI * 1.3);
     gl.uniform3f(u.uKeyColS, ky[0] * lk.keyI, ky[1] * lk.keyI, ky[2] * lk.keyI); gl.uniform3f(u.uRimCol, rm[0], rm[1], rm[2]);
     const md = hex(lk.slots[3]); gl.uniform3f(u.uMid, md[0], md[1], md[2]);
-    gl.uniform1f(u.uGlossS, STUDIO_MATS.indexOf(P.stMat) === 1 ? 0.15 : 1.0); gl.uniform1f(u.uRimS, V.stRim);
+    {
+      const mat = String(P.stMat || '');
+      let gloss = 1;
+      if (mat === 'Matte' || mat === 'Clay') gloss = 0;
+      else if (mat === 'Satin metal') gloss = 0.4;
+      else if (mat === 'Iridescent') gloss = 0.75;
+      else if (mat === 'Gloss') gloss = 1;
+      else if (mat === 'Scene') gloss = 0.5;
+      if (typeof P.phGloss === 'number' && mat === 'Matte') gloss = 0;
+      gl.uniform1f(u.uGlossS, gloss);
+    }
+    gl.uniform1f(u.uRimS, V.stRim);
   }
   
   // Cosine palette (tied to unified palette system)
@@ -1308,16 +1323,16 @@ function renderFractal(T: Trails, vp: number[]) {
   gl.uniform1f(u.uSlicePos, P.frSlicePos);
   gl.uniform1f(u.uFoldRot, V.frFoldRot);
   
-  // Julia C animation
-  let jc = [0.18, 0.88, 0.24, 0.16];
+  // Quaternion Julia C: a connected "potato" set, with a small orbit when enabled.
+  const jc = Array.isArray(P.frJuliaC) ? P.frJuliaC.slice() : [0.8, 0.0, 0.0, -0.2];
   if (P.frJuliaOrbit) {
-    const angle = t * P.frJuliaSpeed;
-    jc[0] = Math.cos(angle) * 0.5;
-    jc[1] = Math.sin(angle) * 0.7;
-    jc[2] = Math.cos(angle * 1.3) * 0.4;
-    jc[3] = Math.sin(angle * 0.7) * 0.3;
+    const angle = t * (P.frJuliaSpeed || 0.12);
+    jc[0] += Math.cos(angle) * 0.06;
+    jc[1] += Math.sin(angle) * 0.05;
+    jc[2] += Math.cos(angle * 1.3) * 0.04;
+    jc[3] += Math.sin(angle * 0.7) * 0.03;
   }
-  gl.uniform4f(u.uJuliaC, jc[0], jc[1], jc[2], jc[3]);
+  if (u.uJuliaC) gl.uniform4f(u.uJuliaC, jc[0], jc[1], jc[2], jc[3]);
   
   // Color transforms (hue shift and saturation)
   if (u.uHueShift !== undefined && u.uSat !== undefined) {
@@ -1869,7 +1884,7 @@ function tick(now: number) {
     console.log(`After tonemap (screen LDR) - Center: ${center.toFixed(3)}, Mean: ${(sum / 10000).toFixed(3)}`);
   }
   
-  const what = P.mode === 'Landscape' ? `Landscape · speed ${V.landSpeed.toFixed(2)} · ${(P.landParticleCount/1000).toFixed(0)}K particles · audio ${audioAnalyzer.state.source}${landscape.ready ? '' : ' · loading'}` : P.mode === '3D Fractal' ? `3D Fractal ${P.frType === 0 ? 'Mandelbulb' : 'Mandelbox'} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
+  const what = P.mode === 'Landscape' ? `Landscape · speed ${V.landSpeed.toFixed(2)} · ${(P.landParticleCount/1000).toFixed(0)}K particles · audio ${audioAnalyzer.state.source}${landscape.ready ? '' : ' · loading'}` : P.mode === '3D Fractal' ? `3D Fractal ${fractalTypeName(P.frType)} · power ${P.frPower} · ${P.frIter} iter · audio ${audioAnalyzer.state.source}` : isLS() ? `Liquid Spheres ${(sN / 1000).toFixed(0)}K ${P.lsStyle} · ${P.lightPreset}` : P.mode === 'Particle Fabric' ? `Particle Fabric ${(P.pCount / 1e6).toFixed(2)}M · ${P.wellPreset} · blend ${P.gBlend.toFixed(2)}` : P.mode === '3D fabric' ? `3D fabric ${mesh.rx}×${mesh.ry}×${P.layers} layers · ${P.lightPreset} · shadow ${P.shadowResLive}` : `${(P.particles / 1e6).toFixed(2)}M particles`;
   const frameTime = dt * 1000; // ms
   hud.textContent = `${fps.toFixed(1)} fps (${frameTime.toFixed(1)}ms)  ·  ${what}  ·  time ${currentTime.toFixed(1)}s  ·  seed ${P.seed}\npreview ${T.w}×${T.h}  ·  export ${P.width}×${P.height} ${P.orientation}${busy ? '  ·  RENDERING' : ''}${recoverMsg ? '  ·  ' + recoverMsg : ''}`;
 }
@@ -2357,23 +2372,15 @@ modF.add(modState, 'mappingCount').name('Active mappings').listen().disable();
 const frF = gui.addFolder('3D Fractal');
 
 const fractalDefaults = (type: number) => {
-  // Auto-rotation for all fractals
-  P.frRotSpeed = 0.15;
-  
-  if (type === 0) { // Mandelbulb
-    P.frIter = 12; P.frPower = 8; P.frCamDist = 2.5;
-  } else if (type === 1) { // Mandelbox
-    P.frIter = 12; P.frScale = -1.8; P.frCamDist = 7;
-  } else if (type === 2) { // Menger Sponge
-    P.frIter = 5; P.frCamDist = 4;
-  }
+  applyFractalTypeDefaults(P, type);
   gui.controllersRecursive().forEach(c => c.updateDisplay());
 };
 
 frF.add(P, 'frType', { 
   'Mandelbulb': 0, 
   'Mandelbox': 1,
-  'Menger Sponge': 2
+  'Kaleidoscopic': 2,
+  'Quaternion Julia': 3,
 }).name('Fractal type').onChange(fractalDefaults);
 frF.add(P, 'frPower', 2, 16, 0.1).name('Power (Mandelbulb)');
 frF.add(P, 'frIter', 4, 24, 1).name('Max iterations');
@@ -2452,14 +2459,16 @@ function wallDefaults() {
   P.lsFlowV = 0.05;
 }
 function fractalStudioDefaults() {
-  // C4D AO studio: matte pigment surface, dome + soft key, deep AO, gradient cyc, no glow
-  P.frStudio = true; studioPost(); P.stLook = 'Lilac Dream'; P.stMat = 'Gloss'; P.stRim = 0.35; P.frRes = 0.45; P.frIter = 10; P.frCamDist = P.frType === 0 ? 2.5 : P.frCamDist;
+  // C4D AO clay: matte pigment, no reflection or specular, dome + soft key, deep AO.
+  P.frStudio = true; studioPost(); P.stLook = 'Lilac Dream'; P.stMat = 'Matte'; P.stRim = 0.12; P.frRes = 0.45;
+  P.phGloss = 0; P.phIrid = 0;
+  P.frType = normalizeFrType(P.frType);
+  applyFractalTypeDefaults(P, P.frType);
   P.frColor1 = lookOf().slots[0]; P.frColor2 = lookOf().slots[2]; P.frColorMix = 1.6;
-  P.frAmbient = 0.35; P.frDiffuse = 0.85; P.frGlow = 0; P.frShadow = 0.8; P.frShadowSharpness = 6;
-  P.frAOStrength = 4.0; P.frAORadius = 0.3; P.frFogDensity = 0.06; P.frFogStart = 2.0;
+  P.frAmbient = 0.42; P.frDiffuse = 0.85; P.frGlow = 0; P.frShadow = 0.8; P.frShadowSharpness = 6;
+  P.frAOStrength = 5.0; P.frAORadius = 0.3; P.frFogDensity = 0.04; P.frFogStart = 2.0;
   P.frLightAz = 35; P.frLightEl = 50; P.frMaxSteps = 80;
   P.saturation = 1.0; P.bloomStrength = 0.03; P.feedbackEnabled = false; P.caStrength = 0;
-  P.frAmbient = 0.42; P.frFogDensity = 0.04;
 }
 function landDefaults() {
   // C4D-style AO studio look: Living Pigment palette, gentle grade, no feedback, no audio
@@ -2966,7 +2975,7 @@ log(`Remote URL: ${remoteSync.state.remoteUrl}`);
 requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
-(window as any).engine = { P, renderStill, reset, recover, renderVideo, studio, phys,
+(window as any).engine = { P, renderStill, reset, recover, renderVideo, studio, phys, fractal,
   buildPalette,
   getStops: () => stops,
   setStops: (s: Stop[], paletteName?: string) => { 
