@@ -33,7 +33,7 @@ describe('pass 6 per-mode controls + presets', () => {
     for (const k of ['spRate', 'spSize', 'spSpeed', 'spGravity', 'spPalette', 'spShape', 'spDroplets', 'spSmooth']) expect(src('splash.ts')).toContain(`P.${k}`);
     for (const k of ['fbCount', 'fbFlutter', 'fbWidth', 'fbTwist', 'fbPalette', 'fbWeave', 'fbSheen']) expect(src('fabricdrift.ts')).toContain(`P.${k}`);
     for (const k of ['ctSpin', 'ctTraffic', 'ctLights', 'ctDistrict', 'ctFog', 'ctRefl']) expect(src('city.ts')).toContain(`P.${k}`);
-    for (const k of ['jgMotif', 'jgCycle', 'jgSway', 'jgBloom', 'jgDensity', 'jgFog', 'jgSat']) expect(src('jungle.ts')).toContain(`P.${k}`);
+    for (const k of ['jgMotif', 'jgCycle', 'jgSway', 'jgBloom', 'jgDensity', 'jgFog', 'jgSat', 'jgFloor']) expect(src('jungle.ts')).toContain(`P.${k}`);
     for (const k of ['sgDensity', 'sgWarp', 'sgGlow', 'sgPattern', 'sgExposure', 'sgBands']) expect(src('stargate.ts')).toContain(`P.${k}`);
     for (const k of ['ppClip', 'ppSat', 'ppHue', 'ppZoom']) expect(src('videoloop.ts')).toContain(`P.${k}`);
   });

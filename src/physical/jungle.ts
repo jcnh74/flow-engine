@@ -115,12 +115,57 @@ void main(){
   col = mix(col, mix(uHaze, uCore, core*0.6), haze);
   o = vec4(col, dist);
 }`;
+// Pass 7: the tunnel wall is an earthy forest floor — dirt, moss and grass — so no gap between plants shows empty haze.
+// Analytic ray / cylinder hit per pixel (no geometry); texture scrolls with the plants' flow and spin, bottom reads as
+// a grassy dirt floor, the top as a mossy, rooty bank. Fogs into the motif haze with depth. Original MIT code.
 const BACK_FS = `#version 300 es
 precision highp float; in vec2 vUv; out vec4 o; uniform vec3 uHaze, uCore, uEdge; uniform float uAspect, uTime;
-void main(){ vec2 p = (vUv*2.0-1.0)*vec2(uAspect, 1.0); float r = length(p);
+uniform vec3 uCR, uCU, uCF; uniform vec2 uTan; uniform float uTj, uFlow, uSpin, uTwist, uFloor, uHazeK, uRw;
+uniform vec3 uDirt, uMoss, uGrass, uKey; uniform vec3 uLd;
+float h21(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f);
+  return mix(mix(h21(i), h21(i + vec2(1,0)), f.x), mix(h21(i + vec2(0,1)), h21(i + vec2(1,1)), f.x), f.y); }
+float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int k = 0; k < 5; k++){ s += a*vn(p); p = p*2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }
+vec3 backdrop(vec2 p){ float r = length(p);
   float rays = 0.5 + 0.5*sin(atan(p.y, p.x)*9.0 + uTime*0.2 + r*3.0);
-  vec3 c = mix(uHaze, uCore, exp(-r*r*3.0)); c = mix(c, uEdge, smoothstep(0.5, 1.6, r)); c += uCore*0.06*rays*exp(-r*1.5);
-  o = vec4(c, 1000.0); }`;
+  vec3 c = mix(uHaze, uCore, exp(-r*r*3.0)); c = mix(c, uEdge, smoothstep(0.5, 1.6, r)); c += uCore*0.06*rays*exp(-r*1.5); return c; }
+// ground material at wall coords q = (arc length, depth) ; floorness = 1 at the bottom of the tunnel
+vec4 ground(vec2 q, float floorness, out float hgt){
+  float big = fbm(q*0.18), mid = fbm(q*0.7 + 3.1), fine = fbm(q*vec2(2.6, 2.6) + 7.7);
+  float mossM = smoothstep(0.36, 0.56, big*0.7 + mid*0.5 - floorness*0.15);              // moss patches, more on the banks
+  float blades = vn(vec2(q.x*7.0, q.y*2.2)) * vn(vec2(q.x*13.0 + 4.0, q.y*3.1));       // grass streaks along the flow
+  float grassM = smoothstep(0.18, 0.5, blades + fine*0.35) * smoothstep(0.3, 0.75, mid + floorness*0.35);
+  float peb = smoothstep(0.82, 0.9, vn(q*3.4 + 11.0)) * (1.0 - mossM);                   // pebbles / leaf litter
+  vec3 dirt = uDirt*(0.7 + 0.6*fine) * (1.0 - 0.25*smoothstep(0.55, 0.3, mid));
+  vec3 c = mix(dirt, uMoss*(0.75 + 0.5*fine), mossM);
+  c = mix(c, uGrass*(0.6 + 0.8*blades), grassM*0.85);
+  c = mix(c, uDirt*1.7 + 0.03, peb*0.6);
+  hgt = big*0.6 + mid*0.3 + fine*0.15 + grassM*0.25 + peb*0.2;
+  return vec4(c, mossM*0.5 + grassM*0.7);
+}
+void main(){ vec2 p = (vUv*2.0-1.0)*vec2(uAspect, 1.0);
+  vec2 ndc = vUv*2.0 - 1.0; vec3 rd = normalize(uCF + uCR*ndc.x*uTan.x + uCU*ndc.y*uTan.y);
+  vec3 bg = backdrop(p);
+  float rl = length(rd.xy); if (uFloor <= 0.001 || rl < 1e-4 || rd.z > -0.01) { o = vec4(bg, 1000.0); return; }
+  float t = uRw / rl; vec3 hp = rd*t; float depth = -hp.z; float dist = t;
+  float th = atan(hp.y, hp.x);
+  float thF = th - uTj*uSpin*0.48 - depth*uTwist;                    // ride with the plants' spin / twist
+  vec2 q = vec2(thF*uRw, depth + uTj*uFlow);                          // scroll toward the lens with the flow
+  float floorness = smoothstep(0.2, -0.85, sin(th));                  // bottom of the tunnel = floor
+  float h0; vec4 g = ground(q, floorness, h0);
+  float hx; ground(q + vec2(0.06, 0.0), floorness, hx); float hz; ground(q + vec2(0.0, 0.06), floorness, hz);
+  vec3 radial = vec3(-cos(th), -sin(th), 0.0);                        // wall normal faces the axis
+  vec3 tang = vec3(-sin(th), cos(th), 0.0);
+  vec3 N = normalize(radial - tang*(hx - h0)*7.0 - vec3(0,0,1)*(hz - h0)*7.0);
+  float dif = 0.35 + 0.65*max(dot(N, uLd), 0.0);
+  float ao = 0.55 + 0.45*smoothstep(0.25, 0.85, h0);
+  vec3 col = g.rgb*dif*ao*(uKey*1.15 + uCore*0.2);
+  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = max(mix(vec3(lum), col, 1.3), 0.0);
+  col += g.rgb*uCore*0.25*pow(max(dot(-rd, N), 0.0), 2.0)*g.a;        // soft wet sheen on moss / blades
+  float haze = 1.0 - exp(-max(dist - 14.0, 0.0)*uHazeK*1.3);
+  float core = exp(-dot(rd.xy, rd.xy)*30.0);
+  col = mix(col, mix(uHaze, uCore, core*0.6), haze);
+  o = vec4(mix(bg, col, clamp(uFloor, 0.0, 1.0)), dist); }`;
 
 export const MOTIFS = ['Journey (cycle)', 'Orchids', 'Heliconia & Bird-of-Paradise', 'Monstera & Palm', 'Ferns & Moss', 'Bromeliads', 'Lotus Water Garden'];
 // presence of each species per motif [orchids, heliconia/BoP, monstera/palm, ferns/moss, bromeliads, lotus]
@@ -129,6 +174,11 @@ const MOTIF_MEMBERS: Record<string, number[]> = {
   bromeliad: [0, 0.2, 0, 0.3, 1.45, 0], monstera: [0.5, 0.6, 1.45, 0.4, 0.6, 0.3], palm: [0.3, 0.9, 1.35, 0.3, 0.5, 0.2], banana: [0.2, 1.1, 1.0, 0.2, 0.4, 0.3],
   alocasia: [0.6, 0.3, 0.9, 0.5, 0.7, 1.35], fern: [0.7, 0.3, 0.6, 1.55, 0.8, 0.4],
 };
+// pass 7 forest floor palette per motif: dirt, moss, grass (orchid plum-loam, sunny heliconia, deep monstera, fern moss, red bromeliad earth, lotus mud)
+const MOTIF_EARTH: { dirt: string; moss: string; grass: string }[] = [
+  { dirt: '#3a2a26', moss: '#3d6638', grass: '#6f9a4a' }, { dirt: '#4a3018', moss: '#5a7a2a', grass: '#9ab040' }, { dirt: '#2e2216', moss: '#2f5e34', grass: '#4f8a3e' },
+  { dirt: '#2a2418', moss: '#3f7a3c', grass: '#7ab85a' }, { dirt: '#4a2a1a', moss: '#4f6a2e', grass: '#8a9a3a' }, { dirt: '#263028', moss: '#2f5e4e', grass: '#5f9a6a' },
+];
 const MOTIF_LIGHT: { haze: string; core: string; edge: string }[] = [
   { haze: '#2a1f3a', core: '#ffd6f0', edge: '#0d0814' }, { haze: '#3a2a0e', core: '#ffd27a', edge: '#120a02' }, { haze: '#0b2a22', core: '#ffe2a0', edge: '#03100c' },
   { haze: '#163a34', core: '#d8f5e0', edge: '#051410' }, { haze: '#3a1510', core: '#ffb07a', edge: '#140604' }, { haze: '#0e3340', core: '#f2fbff', edge: '#04121a' },
@@ -235,6 +285,17 @@ export class JungleScene implements PhysScene {
     gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.BLEND);
     gl.useProgram(this.back.p); gl.uniform3fv(this.back.u.uHaze, haze); gl.uniform3fv(this.back.u.uCore, core); gl.uniform3fv(this.back.u.uEdge, edge);
     gl.uniform1f(this.back.u.uAspect, f.aspect); gl.uniform1f(this.back.u.uTime, f.time);
+    { const bu = this.back.u; const up: Vec3 = [Math.sin(f.time * 0.03) * 0.15, 1, 0];
+      const F = norm([tgt[0] - eye[0], tgt[1] - eye[1], tgt[2] - eye[2]]); const R_ = norm([F[1] * up[2] - F[2] * up[1], F[2] * up[0] - F[0] * up[2], F[0] * up[1] - F[1] * up[0]]);
+      const U_: Vec3 = [R_[1] * F[2] - R_[2] * F[1], R_[2] * F[0] - R_[0] * F[2], R_[0] * F[1] - R_[1] * F[0]];
+      const tn = Math.tan((P.fov ?? 62) * Math.PI / 360);
+      const emix = (k: 'dirt' | 'moss' | 'grass') => { const a = lin(MOTIF_EARTH[z0][k]), b = lin(MOTIF_EARTH[z1][k]); const e = [a[0] + (b[0] - a[0]) * zb, a[1] + (b[1] - a[1]) * zb, a[2] + (b[2] - a[2]) * zb];
+        return (natural ? e : e.map((x, i) => x * 0.5 + haze[i] * 0.9)) as Vec3; };
+      gl.uniform3fv(bu.uCR, R_); gl.uniform3fv(bu.uCU, U_); gl.uniform3fv(bu.uCF, F); gl.uniform2f(bu.uTan, tn * f.aspect, tn);
+      gl.uniform1f(bu.uTj, this.tj); gl.uniform1f(bu.uFlow, 2.2); gl.uniform1f(bu.uSpin, 0.32); gl.uniform1f(bu.uTwist, 0.09); gl.uniform1f(bu.uRw, 10.5);
+      gl.uniform1f(bu.uFloor, P.jgFloor ?? 1); gl.uniform1f(bu.uHazeK, 0.022 * (P.jgFog ?? 1));
+      gl.uniform3fv(bu.uDirt, emix('dirt')); gl.uniform3fv(bu.uMoss, emix('moss')); gl.uniform3fv(bu.uGrass, emix('grass'));
+      gl.uniform3fv(bu.uKey, lin('#fff0d0')); gl.uniform3fv(bu.uLd, norm([Ld[0] * 0.5, 0.8, 0.3])); }
     gl.bindVertexArray(this.emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.depthFunc(gl.LESS); gl.disable(gl.CULL_FACE);
     const u = this.prog.u; gl.useProgram(this.prog.p); setStudioEnv(gl, u, env);

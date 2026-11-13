@@ -98,9 +98,9 @@ export const MODE_CONTROLS: Record<string, ModeSpec> = {
     sections: [
       { title: 'Motifs', ctls: [SEL('jgMotif', 'Motif', ['Journey (cycle)', 'Orchids', 'Heliconia & Bird-of-Paradise', 'Monstera & Palm', 'Ferns & Moss', 'Bromeliads', 'Lotus Water Garden']), K('jgCycle', 'Motif Duration (s)', 6, 40, 1)] },
       { title: 'Motion', ctls: [S('phSpeed', 'Flight Speed', 0, 2), K('jgSway', 'Leaf Sway', 0, 2), K('jgBloom', 'Petal Opening', 0, 1.5), K('jgDensity', 'Density', 0.3, 1)] },
-      { title: 'Look', ctls: [SEL('phMat', 'Flora', ['Natural', 'Pastel', 'Iridescent']), K('jgFog', 'Depth Fog', 0, 2), K('jgSat', 'Saturation', 0.4, 1.8), S('phFov', 'Lens FOV', 35, 90, 1), S('phDof', 'Depth of Field', 0, 1)] },
+      { title: 'Look', ctls: [SEL('phMat', 'Flora', ['Natural', 'Pastel', 'Iridescent']), K('jgFloor', 'Forest Floor', 0, 1),K('jgFog', 'Depth Fog', 0, 2), K('jgSat', 'Saturation', 0.4, 1.8), S('phFov', 'Lens FOV', 35, 90, 1), S('phDof', 'Depth of Field', 0, 1)] },
     ],
-    defaults: { jgMotif: 'Journey (cycle)', jgCycle: 16, jgSway: 1, jgBloom: 1, jgDensity: 1, jgFog: 1, jgSat: 1 },
+    defaults: { jgMotif: 'Journey (cycle)', jgFloor: 1, jgCycle: 16, jgSway: 1, jgBloom: 1, jgDensity: 1, jgFog: 1, jgSat: 1 },
     presets: {
       'Rainforest Journey': { jgMotif: 'Journey (cycle)', jgCycle: 16, phSpeed: 1, jgSway: 1, jgBloom: 1, phMat: 'Natural', jgFog: 1, jgSat: 1 },
       'Orchid House': { jgMotif: 'Orchids', phSpeed: 0.6, jgSway: 0.6, jgBloom: 1.3, phMat: 'Natural', jgFog: 0.7, jgSat: 1.2 },
