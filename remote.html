@@ -132,6 +132,16 @@
     .group.collapsed .group-body { display: none; }
     .group-body { padding: 4px 12px 12px; }
     .fav-empty { color: #8888a0; font-size: 13px; padding: 8px 0 12px; }
+    .display-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .display-toggles button {
+      min-height: 52px; min-width: 44px; padding: 8px 10px;
+      background: #1a1a2e; border: 2px solid #2a2a3e; border-radius: 10px;
+      color: #e0e0e8; font-size: 14px; font-weight: 600; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    }
+    .display-toggles button .sub { font-size: 11px; font-weight: 500; color: #8888a0; letter-spacing: 0; text-transform: none; }
+    .display-toggles button.on { background: #6b5fff; border-color: #8b7fff; }
+    .display-toggles button.on .sub { color: #ddd6ff; }
   </style>
 </head>
 <body>
@@ -140,6 +150,13 @@
     <div class="status-indicator" id="status"></div>
   </div>
   <div class="remote-body">
+    <div class="section">
+      <div class="section-title">Display</div>
+      <div class="display-toggles">
+        <button type="button" id="btn-hide-ui" aria-pressed="false">Hide UI<span class="sub" id="hide-ui-sub">Panel visible</span></button>
+        <button type="button" id="btn-performance" aria-pressed="false">Performance / Fullscreen<span class="sub" id="perf-sub">Off</span></button>
+      </div>
+    </div>
     <div class="section">
       <div class="section-title">Mode</div>
       <div class="mode-buttons" id="modes"></div>
@@ -547,6 +564,7 @@
       document.querySelectorAll('.mode-btn').forEach((btn) => {
         btn.classList.toggle('active', btn.textContent === state.mode);
       });
+      syncDisplayToggles(s);
       if (wasDragging && !modeChanged) {
         // Live-update value readouts for keys we are not dragging, without rebuilding the tree.
         for (const [k, v] of Object.entries(values)) {
@@ -564,6 +582,31 @@
       renderAll();
     }
 
+    function syncDisplayToggles(s) {
+      const hidden = !!(s && 'uiHidden' in s ? s.uiHidden : values.uiHidden);
+      const perf = !!(s && 'performanceMode' in s ? s.performanceMode : values.performanceMode);
+      const pending = !!(s && 'fullscreenPending' in s ? s.fullscreenPending : values.fullscreenPending);
+      const fs = !!(s && 'fullscreen' in s ? s.fullscreen : values.fullscreen);
+      const hideBtn = document.getElementById('btn-hide-ui');
+      const perfBtn = document.getElementById('btn-performance');
+      const hideSub = document.getElementById('hide-ui-sub');
+      const perfSub = document.getElementById('perf-sub');
+      if (hideBtn) {
+        hideBtn.classList.toggle('on', hidden);
+        hideBtn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+      }
+      if (hideSub) hideSub.textContent = hidden ? 'Panel hidden' : 'Panel visible';
+      if (perfBtn) {
+        perfBtn.classList.toggle('on', perf);
+        perfBtn.setAttribute('aria-pressed', perf ? 'true' : 'false');
+      }
+      if (perfSub) {
+        if (!perf) perfSub.textContent = 'Off';
+        else if (fs) perfSub.textContent = 'Fullscreen on';
+        else if (pending) perfSub.textContent = 'Tap the display to go fullscreen';
+        else perfSub.textContent = 'UI hidden';
+      }
+    }
     const modesEl = document.getElementById('modes');
     MODES.forEach((mode) => {
       const btn = document.createElement('button');
@@ -572,6 +615,12 @@
       btn.onclick = () => send('param', { mode });
       modesEl.appendChild(btn);
     });
+    document.getElementById('btn-hide-ui').onclick = () => {
+      send('action', { action: values.uiHidden ? 'show-ui' : 'hide-ui' });
+    };
+    document.getElementById('btn-performance').onclick = () => {
+      send('action', { action: values.performanceMode ? 'exit-performance' : 'enter-performance' });
+    };
     document.getElementById('edit-btn').onclick = () => {
       editing = !editing;
       document.getElementById('edit-btn').textContent = editing ? 'Done' : 'Arrange favorites';

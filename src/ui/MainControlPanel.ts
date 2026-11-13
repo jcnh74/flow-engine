@@ -27,6 +27,8 @@ interface ControlConfig {
   onImportJSON?: () => void;
   onExportMidi?: () => void;
   onImportMidi?: () => void;
+  onFullscreen?: () => void;
+  onUiVisibilityChange?: (hidden: boolean) => void;
 }
 
 export class MainControlPanel {
@@ -55,9 +57,12 @@ export class MainControlPanel {
       <div class="panel-header">
         <h1 class="panel-title">Flow Engine</h1>
         <div class="panel-controls">
-          <button class="panel-btn" data-action="collapse" title="Collapse (C)">−</button>
-          <button class="panel-btn" data-action="hide" title="Hide (H)">×</button>
+          <button class="panel-btn" data-action="collapse" title="Collapse (C)" aria-label="Collapse">−</button>
         </div>
+      </div>
+      <div class="panel-stage">
+        <button type="button" class="panel-stage-btn" data-action="hide" title="Hide UI (H)">Hide UI</button>
+        <button type="button" class="panel-stage-btn" data-action="fullscreen" title="Fullscreen (F)">Fullscreen</button>
       </div>
       <div class="panel-body">
         ${this.buildSections()}
@@ -746,7 +751,9 @@ export class MainControlPanel {
   private buildKeyboardHints(): string {
     return `
       <div class="keyboard-hint">
-        <span><kbd>H</kbd> Hide</span>
+        <span><kbd>H</kbd> Hide UI</span>
+        <span><kbd>F</kbd> Fullscreen</span>
+        <span><kbd>Esc</kbd> Exit</span>
         <span><kbd>C</kbd> Collapse</span>
         <span><kbd>Shift</kbd>+<kbd>R</kbd> Randomize</span>
         <span><kbd>Space</kbd> Pause</span>
@@ -957,13 +964,16 @@ export class MainControlPanel {
 
     // Panel controls (delegated to container, bound once)
     this.container.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
+      const target = (e.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+      if (!target) return;
       const action = target.dataset.action;
       
       if (action === 'collapse') {
         this.container.classList.toggle('collapsed');
       } else if (action === 'hide') {
-        this.container.classList.add('hidden');
+        this.hide();
+      } else if (action === 'fullscreen') {
+        this.config.onFullscreen?.();
       } else if (action === 'randomize' && this.config.onRandomize) {
         this.config.onRandomize();
       } else if (action === 'reset' && this.config.onReset) {
@@ -999,7 +1009,7 @@ export class MainControlPanel {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
       if (e.key === 'h' || e.key === 'H') {
-        this.container.classList.toggle('hidden');
+        this.toggle();
         e.preventDefault();
       } else if (e.key === 'c' || e.key === 'C') {
         this.container.classList.toggle('collapsed');
@@ -1215,16 +1225,25 @@ export class MainControlPanel {
     }
   }
 
+  isHidden(): boolean {
+    return this.container.classList.contains('hidden');
+  }
+
   show(): void {
+    if (!this.isHidden()) return;
     this.container.classList.remove('hidden');
+    this.config.onUiVisibilityChange?.(false);
   }
 
   hide(): void {
+    if (this.isHidden()) return;
     this.container.classList.add('hidden');
+    this.config.onUiVisibilityChange?.(true);
   }
 
   toggle(): void {
     this.container.classList.toggle('hidden');
+    this.config.onUiVisibilityChange?.(this.isHidden());
   }
 
   destroy(): void {

@@ -1107,3 +1107,121 @@ code {
 
 /* Hide leftover rotary knobs if any still render */
 .knob-control { display: none !important; }
+
+/* Stage: touch-friendly Hide UI / Fullscreen in the panel */
+.panel-stage {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-section);
+  border-bottom: 1px solid var(--border);
+}
+.panel-stage-btn {
+  flex: 1;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #1a1a2e;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.panel-stage-btn:hover,
+.panel-stage-btn:focus-visible {
+  border-color: var(--accent);
+  color: #fff;
+  background: rgba(107, 95, 255, 0.22);
+  outline: none;
+}
+.panel-stage-btn:active {
+  transform: scale(0.98);
+  background: var(--accent);
+  border-color: #8b7fff;
+}
+.panel-btn {
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+}
+
+/* Restore-UI chip: subtle, auto-fading, always large enough to tap */
+.stage-restore {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 10050;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 15, 22, 0.72);
+  color: #e0e0e8;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(8px);
+}
+.stage-restore.is-visible {
+  opacity: 0.85;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.stage-restore:hover,
+.stage-restore:focus-visible {
+  opacity: 1;
+  border-color: rgba(107, 95, 255, 0.7);
+  outline: none;
+}
+
+/* One-tap local-gesture prompt when a remote (or blocked) fullscreen request is pending */
+.stage-fs-prompt {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+}
+.stage-fs-prompt.is-visible {
+  display: flex;
+  pointer-events: auto;
+}
+.stage-fs-prompt-btn {
+  min-height: 56px;
+  min-width: 44px;
+  padding: 0 28px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(15, 15, 22, 0.88);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  -webkit-tap-highlight-color: transparent;
+}
+.stage-fs-prompt-btn:hover,
+.stage-fs-prompt-btn:focus-visible {
+  border-color: #8b7fff;
+  background: #6b5fff;
+  outline: none;
+}

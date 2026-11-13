@@ -12,6 +12,7 @@ import ModulationSystem from './modulation';
 import { MidiManager } from './midi';
 import { RemoteSync } from './remote';
 import { MainControlPanel } from './ui/MainControlPanel';
+import { StageChrome } from './ui/stageChrome';
 import { BeatLinkPopup } from './ui/BeatLinkPopup';
 import { PresetGallery } from './ui/PresetGallery';
 import { hexToLinear, srgbToLinear } from './render-graph';
@@ -299,6 +300,8 @@ function setMode(newMode: string) {
 const P: any = {
   mode: DEFAULT_MODE, seed: 1977, // Start on Jungle (pass 8 lineup default)
   performanceMode: false, // Performance mode: fullscreen, no UI, no cursor
+  uiHidden: false,
+  fullscreenPending: false,
   // Trippy mode params
   trippyMode: 0, trippySpeed: 1.0,
   // Tunnel params
@@ -2618,6 +2621,9 @@ const midiManager = new MidiManager(P,
 
 // ---------- Remote Sync (declare early, connect later) ----------
 let remoteSync: RemoteSync;
+let stageChrome: StageChrome;
+let galleryHiddenByStage = false;
+let guiHiddenByStage = false;
 
 // Create the new MainControlPanel
 const panel = new MainControlPanel({
@@ -2680,6 +2686,42 @@ const panel = new MainControlPanel({
     };
     i.click();
   },
+  onFullscreen: () => enterPerformanceMode({ requestFullscreen: true, source: 'button' }),
+  onUiVisibilityChange: (hidden: boolean) => {
+    P.uiHidden = hidden;
+    if (hidden) {
+      // Hide the rest of the on-screen chrome so Hide UI is a real hide,
+      // not just the right-hand panel. Remember what we tucked away.
+      if (!presetGallery.isHidden()) {
+        galleryHiddenByStage = true;
+        presetGallery.hide();
+      }
+      if (gui.domElement.style.display !== 'none') {
+        guiHiddenByStage = true;
+        gui.domElement.style.display = 'none';
+      }
+      stageChrome.onHidden(!!P.performanceMode);
+      applyStageCursor();
+    } else {
+      if (galleryHiddenByStage) {
+        presetGallery.show();
+        galleryHiddenByStage = false;
+      }
+      if (guiHiddenByStage) {
+        gui.domElement.style.display = '';
+        guiHiddenByStage = false;
+      }
+      stageChrome.onShown();
+      if (!P.performanceMode) applyStageCursor();
+      else {
+        // H can reveal the panel during a show without leaving fullscreen.
+        document.body.style.cursor = '';
+        canvas.style.cursor = '';
+      }
+    }
+    stageChrome.sync(getStageState());
+    if (remoteSync) remoteSync.syncState();
+  },
 });
 
 (window as any).panel = panel;
@@ -2706,6 +2748,10 @@ remoteSync = new RemoteSync(P,
     else if (action === 'blackout') {
       P.exposure = P.exposure > 0.1 ? 0 : 1.0;
     }
+    else if (action === 'hide-ui') hideUI();
+    else if (action === 'show-ui') showUI();
+    else if (action === 'enter-performance') enterPerformanceMode({ requestFullscreen: false, source: 'remote' });
+    else if (action === 'exit-performance') exitPerformanceMode();
   },
   (presetName) => {
     // Handle preset selection from remote
@@ -2781,7 +2827,7 @@ const listEl = document.createElement('pre'); listEl.textContent = 'Export prese
 (ex as any).$children.appendChild(listEl);
 
 function snapshot() { 
-  const { paused, ...rest } = P; 
+  const { paused, performanceMode, uiHidden, fullscreenPending, ...rest } = P; 
   return JSON.parse(JSON.stringify({ 
     ...rest, 
     stops, 
@@ -2818,53 +2864,182 @@ function randomize() {
   stops = PALETTES[P.palette].map(s => [s[0], s[1]] as Stop); rebuildStops(); buildPalette(); gui.controllersRecursive().forEach(c => c.updateDisplay()); reset();
 }
 addEventListener('resize', layout);
-// Performance mode functions
-function enterPerformanceMode() {
-  P.performanceMode = true;
-  
-  // Request fullscreen
-  if (document.documentElement.requestFullscreen) {
-    document.documentElement.requestFullscreen().catch(() => {});
+// ---------- Stage chrome: Hide UI / Fullscreen / restore affordance ----------
+const lastFullscreenResult: { source: string; ok: boolean; error?: string; at: number }[] = [];
+
+function getStageState() {
+  return {
+    uiHidden: !!P.uiHidden,
+    performanceMode: !!P.performanceMode,
+    fullscreen: !!document.fullscreenElement,
+    fullscreenPending: !!P.fullscreenPending,
+  };
+}
+
+function applyStageCursor() {
+  if (P.performanceMode && P.uiHidden) {
+    document.body.style.cursor = 'none';
+    canvas.style.cursor = 'none';
+  } else {
+    document.body.style.cursor = '';
+    canvas.style.cursor = '';
   }
-  
-  // Hide UI elements
+}
+
+function requestFullscreenNow(): Promise<{ ok: boolean; error?: string }> {
+  const el = document.documentElement as any;
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (!fn) return Promise.resolve({ ok: false, error: 'requestFullscreen not available' });
+  try {
+    const ret = fn.call(el);
+    if (ret && typeof ret.then === 'function') {
+      return ret.then(
+        () => ({ ok: true }),
+        (err: any) => ({ ok: false, error: (err && (err.message || err.name)) || String(err) }),
+      );
+    }
+    return Promise.resolve({ ok: !!document.fullscreenElement, error: document.fullscreenElement ? undefined : 'requestFullscreen returned without entering' });
+  } catch (err: any) {
+    return Promise.resolve({ ok: false, error: (err && (err.message || err.name)) || String(err) });
+  }
+}
+
+function hideUI() {
+  if (P.uiHidden && panel.isHidden()) {
+    stageChrome.onHidden(!!P.performanceMode);
+    stageChrome.sync(getStageState());
+    if (remoteSync) remoteSync.syncState();
+    return;
+  }
+  P.uiHidden = true;
+  panel.hide();
+}
+
+function showUI() {
+  P.uiHidden = false;
+  P.fullscreenPending = false;
+  panel.show();
+  stageChrome.onShown();
+  stageChrome.sync(getStageState());
+  if (remoteSync) remoteSync.syncState();
+}
+
+function enterPerformanceMode(opts: { requestFullscreen?: boolean; source?: string } = {}) {
+  const wantFs = opts.requestFullscreen !== false;
+  const source = opts.source || 'unknown';
+  P.performanceMode = true;
+  P.uiHidden = true;
   panel.hide();
   presetGallery.hide();
   gui.domElement.style.display = 'none';
-  
-  // Hide cursor
-  document.body.style.cursor = 'none';
-  canvas.style.cursor = 'none';
-  
-  log('Performance mode: ON (press Esc to exit)');
+  applyStageCursor();
+  stageChrome.onHidden(true);
+
+  if (document.fullscreenElement) {
+    P.fullscreenPending = false;
+    recordFullscreen(source, true);
+    stageChrome.sync(getStageState());
+    if (remoteSync) remoteSync.syncState();
+    log('Performance mode: ON (already fullscreen; Esc or tap to show exit)');
+    return;
+  }
+
+  if (wantFs) {
+    // Must be invoked from a local user gesture (button click or keydown).
+    requestFullscreenNow().then((res) => {
+      recordFullscreen(source, res.ok, res.error);
+      P.fullscreenPending = !res.ok && !document.fullscreenElement;
+      stageChrome.sync(getStageState());
+      if (remoteSync) remoteSync.syncState();
+    });
+  } else {
+    // Remote (or any non-gesture) path: Chrome will not grant fullscreen.
+    // Still hide UI + cursor, and show a one-tap local prompt.
+    P.fullscreenPending = true;
+    recordFullscreen(source, false, 'no local user gesture; prompt shown');
+    stageChrome.sync(getStageState());
+    if (remoteSync) remoteSync.syncState();
+  }
+  log('Performance mode: ON (press Esc to exit, or tap to show the exit control)');
 }
 
-function exitPerformanceMode() {
+function exitPerformanceMode(opts: { skipExitFullscreen?: boolean } = {}) {
   P.performanceMode = false;
-  
-  // Exit fullscreen
-  if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
+  P.fullscreenPending = false;
+  P.uiHidden = false;
+  if (!opts.skipExitFullscreen && document.fullscreenElement) {
+    document.exitFullscreen?.().catch(() => {});
   }
-  
-  // Show UI elements (leave them in their previous state)
   panel.show();
-  // presetGallery stays hidden unless user toggles it
-  
-  // Show cursor
-  document.body.style.cursor = '';
-  canvas.style.cursor = '';
-  
+  applyStageCursor();
+  stageChrome.onShown();
+  stageChrome.sync(getStageState());
+  if (remoteSync) remoteSync.syncState();
   log('Performance mode: OFF');
 }
+
+function recordFullscreen(source: string, ok: boolean, error?: string) {
+  lastFullscreenResult.push({ source, ok, error, at: Date.now() });
+  if (lastFullscreenResult.length > 20) lastFullscreenResult.shift();
+  log(`fullscreen source=${source} ok=${ok}${error ? ' ' + error : ''}`);
+}
+
+stageChrome = new StageChrome({
+  onRestore: () => {
+    if (P.performanceMode) exitPerformanceMode();
+    else showUI();
+  },
+  onTapFullscreen: () => {
+    // Local gesture on the display — this is the path that can succeed after a remote request.
+    requestFullscreenNow().then((res) => {
+      recordFullscreen('tap-prompt', res.ok, res.error);
+      P.fullscreenPending = !res.ok && !document.fullscreenElement;
+      if (res.ok) {
+        P.performanceMode = true;
+        P.uiHidden = true;
+        panel.hide();
+        applyStageCursor();
+        stageChrome.onHidden(true);
+      }
+      stageChrome.sync(getStageState());
+      if (remoteSync) remoteSync.syncState();
+    });
+  },
+});
+stageChrome.mount(document.body);
+
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) {
+    P.fullscreenPending = false;
+    if (!P.performanceMode) {
+      P.performanceMode = true;
+      P.uiHidden = true;
+      panel.hide();
+      presetGallery.hide();
+      gui.domElement.style.display = 'none';
+      applyStageCursor();
+      stageChrome.onHidden(true);
+    } else {
+      // The fullscreen transition often warps the cursor; keep the first
+      // performance frame clean.
+      stageChrome.suppressPoke(1000);
+    }
+  } else if (P.performanceMode) {
+    // Browser Esc (or UI) left fullscreen — drop back to a visible UI.
+    exitPerformanceMode({ skipExitFullscreen: true });
+    return;
+  }
+  stageChrome.sync(getStageState());
+  if (remoteSync) remoteSync.syncState();
+});
 
 addEventListener('keydown', (e: KeyboardEvent) => { 
   if ((e.target as HTMLElement)?.tagName === 'INPUT') return; 
   
-  // Performance mode toggle (F key) or exit (Escape)
+  // Performance mode enter (F key) or exit (Escape). F does not toggle off.
   if (e.key === 'f' || e.key === 'F') {
     if (!P.performanceMode) {
-      enterPerformanceMode();
+      enterPerformanceMode({ requestFullscreen: true, source: 'keydown-F' });
     }
     return;
   }
@@ -2976,6 +3151,9 @@ requestAnimationFrame(tick);
 log(`boot maxTex=${MAXTEX} renderer=${gl.getParameter(gl.RENDERER)} mode=${P.mode}`);
 if (q.get('auto') === 'still') { const after = +(q.get('after') || 360); const iv = setInterval(() => { if (frame >= after) { clearInterval(iv); renderStill().then(r => log('auto done ' + JSON.stringify(r))); } }, 200); }
 (window as any).engine = { P, renderStill, reset, recover, renderVideo, studio, phys, fractal,
+  hideUI, showUI, enterPerformanceMode, exitPerformanceMode, getStageState,
+  syncStage: () => stageChrome.sync(getStageState()),
+  lastFullscreenResult,
   buildPalette,
   getStops: () => stops,
   setStops: (s: Stop[], paletteName?: string) => { 

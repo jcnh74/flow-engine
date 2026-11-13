@@ -157,6 +157,10 @@ export class PresetGallery {
     }
   }
 
+  public isHidden(): boolean {
+    return this.container.classList.contains('hidden');
+  }
+
   public show() {
     this.container.classList.remove('hidden');
   }
